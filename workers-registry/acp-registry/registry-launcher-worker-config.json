@@ -1,0 +1,10 @@
+{
+  "_comment": "Registry Launcher worker configuration",
+  "_description": "Configuration options for the Registry Launcher worker process",
+  "registryUrl": "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json",
+  "_comment_registryUrl": "URL to fetch the ACP Registry JSON. Can also be set via ACP_REGISTRY_URL environment variable",
+  "apiKeysPath": "./api-keys.json",
+  "_comment_apiKeysPath": "Path to the API keys JSON file. Can be absolute or relative to the worker process. Can also be set via ACP_API_KEYS_PATH environment variable",
+  "shutdownTimeoutSec": 5,
+  "_comment_shutdownTimeoutSec": "Timeout in seconds for graceful shutdown. Agent processes receive SIGTERM, then SIGKILL after this timeout"
+}

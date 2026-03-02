@@ -1,0 +1,30 @@
+{
+  "name": "mcp-echo-server",
+  "version": "1.0.0",
+  "description": "Example MCP server that echoes back requests - demonstrates basic stdio Bus kernel integration with Agent Client Protocol",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "acp",
+    "agent",
+    "protocol",
+    "c-os",
+    "example"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1"
+  }
+}

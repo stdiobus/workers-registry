@@ -1,0 +1,3 @@
+# MCP-ACP Proxy
+
+This directory contains the TypeScript implementation of the MCP-to-ACP protocol proxy.

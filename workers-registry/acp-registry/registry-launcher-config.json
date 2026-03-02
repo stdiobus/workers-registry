@@ -1,0 +1,31 @@
+{
+  "_comment": "stdio Bus configuration for running the Registry Launcher as a worker pool",
+  "_description": "This configuration demonstrates how to use the Registry Launcher to connect ACP clients to any agent in the ACP Registry through stdio Bus",
+  "pools": [
+    {
+      "_comment": "Registry Launcher worker pool - routes messages to ACP Registry agents",
+      "id": "registry-launcher",
+      "command": "/usr/bin/env",
+      "args": [
+        "node",
+        "./worker/dist/registry-launcher/index.js",
+        "./examples/acp-registry/registry-launcher-worker-config.json"
+      ],
+      "instances": 1
+    }
+  ],
+  "limits": {
+    "_comment_max_input_buffer": "Maximum size of input buffer per connection (1MB default)",
+    "max_input_buffer": 1048576,
+    "_comment_max_output_queue": "Maximum size of output queue per connection (4MB default)",
+    "max_output_queue": 4194304,
+    "_comment_max_restarts": "Maximum number of worker restarts within restart_window_sec",
+    "max_restarts": 5,
+    "_comment_restart_window_sec": "Time window for counting restarts (60 seconds)",
+    "restart_window_sec": 60,
+    "_comment_drain_timeout_sec": "Timeout for draining connections during graceful shutdown",
+    "drain_timeout_sec": 30,
+    "_comment_backpressure_timeout_sec": "Timeout for backpressure before dropping messages",
+    "backpressure_timeout_sec": 60
+  }
+}

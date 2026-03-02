@@ -1,0 +1,10 @@
+{
+  "name": "mcp-to-acp-proxy",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Proxy to convert MCP protocol to ACP protocol",
+  "main": "proxy.js",
+  "bin": {
+    "mcp-to-acp-proxy": "./proxy.js"
+  }
+}
