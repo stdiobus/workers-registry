@@ -75,10 +75,10 @@
  *
  * @example
  * // Start the echo worker
- * node examples/echo-worker/echo-worker.js
+ * node workers-registry/echo-worker/echo-worker.js
  *
  * // Send a request (from another terminal or via stdio Bus kernel)
- * echo '{"jsonrpc":"2.0","id":"1","method":"test","params":{"foo":"bar"}}' | node examples/echo-worker/echo-worker.js
+ * echo '{"jsonrpc":"2.0","id":"1","method":"test","params":{"foo":"bar"}}' | node workers-registry/echo-worker/echo-worker.js
  *
  * // Expected response:
  * // {"jsonrpc":"2.0","id":"1","result":{"echo":{"foo":"bar"},"method":"test","timestamp":"..."}}

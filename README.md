@@ -1,307 +1,242 @@
-# stdio Bus kernel Examples
+# stdio Bus Workers Registry
 
-This directory contains example configurations and worker implementations for Agent Transport OS (stdio Bus kernel).
+This repository contains worker implementations and examples for [stdio Bus kernel](https://github.com/stdiobus/kernel) - a high-performance message routing daemon for agent protocols.
 
-## Contents
+## Overview
 
-| File                                        | Description                                              |
-|---------------------------------------------|----------------------------------------------------------|
-| `echo-worker/echo-worker-config.json`       | Example configuration file for stdio Bus kernel          |
-| `echo-worker/echo-worker.js`                | Simple Node.js echo worker demonstrating NDJSON protocol |
-| `worker-client-examples/ndjson-client.js`   | Test client for sending requests to stdio Bus kernel     |
-| `worker-client-examples/mcp-echo-server.ts` | TypeScript MCP echo server example                       |
-| `acp-worker/`                               | ACP SDK worker example using `@agentclientprotocol/sdk`  |
+stdio Bus kernel provides the core protocol and message routing infrastructure. This repository contains the worker implementations that run as child processes of stdio Bus kernel, handling various agent protocols and use cases.
 
-## Running the Examples
+## Architecture
 
-### Prerequisites
-
-- stdio Bus kernel built from source (see `docs/building.md`)
-- Node.js 18.0.0 or later
-- stdio Bus kernel release – https://github.com/stdiobus/kernel
-
----
-
-### Echo Worker Example
-
-The echo worker (`echo-worker/echo-worker.js`) demonstrates the basic NDJSON worker contract. It echoes back any
-JSON-RPC request it
-receives.
-
-#### Running Standalone (without stdio Bus kernel)
-
-Test the echo worker directly:
-
-```bash
-# Send a single request
-echo '{"jsonrpc":"2.0","id":"1","method":"test","params":{"foo":"bar"}}' | node examples/echo-worker/echo-worker.js
-
-# Expected output:
-# {"jsonrpc":"2.0","id":"1","result":{"echo":{"foo":"bar"},"method":"test","timestamp":"..."}}
+```
+stdio Bus kernel (binary) ← https://github.com/stdiobus/kernel
+    ↓ (spawns workers via stdin/stdout NDJSON)
+Workers Registry (this repo)
+    ├── ACP Worker (Agent Client Protocol)
+    ├── Registry Launcher (ACP Registry integration)
+    ├── MCP-to-ACP Proxy (protocol bridge)
+    └── Echo Worker (testing/examples)
 ```
 
-#### Running with stdio Bus kernel (stdio mode)
+## Workers
+
+| Worker | Description | Protocol |
+|--------|-------------|----------|
+| `acp-worker` | Full ACP protocol implementation using official SDK | ACP |
+| `registry-launcher` | Routes messages to any agent in the ACP Registry | ACP |
+| `mcp-to-acp-proxy` | Bridges MCP clients (like Kiro) to ACP agents | MCP → ACP |
+| `echo-worker` | Simple echo worker for testing NDJSON protocol | NDJSON |
+| `mcp-echo-server` | MCP server example for testing | MCP |
+
+## Prerequisites
+
+- [stdio Bus kernel](https://github.com/stdiobus/kernel) binary (download from releases)
+- Node.js 20.0.0 or later
+
+
+## Quick Start
+
+### 1. Get stdio Bus kernel
+
+Download the latest release from [stdio Bus kernel releases](https://github.com/stdiobus/kernel/releases):
 
 ```bash
-# Start stdio Bus kernel with echo worker in stdio mode
-./releases/stdio_bus --config examples/echo-worker/echo-worker-config.json --stdio
-
-# Then send messages via stdin (one JSON per line)
-{"jsonrpc":"2.0","id":"1","method":"echo","params":{"hello":"world"}}
+# Example for Linux/macOS
+wget https://github.com/stdiobus/kernel/releases/latest/download/stdio_bus
+chmod +x stdio_bus
 ```
 
-#### Running with stdio Bus kernel (TCP mode)
-
-This is the recommended mode for testing with the NDJSON client:
+### 2. Build Workers
 
 ```bash
-# Terminal 1: Start stdio Bus kernel with TCP listener
-./releases/stdio_bus --config examples/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+# Install dependencies
+npm install
 
-# Terminal 2: Send test requests
-node examples/ndjson-client.js --tcp 127.0.0.1:9000 --method echo --id req-1
-
-# Test session affinity (multiple requests with same session)
-node examples/ndjson-client.js --tcp 127.0.0.1:9000 --method test --session sess-123 --id 1
-node examples/ndjson-client.js --tcp 127.0.0.1:9000 --method test --session sess-123 --id 2
-```
-
-#### Running with stdio Bus kernel (Unix socket mode)
-
-```bash
-# Terminal 1: Start stdio Bus kernel with Unix socket
-./releases/stdio_bus --config examples/echo-worker/echo-worker-config.json --unix /tmp/stdio_bus.sock
-
-# Terminal 2: Send test requests
-node examples/ndjson-client.js --unix /tmp/stdio_bus.sock --method echo --id req-1
-```
-
----
-
-### NDJSON Client Example
-
-The NDJSON client (`ndjson-client.js`) is a test utility for sending requests to stdio Bus kernel.
-
-#### Basic Usage
-
-```bash
-# Send a simple request
-node examples/ndjson-client.js --tcp localhost:9000 --method echo --id req-1
-
-# Send with session ID
-node examples/ndjson-client.js --tcp localhost:9000 --method test --session my-session --id req-1
-
-# Send with custom params
-node examples/ndjson-client.js --tcp localhost:9000 --method process --id req-1 --params '{"data":"hello"}'
-
-# Send a notification (no response expected)
-node examples/ndjson-client.js --tcp localhost:9000 --method notify --notification
-```
-
-#### Interactive Mode
-
-```bash
-# Start interactive mode
-node examples/ndjson-client.js --tcp localhost:9000 --interactive
-
-# Then type JSON messages, one per line:
-{"jsonrpc":"2.0","id":"1","method":"echo","params":{"test":true}}
-{"jsonrpc":"2.0","id":"2","method":"test","sessionId":"sess-1"}
-```
-
-#### Command Line Options
-
-| Option              | Description                            |
-|---------------------|----------------------------------------|
-| `--tcp <host:port>` | Connect via TCP                        |
-| `--unix <path>`     | Connect via Unix socket                |
-| `--method <name>`   | JSON-RPC method name (default: "echo") |
-| `--id <value>`      | Request ID (default: auto-generated)   |
-| `--session <id>`    | Session ID for session affinity        |
-| `--params <json>`   | JSON string of params                  |
-| `--notification`    | Send as notification (no response)     |
-| `--interactive`     | Interactive mode                       |
-| `--timeout <ms>`    | Response timeout (default: 5000)       |
-| `--help`            | Show help                              |
-
----
-
-### ACP Worker Example
-
-The ACP worker (`acp-worker/`) demonstrates a full ACP-compliant worker using `@agentclientprotocol/sdk`.
-
-#### Build the ACP Worker
-
-```bash
-cd examples/acp-worker
+# Build ACP worker
+cd workers-registry/acp-worker
 npm install
 npm run build
 cd ../..
 ```
 
-#### Run Standalone
+### 3. Run Echo Worker Example
 
 ```bash
-# Test without stdio Bus kernel
-echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"name":"test"}}}' | node examples/acp-worker/dist/index.js
+# Terminal 1: Start stdio Bus with echo worker
+./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+
+# Terminal 2: Test with a simple message
+echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"hello":"world"}}' | nc 127.0.0.1 9000
 ```
-
-#### Run with stdio Bus kernel
-
-Create a configuration file for the ACP worker:
-
-```bash
-# Create acp-config.json
-cat > /tmp/acp-config.json << 'EOF'
-{
-    "pools": [
-        {
-            "id": "acp-worker",
-            "command": "node",
-            "args": ["examples/acp-worker/dist/index.js"],
-            "instances": 1
-        }
-    ]
-}
-EOF
-
-# Start stdio Bus kernel with ACP worker
-./releases/stdio_bus --config /tmp/acp-config.json --tcp 127.0.0.1:9000
-```
-
-See `examples/acp-worker/README.md` for detailed documentation.
 
 ---
 
-### MCP Echo Server Example
+## Worker Documentation
 
-The MCP echo server (`examples/mcp-echo-server/mcp-echo-server.ts`) is a TypeScript MCP server for testing MCP
-integration.
+### ACP Worker
 
-#### Prerequisites
+Full implementation of the Agent Client Protocol using the official `@agentclientprotocol/sdk`.
 
+**Location:** `workers-registry/acp-worker/`
+
+**Features:**
+- Complete ACP protocol support (initialize, session management, prompts)
+- MCP server integration for tool execution
+- Session-based routing
+- Graceful shutdown handling
+
+**Build:**
 ```bash
-# Install TypeScript and MCP SDK
-npm install -g typescript ts-node
-npm install @modelcontextprotocol/sdk
-```
-
-#### Build the Server
-
-```bash
+cd workers-registry/acp-worker
+npm install
 npm run build
 ```
 
-#### Run Standalone
-
+**Run with stdio Bus:**
 ```bash
-node examples/mcp-echo-server/dist/mcp-echo-server.js
+./stdio_bus --config workers-registry/acp-worker/acp-worker-config.json --tcp 127.0.0.1:9000
 ```
 
-The server provides these tools:
+**Configuration:** See `workers-registry/acp-worker/src/` for implementation details.
 
+---
+
+### Registry Launcher
+
+Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json).
+
+**Location:** `workers-registry/acp-worker/src/registry-launcher/`
+
+**Features:**
+- Automatic agent discovery from ACP Registry
+- Dynamic agent process management
+- API key injection from configuration
+- Session affinity routing
+
+**Available Agents:**
+- `claude-acp` - Claude Agent
+- `goose` - Goose
+- `cline` - Cline
+- `github-copilot` - GitHub Copilot
+- And many more from the registry
+
+**Configuration:**
+```json
+{
+  "pools": [{
+    "id": "registry-launcher",
+    "command": "node",
+    "args": ["./workers-registry/acp-worker/dist/registry-launcher/index.js", "./config.json"],
+    "instances": 1
+  }]
+}
+```
+
+**Run:**
+```bash
+./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp 127.0.0.1:9000
+```
+
+---
+
+### MCP-to-ACP Proxy
+
+Bridges MCP clients (like Kiro IDE) to ACP agents through stdio Bus.
+
+**Location:** `workers-registry/mcp-to-acp-proxy/`
+
+**Architecture:**
+```
+Kiro (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → ACP Agent
+```
+
+**Configuration for Kiro:**
+```json
+{
+  "mcpServers": {
+    "stdio-bus-acp": {
+      "command": "node",
+      "args": ["./workers-registry/mcp-to-acp-proxy/proxy.js"],
+      "env": {
+        "ACP_HOST": "127.0.0.1",
+        "ACP_PORT": "9000",
+        "AGENT_ID": "claude-acp"
+      }
+    }
+  }
+}
+```
+
+**Documentation:** See [workers-registry/mcp-to-acp-proxy/README.md](workers-registry/mcp-to-acp-proxy/README.md)
+
+---
+
+### Echo Worker
+
+Simple reference implementation demonstrating the NDJSON worker protocol.
+
+**Location:** `workers-registry/echo-worker/`
+
+**Purpose:**
+- Testing stdio Bus kernel functionality
+- Reference implementation for custom workers
+- Protocol documentation through code
+
+**Run standalone:**
+```bash
+echo '{"jsonrpc":"2.0","id":"1","method":"test","params":{"foo":"bar"}}' | node workers-registry/echo-worker/echo-worker.js
+```
+
+**Run with stdio Bus:**
+```bash
+./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+```
+
+---
+
+### MCP Echo Server
+
+TypeScript MCP server example for testing MCP integration.
+
+**Location:** `workers-registry/mcp-echo-server/`
+
+**Tools provided:**
 - `echo` - Echoes input text
 - `reverse` - Reverses input text
 - `uppercase` - Converts to uppercase
 - `delay` - Echoes after a delay (for testing cancellation)
 - `error` - Always returns an error (for testing error handling)
 
----
-
-### Using the Default Configuration
-
-The included `config.json` runs both the echo worker and the protocol worker:
-
+**Build:**
 ```bash
-# View the configuration
-cat examples/echo-worker/echo-worker-config.json
-
-# Start stdio Bus kernel with default config
-./releases/stdio_bus --config examples/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+cd workers-registry/mcp-echo-server
+npm install
+npm run build
 ```
 
-Note: The protocol worker requires building the main `worker/` directory first:
-
+**Run:**
 ```bash
-cd worker && npm install && npm run build && cd ..
-./releases/stdio_bus --config examples/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+node workers-registry/mcp-echo-server/dist/mcp-echo-server.js
 ```
 
 ---
 
-## Configuration Reference
+## stdio Bus Configuration
 
-stdio Bus kernel reads configuration from a JSON file specified via `--config <path>`. The configuration defines worker
-pools and operational limits.
+stdio Bus kernel is configured via JSON files. This repository includes example configurations for each worker.
 
 ### Configuration File Structure
 
 ```json
 {
   "pools": [
-    ...
-  ],
-  "limits": {
-    ...
-  }
-}
-```
-
-### Pool Configuration
-
-The `pools` array defines one or more worker pools. Each pool specifies a group of identical worker processes.
-
-| Field       | Type     | Required | Description                                                   |
-|-------------|----------|----------|---------------------------------------------------------------|
-| `id`        | string   | Yes      | Unique identifier for this pool. Used in logging and routing. |
-| `command`   | string   | Yes      | Path to the executable to run.                                |
-| `args`      | string[] | No       | Command-line arguments passed to the executable.              |
-| `instances` | number   | Yes      | Number of worker instances to spawn (must be ≥ 1).            |
-
-#### Pool Configuration Example
-
-```json
-{
-  "pools": [
     {
-      "id": "echo-worker",
-      "command": "/usr/bin/env",
-      "args": [
-        "node",
-        "./examples/echo-worker/echo-worker.js"
-      ],
-      "instances": 2
+      "id": "worker-id",
+      "command": "/path/to/executable",
+      "args": ["arg1", "arg2"],
+      "instances": 1
     }
-  ]
-}
-```
-
-#### Notes on Pool Configuration
-
-- The `command` field should be an absolute path or a command available in `PATH`
-- Using `/usr/bin/env` as the command with the actual executable as the first argument is a portable pattern
-- The `args` array does NOT include the command itself as the first element (unlike C's `argv`)
-- Multiple pools can be defined to run different worker types simultaneously
-- Workers in the same pool are functionally identical and receive requests via round-robin assignment
-
-### Limits Configuration
-
-The `limits` object controls resource usage and error recovery behavior. All fields are optional; defaults are used when
-omitted.
-
-| Field                      | Type   | Default        | Description                                                                                                     |
-|----------------------------|--------|----------------|-----------------------------------------------------------------------------------------------------------------|
-| `max_input_buffer`         | number | 1048576 (1 MB) | Maximum input buffer size per connection in bytes. Messages larger than this cause the connection to be closed. |
-| `max_output_queue`         | number | 4194304 (4 MB) | Maximum output queue size per connection in bytes. When exceeded, backpressure is applied.                      |
-| `max_restarts`             | number | 5              | Maximum number of worker restarts allowed within the restart window.                                            |
-| `restart_window_sec`       | number | 60             | Time window in seconds for counting worker restarts.                                                            |
-| `drain_timeout_sec`        | number | 30             | Timeout in seconds for graceful shutdown. Workers not exited after this time receive SIGKILL.                   |
-| `backpressure_timeout_sec` | number | 60             | Timeout in seconds before closing a connection when output queue is full.                                       |
-
-#### Limits Configuration Example
-
-```json
-{
+  ],
   "limits": {
     "max_input_buffer": 1048576,
     "max_output_queue": 4194304,
@@ -313,78 +248,49 @@ omitted.
 }
 ```
 
-#### Understanding the Limits
+### Pool Configuration
 
-**Input Buffer (`max_input_buffer`)**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Unique identifier for this worker pool |
+| `command` | string | Yes | Path to the executable |
+| `args` | string[] | No | Command-line arguments |
+| `instances` | number | Yes | Number of worker instances (≥ 1) |
 
-- Each connection has a dedicated input buffer for accumulating incoming data
-- NDJSON messages are parsed from this buffer when a complete line is received
-- If a single message exceeds this limit, the connection is closed with an error
+### Limits Configuration
 
-**Output Queue (`max_output_queue`)**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_input_buffer` | number | 1048576 (1 MB) | Maximum input buffer size per connection |
+| `max_output_queue` | number | 4194304 (4 MB) | Maximum output queue size per connection |
+| `max_restarts` | number | 5 | Maximum worker restarts within restart window |
+| `restart_window_sec` | number | 60 | Time window for counting restarts |
+| `drain_timeout_sec` | number | 30 | Timeout for graceful shutdown |
+| `backpressure_timeout_sec` | number | 60 | Timeout before closing connection when queue is full |
 
-- Each connection has an output queue for messages waiting to be sent
-- When the queue exceeds this limit, backpressure is applied (no new messages queued)
-- If the queue remains full for `backpressure_timeout_sec`, the connection is closed
+### Example Configurations
 
-**Restart Policy (`max_restarts`, `restart_window_sec`)**
-
-- stdio Bus kernel automatically restarts workers that exit unexpectedly
-- If a worker restarts more than `max_restarts` times within `restart_window_sec` seconds, it is marked as failed and
-  not restarted
-- This prevents crash loops from consuming system resources
-
-**Graceful Shutdown (`drain_timeout_sec`)**
-
-- On SIGTERM/SIGINT, stdio Bus kernel sends SIGTERM to all workers
-- Workers have `drain_timeout_sec` seconds to finish processing and exit
-- After the timeout, remaining workers receive SIGKILL
-
-**Backpressure (`backpressure_timeout_sec`)**
-
-- When a connection's output queue is full, stdio Bus kernel stops queuing new messages
-- If the queue cannot drain within `backpressure_timeout_sec`, the connection is closed
-- This prevents slow clients from causing unbounded memory growth
-
----
-
-## Example Configurations
-
-### Minimal Configuration
-
-A minimal configuration with one worker pool using defaults for all limits:
-
+**Minimal Configuration:**
 ```json
 {
-  "pools": [
-    {
-      "id": "my-worker",
-      "command": "/usr/bin/node",
-      "args": [
-        "./worker.js"
-      ],
-      "instances": 1
-    }
-  ]
+  "pools": [{
+    "id": "echo-worker",
+    "command": "node",
+    "args": ["./workers-registry/echo-worker/echo-worker.js"],
+    "instances": 1
+  }]
 }
 ```
 
-### High-Throughput Configuration
-
-Configuration optimized for high message throughput with larger buffers:
-
+**High-Throughput Configuration:**
 ```json
 {
-  "pools": [
-    {
-      "id": "high-throughput-worker",
-      "command": "/usr/bin/node",
-      "args": [
-        "./worker.js"
-      ],
-      "instances": 4
-    }
-  ],
+  "pools": [{
+    "id": "acp-worker",
+    "command": "node",
+    "args": ["./workers-registry/acp-worker/dist/index.js"],
+    "instances": 4
+  }],
   "limits": {
     "max_input_buffer": 4194304,
     "max_output_queue": 16777216,
@@ -393,53 +299,20 @@ Configuration optimized for high message throughput with larger buffers:
 }
 ```
 
-### Development Configuration
-
-Configuration for development with aggressive restart policy:
-
-```json
-{
-  "pools": [
-    {
-      "id": "dev-worker",
-      "command": "/usr/bin/env",
-      "args": [
-        "node",
-        "--inspect",
-        "./worker.js"
-      ],
-      "instances": 1
-    }
-  ],
-  "limits": {
-    "max_restarts": 100,
-    "restart_window_sec": 300,
-    "drain_timeout_sec": 5
-  }
-}
-```
-
-### Multiple Worker Pools
-
-Configuration with multiple worker pools for different purposes:
-
+**Multiple Worker Pools:**
 ```json
 {
   "pools": [
     {
       "id": "acp-worker",
-      "command": "/usr/bin/node",
-      "args": [
-        "./acp-worker.js"
-      ],
+      "command": "node",
+      "args": ["./workers-registry/acp-worker/dist/index.js"],
       "instances": 2
     },
     {
-      "id": "mcp-worker",
-      "command": "/usr/bin/node",
-      "args": [
-        "./mcp-worker.js"
-      ],
+      "id": "echo-worker",
+      "command": "node",
+      "args": ["./workers-registry/echo-worker/echo-worker.js"],
       "instances": 1
     }
   ]
@@ -448,8 +321,213 @@ Configuration with multiple worker pools for different purposes:
 
 ---
 
-## See Also
+## NDJSON Protocol
 
-- [Building stdio Bus kernel](../docs/building.md) - Build instructions
-- [Platform Integration Guide](../docs/integration-for-platforms.md) - Embedding stdio Bus kernel in platforms
-- [Specification](../spec/agent-transport-os.md) - Normative specification document
+Workers communicate with stdio Bus kernel via stdin/stdout using NDJSON (Newline-Delimited JSON).
+
+### Protocol Rules
+
+1. **Input (stdin):** stdio Bus sends JSON-RPC messages, one per line
+2. **Output (stdout):** Workers write JSON-RPC responses, one per line
+3. **Errors (stderr):** All logging and debug output goes to stderr
+4. **Never write non-JSON to stdout** - it will break the protocol
+
+### Message Types
+
+**Request** (requires response):
+```json
+{"jsonrpc":"2.0","id":"1","method":"test","params":{"foo":"bar"}}
+```
+
+**Response:**
+```json
+{"jsonrpc":"2.0","id":"1","result":{"status":"ok"}}
+```
+
+**Notification** (no response):
+```json
+{"jsonrpc":"2.0","method":"notify","params":{"event":"started"}}
+```
+
+### Session Affinity
+
+Messages with the same `sessionId` are routed to the same worker instance:
+
+```json
+{"jsonrpc":"2.0","id":"1","method":"test","sessionId":"sess-123","params":{}}
+```
+
+Workers must preserve `sessionId` in responses for proper routing.
+
+### Graceful Shutdown
+
+Workers must handle SIGTERM for graceful shutdown:
+1. Stop accepting new messages
+2. Complete in-flight processing
+3. Exit with code 0
+
+stdio Bus sends SIGTERM during shutdown or worker restarts.
+
+---
+
+## Testing
+
+### Unit Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test suites
+npm run test:unit
+npm run test:integration
+npm run test:property
+```
+
+### Manual Testing
+
+**Test echo worker:**
+```bash
+# Start stdio Bus
+./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+
+# Send test message
+echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"test":true}}' | nc 127.0.0.1 9000
+```
+
+**Test ACP worker:**
+```bash
+# Start stdio Bus with ACP worker
+./stdio_bus --config workers-registry/acp-worker/acp-worker-config.json --tcp 127.0.0.1:9000
+
+# Send initialize request
+echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"name":"test","version":"1.0"}}}' | nc 127.0.0.1 9000
+```
+
+**Test Registry Launcher:**
+```bash
+# Start stdio Bus with Registry Launcher
+./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp 127.0.0.1:9000
+
+# Send message with agentId
+echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"agentId":"claude-acp","clientInfo":{"name":"test"}}}' | nc 127.0.0.1 9000
+```
+
+---
+
+## Development
+
+### Creating a Custom Worker
+
+1. Workers must read NDJSON from stdin and write NDJSON to stdout
+2. All logging goes to stderr
+3. Handle SIGTERM for graceful shutdown
+4. Preserve `sessionId` in responses when present in requests
+
+**Minimal worker template (Node.js):**
+
+```javascript
+#!/usr/bin/env node
+import readline from 'readline';
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false
+});
+
+rl.on('line', (line) => {
+  try {
+    const msg = JSON.parse(line);
+    
+    if (msg.id !== undefined) {
+      // Request - send response
+      const response = {
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: { /* your result */ }
+      };
+      
+      if (msg.sessionId) {
+        response.sessionId = msg.sessionId;
+      }
+      
+      console.log(JSON.stringify(response));
+    }
+  } catch (err) {
+    console.error('Parse error:', err.message);
+  }
+});
+
+process.on('SIGTERM', () => {
+  console.error('Shutting down...');
+  rl.close();
+});
+
+rl.on('close', () => process.exit(0));
+```
+
+### Project Structure
+
+```
+workers-registry/
+├── acp-worker/              # Full ACP protocol implementation
+│   ├── src/
+│   │   ├── agent.ts         # ACP Agent implementation
+│   │   ├── index.ts         # Main entry point
+│   │   ├── mcp/             # MCP server integration
+│   │   ├── session/         # Session management
+│   │   └── registry-launcher/  # Registry Launcher implementation
+│   └── tests/               # Test suites
+├── acp-registry/            # Registry Launcher configs
+├── echo-worker/             # Simple echo worker example
+├── mcp-echo-server/         # MCP server example
+└── mcp-to-acp-proxy/        # MCP-to-ACP protocol bridge
+```
+
+---
+
+## Resources
+
+- [stdio Bus kernel](https://github.com/stdiobus/kernel) - Core protocol and daemon
+- [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) - Available ACP agents
+- [Agent Client Protocol SDK](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Official ACP SDK
+- [Model Context Protocol SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk) - Official MCP SDK
+
+## Documentation
+
+- [Architecture](ARCHITECTURE.md) - System architecture and design
+- [Examples](EXAMPLES.md) - Practical usage examples
+- [FAQ](FAQ.md) - Frequently asked questions
+- [Migration Guide](MIGRATION.md) - Migrating from old repository structure
+- [Contributing](CONTRIBUTING.md) - Contribution guidelines
+- [Changelog](CHANGELOG.md) - Version history and changes
+
+## Worker Documentation
+
+- [ACP Worker](workers-registry/acp-worker/README.md) - Full ACP protocol implementation
+- [Registry Launcher](workers-registry/acp-registry/README.md) - ACP Registry integration
+- [Echo Worker](workers-registry/echo-worker/README.md) - Reference implementation
+- [MCP Echo Server](workers-registry/mcp-echo-server/README.md) - MCP server example
+- [MCP-to-ACP Proxy](workers-registry/mcp-to-acp-proxy/README.md) - Protocol bridge
+
+---
+
+## License
+
+Apache License 2.0
+
+Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+
+See [LICENSE](LICENSE) file for details.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+- All tests pass (`npm test`)
+- Code follows existing style
+- Documentation is updated
+- Workers handle SIGTERM gracefully
+- No output to stdout except NDJSON protocol messages

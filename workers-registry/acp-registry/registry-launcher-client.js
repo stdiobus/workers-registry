@@ -43,33 +43,33 @@
  *
  * - **TCP**: Connect to `--tcp <host:port>` mode
  *   ```bash
- *   node examples/registry-launcher-client.js --tcp localhost:9000 --agent my-agent
+ *   node workers-registry/acp-registry/registry-launcher-client.js --tcp localhost:9000 --agent my-agent
  *   ```
  *
  * - **Unix Socket**: Connect to `--unix <path>` mode
  *   ```bash
- *   node examples/registry-launcher-client.js --unix /tmp/stdio_bus.sock --agent my-agent
+ *   node workers-registry/acp-registry/registry-launcher-client.js --unix /tmp/stdio_bus.sock --agent my-agent
  *   ```
  *
  * ## Usage
  *
  * ```bash
  * # Start stdio Bus with Registry Launcher configuration. stdio Bus kernel repo: https://github.com/stdiobus/kernel
- * ./releases/stdio_bus --config examples/acp-registry/registry-launcher-config.json --tcp localhost:9000
+ * ./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp localhost:9000
  *
  * # In another terminal, run the test client
- * node examples/registry-launcher-client.js --tcp localhost:9000 --agent my-agent
+ * node workers-registry/acp-registry/registry-launcher-client.js --tcp localhost:9000 --agent my-agent
  *
  * # Run specific ACP flow
- * node examples/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow initialize
- * node examples/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow session-new
- * node examples/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow session-prompt
+ * node workers-registry/acp-registry/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow initialize
+ * node workers-registry/acp-registry/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow session-new
+ * node workers-registry/acp-registry/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow session-prompt
  *
  * # Run full ACP flow (initialize → session/new → session/prompt)
- * node examples/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow full
+ * node workers-registry/acp-registry/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --flow full
  *
  * # Interactive mode - send custom messages with agentId
- * node examples/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --interactive
+ * node workers-registry/acp-registry/registry-launcher-client.js --tcp localhost:9000 --agent my-agent --interactive
  * ```
  *
  * ## Command Line Options
@@ -387,10 +387,10 @@ function createConnection(options) {
       process.exit(1);
     }
     console.error(`Connecting to TCP ${host}:${port}...`);
-    return net.createConnection({host, port});
+    return net.createConnection({ host, port });
   } else if (options.unix) {
     console.error(`Connecting to Unix socket ${options.unix}...`);
-    return net.createConnection({path: options.unix});
+    return net.createConnection({ path: options.unix });
   } else {
     console.error('Error: Must specify --tcp or --unix');
     process.exit(1);

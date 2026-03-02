@@ -29,7 +29,7 @@
  * A simple MCP server that provides echo tools and test resources
  * for integration testing with the stdio Bus kernel worker.
  *
- * @module examples/mcp-echo-server
+ * @module workers-registry/mcp-echo-server
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';

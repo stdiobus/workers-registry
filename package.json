@@ -1,7 +1,7 @@
 {
   "name": "stdio-bus-workers-registry",
   "version": "0.1.0",
-  "description": "",
+  "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
@@ -15,8 +15,19 @@
     "mcp",
     "agent",
     "transport",
-    "json-rpc"
+    "json-rpc",
+    "stdio-bus",
+    "worker",
+    "protocol"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stdiobus/workers-registry.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stdiobus/workers-registry/issues"
+  },
+  "homepage": "https://github.com/stdiobus/workers-registry#readme",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=20.0.0"

@@ -5,7 +5,7 @@
       "command": "/usr/bin/env",
       "args": [
         "node",
-        "./examples/echo-worker/echo-worker.js"
+        "./workers-registry/echo-worker/echo-worker.js"
       ],
       "instances": 2
     }

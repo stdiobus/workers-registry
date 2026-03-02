@@ -8,8 +8,8 @@
       "command": "/usr/bin/env",
       "args": [
         "node",
-        "./worker/dist/registry-launcher/index.js",
-        "./examples/acp-registry/registry-launcher-worker-config.json"
+        "./workers-registry/acp-worker/dist/registry-launcher/index.js",
+        "./workers-registry/acp-registry/registry-launcher-worker-config.json"
       ],
       "instances": 1
     }
