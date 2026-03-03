@@ -1,13 +1,8 @@
 {
   "name": "@stdiobus/workers-registry",
-  "version": "0.1.0",
+  "version": "1.3.7",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
-  "workspaces": [
-    "workers-registry/acp-worker",
-    "workers-registry/mcp-echo-server",
-    "workers-registry/mcp-to-acp-proxy"
-  ],
   "main": "./out/dist/workers/acp-worker/index.js",
   "types": "./out/tsc/workers/acp-worker/index.d.ts",
   "exports": {
