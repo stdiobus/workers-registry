@@ -1,6 +1,6 @@
 # Registry Launcher
 
-Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) through [stdio Bus kernel](https://github.com/stdiobus/kernel).
+Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) through [stdio Bus kernel](https://github.com/stdiobus/stdiobus).
 
 ## Overview
 
@@ -400,11 +400,11 @@ npm run test:property -- registry-launcher
 
 Apache License 2.0
 
-Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+Copyright (c) 2025–present Raman Marozau, Target Insight Function.
 
 ## Resources
 
-- [stdio Bus kernel](https://github.com/stdiobus/kernel) - Core protocol and daemon
+- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon
 - [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) - Available agents
 - [ACP SDK](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Official ACP SDK
 - [MCP-to-ACP Proxy](../mcp-to-acp-proxy/README.md) - Protocol bridge for Kiro IDE

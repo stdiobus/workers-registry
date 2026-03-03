@@ -1,6 +1,8 @@
 # stdio Bus Workers Registry
 
-This repository contains worker implementations and examples for [stdio Bus kernel](https://github.com/stdiobus/kernel) - a high-performance message routing daemon for agent protocols.
+This repository contains worker implementations and examples for [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - a high-performance message routing daemon for agent protocols.
+
+> **Quick Start:** You can run stdio Bus using [Docker images](https://hub.docker.com/r/stdiobus/stdiobus) or build from [source](https://github.com/stdiobus/stdiobus). See [Docker Hub README](sandbox/DOCKER_HUB_README.md) for Docker instructions.
 
 ## Overview
 
@@ -9,7 +11,7 @@ stdio Bus kernel provides the core protocol and message routing infrastructure. 
 ## Architecture
 
 ```
-stdio Bus kernel (binary) ← https://github.com/stdiobus/kernel
+stdio Bus kernel ← https://github.com/stdiobus/stdiobus
     ↓ (spawns workers via stdin/stdout NDJSON)
 Workers Registry (this repo)
     ├── ACP Worker (Agent Client Protocol)
@@ -30,21 +32,23 @@ Workers Registry (this repo)
 
 ## Prerequisites
 
-- [stdio Bus kernel](https://github.com/stdiobus/kernel) binary (download from releases)
-- Node.js 20.0.0 or later
+- stdio Bus kernel - available via [Docker](https://hub.docker.com/r/stdiobus/stdiobus) or [build from source](https://github.com/stdiobus/stdiobus)
+- Node.js 20.0.0 or later (for building workers)
 
 
 ## Quick Start
 
 ### 1. Get stdio Bus kernel
 
-Download the latest release from [stdio Bus kernel releases](https://github.com/stdiobus/kernel/releases):
+**Option A: Using Docker (recommended for quick start)**
 
 ```bash
-# Example for Linux/macOS
-wget https://github.com/stdiobus/kernel/releases/latest/download/stdio_bus
-chmod +x stdio_bus
+docker pull stdiobus/stdiobus:latest
 ```
+
+**Option B: Build from source**
+
+See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for build instructions.
 
 ### 2. Build Workers
 
@@ -61,12 +65,36 @@ cd ../..
 
 ### 3. Run Echo Worker Example
 
+**Using Docker:**
+
 ```bash
-# Terminal 1: Start stdio Bus with echo worker
-./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+# Terminal 1: Start stdio Bus with echo worker using Docker
+docker run \
+  --name stdiobus-echo \
+  -p 9000:9000 \
+  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd)/workers-registry/echo-worker/echo-worker-config.json:/config.json:ro \
+  stdiobus/stdiobus:latest \
+  --config /config.json --tcp 0.0.0.0:9000
 
 # Terminal 2: Test with a simple message
-echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"hello":"world"}}' | nc 127.0.0.1 9000
+echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"hello":"world"}}' | (cat; sleep 1) | nc 0.0.0.0 9001
+
+# View logs
+docker logs -f stdiobus-echo
+
+# Stop container
+docker stop stdiobus-echo && docker rm stdiobus-echo
+```
+
+**Using binary:**
+
+```bash
+# Terminal 1: Start stdio Bus with echo worker
+./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 0.0.0.0:9000
+
+# Terminal 2: Test with a simple message
+echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"hello":"world"}}' | (cat; sleep 1) | nc 0.0.0.0 9000
 ```
 
 ---
@@ -93,8 +121,21 @@ npm run build
 ```
 
 **Run with stdio Bus:**
+
+Using Docker:
 ```bash
-./stdio_bus --config workers-registry/acp-worker/acp-worker-config.json --tcp 127.0.0.1:9000
+docker run \
+  --name stdiobus-acp \
+  -p 9000:9000 \
+  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd)/workers-registry/acp-worker/acp-worker-config.json:/config.json:ro \
+  stdiobus/stdiobus:latest \
+  --config /config.json --tcp 0.0.0.0:9000
+```
+
+Using binary:
+```bash
+./stdio_bus --config workers-registry/acp-worker/acp-worker-config.json --tcp 0.0.0.0:9000
 ```
 
 **Configuration:** See `workers-registry/acp-worker/src/` for implementation details.
@@ -133,8 +174,22 @@ Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotoc
 ```
 
 **Run:**
+
+Using Docker:
 ```bash
-./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp 127.0.0.1:9000
+docker run \
+  --name stdiobus-registry \
+  -p 9000:9000 \
+  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd)/workers-registry/acp-registry/registry-launcher-config.json:/config.json:ro \
+  -v $(pwd)/api-keys.json:/api-keys.json:ro \
+  stdiobus/stdiobus:latest \
+  --config /config.json --tcp 0.0.0.0:9000
+```
+
+Using binary:
+```bash
+./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp 0.0.0.0:9000
 ```
 
 ---
@@ -158,7 +213,7 @@ Kiro (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → A
       "command": "node",
       "args": ["./workers-registry/mcp-to-acp-proxy/proxy.js"],
       "env": {
-        "ACP_HOST": "127.0.0.1",
+        "ACP_HOST": "0.0.0.0",
         "ACP_PORT": "9000",
         "AGENT_ID": "claude-acp"
       }
@@ -188,8 +243,21 @@ echo '{"jsonrpc":"2.0","id":"1","method":"test","params":{"foo":"bar"}}' | node 
 ```
 
 **Run with stdio Bus:**
+
+Using Docker:
 ```bash
-./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+docker run \
+  --name stdiobus-echo \
+  -p 9000:9000 \
+  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd)/workers-registry/echo-worker/echo-worker-config.json:/config.json:ro \
+  stdiobus/stdiobus:latest \
+  --config /config.json --tcp 0.0.0.0:9000
+```
+
+Using binary:
+```bash
+./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 0.0.0.0:9000
 ```
 
 ---
@@ -388,29 +456,57 @@ npm run test:property
 
 **Test echo worker:**
 ```bash
-# Start stdio Bus
-./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 127.0.0.1:9000
+# Start stdio Bus with Docker
+docker run \
+  --name stdiobus-test \
+  -p 9000:9000 \
+  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd)/workers-registry/echo-worker/echo-worker-config.json:/config.json:ro \
+  stdiobus/stdiobus:latest \
+  --config /config.json --tcp 0.0.0.0:9000
 
 # Send test message
-echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"test":true}}' | nc 127.0.0.1 9000
+echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"test":true}}' | nc localhost 9000
+
+# Cleanup
+docker stop stdiobus-test && docker rm stdiobus-test
 ```
 
 **Test ACP worker:**
 ```bash
 # Start stdio Bus with ACP worker
-./stdio_bus --config workers-registry/acp-worker/acp-worker-config.json --tcp 127.0.0.1:9000
+docker run \
+  --name stdiobus-acp-test \
+  -p 9000:9000 \
+  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd)/workers-registry/acp-worker/acp-worker-config.json:/config.json:ro \
+  stdiobus/stdiobus:latest \
+  --config /config.json --tcp 0.0.0.0:9000
 
 # Send initialize request
-echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"name":"test","version":"1.0"}}}' | nc 127.0.0.1 9000
+echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"name":"test","version":"1.0"}}}' | nc localhost 9000
+
+# Cleanup
+docker stop stdiobus-acp-test && docker rm stdiobus-acp-test
 ```
 
 **Test Registry Launcher:**
 ```bash
 # Start stdio Bus with Registry Launcher
-./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp 127.0.0.1:9000
+docker run \
+  --name stdiobus-registry-test \
+  -p 9000:9000 \
+  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd)/workers-registry/acp-registry/registry-launcher-config.json:/config.json:ro \
+  -v $(pwd)/api-keys.json:/api-keys.json:ro \
+  stdiobus/stdiobus:latest \
+  --config /config.json --tcp 0.0.0.0:9000
 
 # Send message with agentId
-echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"agentId":"claude-acp","clientInfo":{"name":"test"}}}' | nc 127.0.0.1 9000
+echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"agentId":"claude-acp","clientInfo":{"name":"test"}}}' | nc localhost 9000
+
+# Cleanup
+docker stop stdiobus-registry-test && docker rm stdiobus-registry-test
 ```
 
 ---
@@ -489,19 +585,12 @@ workers-registry/
 
 ## Resources
 
-- [stdio Bus kernel](https://github.com/stdiobus/kernel) - Core protocol and daemon
+- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon (source code)
+- [stdio Bus on Docker Hub](https://hub.docker.com/r/stdiobus/stdiobus) - Docker images for easy deployment
+- [stdio Bus Full Documentation](https://stdiobus.com) – Core protocol documentation
 - [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) - Available ACP agents
 - [Agent Client Protocol SDK](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Official ACP SDK
 - [Model Context Protocol SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk) - Official MCP SDK
-
-## Documentation
-
-- [Architecture](ARCHITECTURE.md) - System architecture and design
-- [Examples](EXAMPLES.md) - Practical usage examples
-- [FAQ](FAQ.md) - Frequently asked questions
-- [Migration Guide](MIGRATION.md) - Migrating from old repository structure
-- [Contributing](CONTRIBUTING.md) - Contribution guidelines
-- [Changelog](CHANGELOG.md) - Version history and changes
 
 ## Worker Documentation
 
@@ -510,6 +599,7 @@ workers-registry/
 - [Echo Worker](workers-registry/echo-worker/README.md) - Reference implementation
 - [MCP Echo Server](workers-registry/mcp-echo-server/README.md) - MCP server example
 - [MCP-to-ACP Proxy](workers-registry/mcp-to-acp-proxy/README.md) - Protocol bridge
+- [FAQ](docs/FAQ.md) - Frequently asked questions
 
 ---
 
@@ -517,7 +607,7 @@ workers-registry/
 
 Apache License 2.0
 
-Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+Copyright (c) 2025–present Raman Marozau, Target Insight Function.
 
 See [LICENSE](LICENSE) file for details.
 

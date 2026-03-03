@@ -1,6 +1,6 @@
 # Echo Worker
 
-Simple reference implementation demonstrating the NDJSON worker protocol for [stdio Bus kernel](https://github.com/stdiobus/kernel).
+Simple reference implementation demonstrating the NDJSON worker protocol for [stdio Bus kernel](https://github.com/stdiobus/stdiobus).
 
 ## Overview
 
@@ -268,10 +268,10 @@ Check that:
 
 Apache License 2.0
 
-Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+Copyright (c) 2025–present Raman Marozau, Target Insight Function.
 
 ## Resources
 
-- [stdio Bus kernel](https://github.com/stdiobus/kernel) - Core protocol and daemon
+- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon
 - [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification) - JSON-RPC protocol
 - [NDJSON Specification](http://ndjson.org/) - Newline-Delimited JSON format

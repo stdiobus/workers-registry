@@ -1,6 +1,6 @@
 # ACP Worker
 
-Full implementation of the Agent Client Protocol (ACP) for [stdio Bus kernel](https://github.com/stdiobus/kernel).
+Full implementation of the Agent Client Protocol (ACP) for [stdio Bus kernel](https://github.com/stdiobus/stdiobus).
 
 ## Overview
 
@@ -285,11 +285,11 @@ Sessions are stored in memory. If the worker restarts, sessions are lost. For pr
 
 Apache License 2.0
 
-Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+Copyright (c) 2025–present Raman Marozau, Target Insight Function.
 
 ## Resources
 
-- [stdio Bus kernel](https://github.com/stdiobus/kernel) - Core protocol and daemon
+- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon
 - [ACP SDK](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Official ACP SDK
 - [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) - Available agents
 - [MCP SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk) - Official MCP SDK

@@ -2,7 +2,7 @@
 
 /*
  * Apache License 2.0
- * Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+ * Copyright (c) 2025–present Raman Marozau, Target Insight Function.
  * Contact: raman@worktif.com
  *
  * This file is part of the stdio bus protocol reference implementation:
@@ -54,7 +54,7 @@
  * ## Usage
  *
  * ```bash
- * # Start stdio Bus with Registry Launcher configuration. stdio Bus kernel repo: https://github.com/stdiobus/kernel
+ * # Start stdio Bus with Registry Launcher configuration. stdio Bus kernel repo: https://github.com/stdiobus/stdiobus
  * ./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp localhost:9000
  *
  * # In another terminal, run the test client

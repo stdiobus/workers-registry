@@ -1,6 +1,6 @@
 /*
  * Apache License 2.0
- * Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+ * Copyright (c) 2025–present Raman Marozau, Target Insight Function.
  * Contact: raman@worktif.com
  *
  * This file is part of the stdio bus protocol reference implementation:
@@ -302,7 +302,7 @@ export class MCPManager {
 
       // Map the SDK result to our MCPToolCallResult type
       // Use SDK content types from result
-      const content: MCPContent[] = (result.content as Array<{ type: string; [key: string]: unknown }>).map((item) => {
+      const content: MCPContent[] = (result.content as Array<{ type: string;[key: string]: unknown }>).map((item) => {
         if (item.type === 'text') {
           return {
             type: 'text' as const,

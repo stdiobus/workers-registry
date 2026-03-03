@@ -2,7 +2,7 @@
 
 /*
  * Apache License 2.0
- * Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+ * Copyright (c) 2025–present Raman Marozau, Target Insight Function.
  * Contact: raman@worktif.com
  *
  * This file is part of the stdio bus protocol reference implementation:
@@ -31,7 +31,7 @@
  */
 
 import net from 'net';
-import {createInterface} from 'readline';
+import { createInterface } from 'readline';
 
 const ACP_HOST = process.env.ACP_HOST || '127.0.0.1';
 const ACP_PORT = process.env.ACP_PORT || 9000;
@@ -124,7 +124,7 @@ rl.on('line', (line) => {
 });
 
 function handleACPNotification(msg) {
-  const {method, params} = msg;
+  const { method, params } = msg;
 
   if (method === 'session/update' && params?.update) {
     const update = params.update;
@@ -145,13 +145,13 @@ function handleACPNotification(msg) {
 }
 
 function convertMCPtoACP(mcpReq) {
-  const {id, method, params} = mcpReq;
+  const { id, method, params } = mcpReq;
 
   if (id === undefined || id === null) {
     return null; // Ignore notifications
   }
 
-  pendingRequests.set(id, {method, params});
+  pendingRequests.set(id, { method, params });
 
   if (!proxySessionId) {
     proxySessionId = `proxy-${Date.now()}`;
@@ -168,7 +168,7 @@ function convertMCPtoACP(mcpReq) {
         params: {
           protocolVersion: 1,
           clientCapabilities: params?.capabilities || {},
-          clientInfo: params?.clientInfo || {name: 'mcp-proxy', version: '1.0.0'}
+          clientInfo: params?.clientInfo || { name: 'mcp-proxy', version: '1.0.0' }
         }
       };
 
@@ -183,7 +183,7 @@ function convertMCPtoACP(mcpReq) {
             inputSchema: {
               type: 'object',
               properties: {
-                prompt: {type: 'string', description: 'Prompt text'}
+                prompt: { type: 'string', description: 'Prompt text' }
               },
               required: ['prompt']
             }
@@ -210,13 +210,13 @@ function convertMCPtoACP(mcpReq) {
           method: 'session/new',
           agentId: AGENT_ID,
           sessionId: proxySessionId,
-          params: {cwd: process.cwd(), mcpServers: []}
+          params: { cwd: process.cwd(), mcpServers: [] }
         };
       }
 
       // Session exists, send prompt
       // IMPORTANT: Update pending to session/prompt since that's what we're sending
-      pendingRequests.set(id, {method: 'session/prompt', params});
+      pendingRequests.set(id, { method: 'session/prompt', params });
       return {
         jsonrpc: '2.0',
         id,
@@ -225,34 +225,34 @@ function convertMCPtoACP(mcpReq) {
         sessionId: proxySessionId,
         params: {
           sessionId: acpSessionId,
-          prompt: [{type: 'text', text: promptText}]
+          prompt: [{ type: 'text', text: promptText }]
         }
       };
 
     case 'resources/list':
-      sendMCP({jsonrpc: '2.0', id, result: {resources: []}});
+      sendMCP({ jsonrpc: '2.0', id, result: { resources: [] } });
       pendingRequests.delete(id);
       return null;
 
     case 'resources/templates/list':
-      sendMCP({jsonrpc: '2.0', id, result: {resourceTemplates: []}});
+      sendMCP({ jsonrpc: '2.0', id, result: { resourceTemplates: [] } });
       pendingRequests.delete(id);
       return null;
 
     case 'prompts/list':
-      sendMCP({jsonrpc: '2.0', id, result: {prompts: []}});
+      sendMCP({ jsonrpc: '2.0', id, result: { prompts: [] } });
       pendingRequests.delete(id);
       return null;
 
     default:
-      sendMCP({jsonrpc: '2.0', id, error: {code: -32601, message: `Unknown method: ${method}`}});
+      sendMCP({ jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown method: ${method}` } });
       pendingRequests.delete(id);
       return null;
   }
 }
 
 function convertACPtoMCP(acpResp) {
-  const {id, result, error} = acpResp;
+  const { id, result, error } = acpResp;
 
   const pending = pendingRequests.get(id);
   if (!pending) {
@@ -268,7 +268,7 @@ function convertACPtoMCP(acpResp) {
     return {
       jsonrpc: '2.0',
       id,
-      error: {code: error.code || -32603, message: error.message || 'ACP error'}
+      error: { code: error.code || -32603, message: error.message || 'ACP error' }
     };
   }
 
@@ -279,8 +279,8 @@ function convertACPtoMCP(acpResp) {
         id,
         result: {
           protocolVersion: '2024-11-05',
-          capabilities: {tools: {}, resources: {}},
-          serverInfo: result?.agentInfo || {name: 'acp-agent', version: '1.0.0'}
+          capabilities: { tools: {}, resources: {} },
+          serverInfo: result?.agentInfo || { name: 'acp-agent', version: '1.0.0' }
         }
       };
 
@@ -298,11 +298,11 @@ function convertACPtoMCP(acpResp) {
           sessionId: proxySessionId,
           params: {
             sessionId: acpSessionId,
-            prompt: [{type: 'text', text: pending.promptText}]
+            prompt: [{ type: 'text', text: pending.promptText }]
           }
         };
 
-        pendingRequests.set(pending.originalId, {method: 'session/prompt'});
+        pendingRequests.set(pending.originalId, { method: 'session/prompt' });
 
         console.error(`[MCP-APC][proxy] → ACP: ${JSON.stringify(promptReq)}`);
         if (acpConnected) {
@@ -319,13 +319,13 @@ function convertACPtoMCP(acpResp) {
         jsonrpc: '2.0',
         id,
         result: {
-          content: [{type: 'text', text: text || 'No response'}]
+          content: [{ type: 'text', text: text || 'No response' }]
         }
       };
 
     default:
       console.error(`[MCP-APC][proxy] WARNING: Unhandled method ${pending.method}, returning raw result`);
-      return {jsonrpc: '2.0', id, result: result || {}};
+      return { jsonrpc: '2.0', id, result: result || {} };
   }
 }
 

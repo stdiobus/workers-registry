@@ -1,6 +1,6 @@
 # MCP-to-ACP Protocol Proxy
 
-Converts MCP protocol (from Kiro) to ACP protocol (for stdio Bus – https://github.com/stdiobus/kernel).
+Converts MCP protocol (from Kiro) to ACP protocol (for stdio Bus – https://github.com/stdiobus/stdiobus).
 
 ## Purpose
 

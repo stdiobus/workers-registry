@@ -1,6 +1,6 @@
 # MCP Echo Server
 
-TypeScript MCP (Model Context Protocol) server example for testing MCP integration with [stdio Bus kernel](https://github.com/stdiobus/kernel).
+TypeScript MCP (Model Context Protocol) server example for testing MCP integration with [stdio Bus kernel](https://github.com/stdiobus/stdiobus).
 
 ## Overview
 
@@ -417,11 +417,11 @@ Check that:
 
 Apache License 2.0
 
-Copyright (c) 2025–present Raman Marozau, Work Target Insight Function.
+Copyright (c) 2025–present Raman Marozau, Target Insight Function.
 
 ## Resources
 
-- [stdio Bus kernel](https://github.com/stdiobus/kernel) - Core protocol and daemon
+- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon
 - [MCP SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk) - Official MCP SDK
 - [MCP Specification](https://spec.modelcontextprotocol.io/) - MCP protocol specification
 - [ACP Worker](../acp-worker/README.md) - ACP Worker documentation
