@@ -1,8 +1,8 @@
 /**
  * Tests for the universal worker launcher (TypeScript version)
- * 
- * The launcher is now implemented in TypeScript at workers-registry/launcher/index.ts
- * and compiled to out/dist/workers/launcher/index.js
+ *
+ * The launcher is now implemented in TypeScript at workers-registry/launch/index.ts
+ * and compiled to out/dist/workers/launch/index.js
  */
 
 import { describe, it, expect } from '@jest/globals';

@@ -19,12 +19,12 @@ After building the project:
 
 ```bash
 # Run any worker by name
-node out/dist/workers/launcher/index.js <worker-name>
+node out/dist/workers/launch/index.js <worker-name>
 
 # Examples
-node out/dist/workers/launcher/index.js acp-worker
-node out/dist/workers/launcher/index.js echo-worker
-node out/dist/workers/launcher/index.js mcp-echo-server
+node out/dist/workers/launch/index.js acp-worker
+node out/dist/workers/launch/index.js echo-worker
+node out/dist/workers/launch/index.js mcp-echo-server
 ```
 
 ## Available Workers

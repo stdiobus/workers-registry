@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /*
  * Universal Worker Launcher
- * 
+ *
  * Usage:
  *   stdiobus-worker <worker-name>
  *   node index.js <worker-name>
- * 
+ *
  * Examples:
  *   stdiobus-worker launcher
  *   stdiobus-worker acp-worker
@@ -28,7 +28,7 @@ if (!workerName) {
 
 // Map worker names to their entry points
 const workers = {
-  'launcher': './out/dist/workers/launcher/index.js',
+  'launch': './out/dist/workers/launch/index.js',
   'acp-worker': './out/dist/workers/acp-worker/index.js',
   'echo-worker': './out/dist/workers/echo-worker/echo-worker.js',
   'mcp-echo-server': './out/dist/workers/mcp-echo-server/index.js',

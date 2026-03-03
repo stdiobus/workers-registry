@@ -51,7 +51,7 @@ const registryPath = join(rootDir, 'workers-registry');
 const outPath = join(rootDir, 'out');
 const distPath = join(outPath, 'dist');
 const tscPath = join(outPath, 'tsc');
-const workersDistPath = join(distPath, 'workers');
+const workersDistPath = join(distPath, 'workers-registry');
 const workersTscPath = join(tscPath, 'workers-registry');
 
 /**
@@ -285,8 +285,8 @@ async function buildWorkerWithEsbuild(worker) {
 
   // Special case: launcher goes to root launcher/ directory for npm package
   let outputDir;
-  if (worker.name === 'launcher') {
-    outputDir = join(rootDir, 'launcher');
+  if (worker.name === 'launch') {
+    outputDir = join(rootDir, 'launch');
   } else {
     outputDir = join(workersDistPath, worker.name);
   }
@@ -298,6 +298,7 @@ async function buildWorkerWithEsbuild(worker) {
 
   try {
     // Build with esbuild
+    // Don't bundle node_modules - they must be available at runtime (mounted in Docker)
     await build({
       entryPoints: [workerEntrypoint],
       bundle: true,
@@ -305,18 +306,7 @@ async function buildWorkerWithEsbuild(worker) {
       target: 'node20',
       format: 'esm',
       outfile,
-      external: [
-        'node:*'
-      ],
-      // Add require polyfill for ESM
-      banner: {
-        js: `import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-const require = createRequire(import.meta.url);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);`
-      },
+      packages: 'external', // Don't bundle node_modules dependencies
       sourcemap: true,
       minifyWhitespace: true,
       treeShaking: true,
@@ -475,8 +465,8 @@ async function validateBuild(workers, paths = {}) {
     // Check 1: Verify worker entrypoint exists
     // Special case: launcher is in root launcher/ directory
     let entrypointPath;
-    if (worker.name === 'launcher') {
-      entrypointPath = join(rootDir, 'launcher', entrypointFilename);
+    if (worker.name === 'launch') {
+      entrypointPath = join(rootDir, 'launch', entrypointFilename);
     } else {
       entrypointPath = join(configDistPath, worker.name, entrypointFilename);
     }

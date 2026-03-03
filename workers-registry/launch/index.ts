@@ -25,13 +25,13 @@
 
 /**
  * Universal worker launcher for stdio Bus Workers Registry
- * 
+ *
  * Usage:
  *   node index.js <worker-name>
  *   node index.js acp-worker
  *   node index.js echo-worker
  *   node index.js mcp-echo-server
- * 
+ *
  * This script dynamically imports and runs the specified worker from the compiled output.
  */
 
@@ -53,25 +53,25 @@ interface WorkerConfig {
 /**
  * Available workers mapping
  */
-const WORKERS: Readonly<Record<string, WorkerConfig>> = {
+const STDIO_BUS_WORKERS: Readonly<Record<string, WorkerConfig>> = {
   'acp-worker': {
-    path: '../out/dist/workers/acp-worker/index.js',
+    path: '../out/dist/workers-registry/acp-worker/index.js',
     description: 'Full ACP protocol implementation with MCP integration'
   },
   'acp-registry': {
-    path: '../out/dist/workers/acp-registry/registry-launcher-client.js',
+    path: '../out/dist/workers-registry/acp-registry/registry-launcher-client.js',
     description: 'Registry Launcher for ACP Registry agents'
   },
   'echo-worker': {
-    path: '../out/dist/workers/echo-worker/echo-worker.js',
+    path: '../out/dist/workers-registry/echo-worker/echo-worker.js',
     description: 'Simple echo worker for testing NDJSON protocol'
   },
   'mcp-echo-server': {
-    path: '../out/dist/workers/mcp-echo-server/index.js',
+    path: '../out/dist/workers-registry/mcp-echo-server/index.js',
     description: 'MCP server example for testing'
   },
   'mcp-to-acp-proxy': {
-    path: '../out/dist/workers/mcp-to-acp-proxy/proxy.js',
+    path: '../out/dist/workers-registry/mcp-to-acp-proxy/proxy.js',
     description: 'MCP-to-ACP protocol bridge'
   }
 } as const;
@@ -79,7 +79,7 @@ const WORKERS: Readonly<Record<string, WorkerConfig>> = {
 /**
  * Worker name type
  */
-type WorkerName = keyof typeof WORKERS;
+type WorkerName = keyof typeof STDIO_BUS_WORKERS;
 
 /**
  * Display usage information
@@ -89,7 +89,7 @@ function showUsage(): void {
   console.error('');
   console.error('Available workers:');
 
-  for (const [name, config] of Object.entries(WORKERS)) {
+  for (const [name, config] of Object.entries(STDIO_BUS_WORKERS)) {
     console.error(`  - ${name.padEnd(20)} ${config.description}`);
   }
 
@@ -104,7 +104,7 @@ function showUsage(): void {
  * Validate worker name
  */
 function isValidWorkerName(name: string): name is WorkerName {
-  return name in WORKERS;
+  return name in STDIO_BUS_WORKERS;
 }
 
 /**
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const workerConfig = WORKERS[workerName];
+  const workerConfig = STDIO_BUS_WORKERS[workerName];
   const workerPath = workerConfig.path;
 
   // Resolve absolute path
@@ -167,3 +167,7 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
+
+// Export for programmatic usage
+export { STDIO_BUS_WORKERS, showUsage, isValidWorkerName, main as launch };
+export type { WorkerConfig, WorkerName };

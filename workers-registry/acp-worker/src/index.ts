@@ -138,3 +138,99 @@ export type {
   RegistryIndex,
   IRegistryIndex,
 } from './registry-launcher/registry/index.js';
+
+// Export runtime classes and functions
+export { ACPAgent } from './agent.js';
+
+// Registry Launcher exports
+export {
+  PlatformNotSupportedError,
+  NoDistributionError,
+  getCurrentPlatform,
+  resolve,
+  resolveBinary,
+  resolveNpx,
+  resolveUvx,
+} from './registry-launcher/registry/resolver.js';
+
+// Runtime exports
+export { AgentRuntimeManager } from './registry-launcher/runtime/manager.js';
+export { AgentRuntimeImpl } from './registry-launcher/runtime/agent-runtime.js';
+export type { RuntimeState, AgentRuntime } from './registry-launcher/runtime/types.js';
+
+// Stream exports
+export {
+  NDJSONHandler, INDJSONHandler, ErrorCallback, MessageCallback,
+} from './registry-launcher/stream/ndjson-handler.js';
+
+// Router exports
+export {
+  MessageRouter,
+  createErrorResponse,
+  ErrorResponse,
+  RoutingErrorCodes,
+  transformMessage,
+  extractAgentId,
+  extractId,
+  WriteCallback,
+} from './registry-launcher/router/message-router.js';
+
+// Config exports
+export { loadConfig } from './registry-launcher/config/config.js';
+export type {
+  DEFAULT_CONFIG,
+  LauncherConfig,
+} from './registry-launcher/config/types.js';
+
+// MCP exports
+export { MCPManager, MCPConnection, MCPFactories } from './mcp/manager.js';
+export type {
+  MCPServerConfig,
+  MCPContent,
+  MCPImageContent,
+  MCPBlobResourceContents,
+  MCPEmbeddedResource,
+  MCPResource,
+  MCPTextContent,
+  MCPResourceContents,
+  MCPTextResourceContents,
+  MCPTool,
+  MCPToolCallResult,
+  MCPResourceReadResult,
+} from './mcp/types.js';
+
+// ACP utilities exports
+export {
+  canReadFile,
+  canWriteFile,
+  FileReadResult,
+  FileWriteResult,
+  readFile,
+  canUseTerminal,
+  TerminalResult,
+  writeFile,
+  executeCommand,
+  startCommand,
+} from './acp/client-capabilities.js';
+export {
+  createErrorToolCallContent,
+  mapMCPContentToACPContentBlock,
+  mapMCPResourceContentsToACPContentBlock,
+  isResourceLink,
+  extractResourceLinkUri,
+  mapMCPResultToACPToolCallContent,
+  ResourceLink,
+  mapToolResultToACPContent,
+} from './acp/content-mapper.js';
+export {
+  determineToolKind,
+  executeToolCall,
+  generateToolCallId,
+  executeToolCallWithPermission,
+  requestToolPermission,
+  PermissionResult,
+  ToolCallStatus,
+  ToolKind,
+  sendToolCallInitiation,
+  sendToolCallUpdate,
+} from './acp/tools.js';

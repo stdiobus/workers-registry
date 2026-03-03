@@ -1,5 +1,5 @@
 {
-  "name": "@stdiobus/launcher",
+  "name": "@stdiobus/launch",
   "version": "1.0.0",
   "description": "Universal worker launcher for stdio Bus Workers Registry",
   "type": "module",

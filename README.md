@@ -143,7 +143,7 @@ See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for buil
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "acp-worker"
       ],
       "instances": 1
@@ -155,7 +155,7 @@ See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for buil
 **Run with Docker:**
 ```bash
 docker run -p 9000:9000 \
-  -v $(pwd)/node_modules/@stdiobus/workers-registry:/workers-registry:ro \
+  -v $(pwd):/stdiobus:ro \
   -v $(pwd)/config.json:/config.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -204,7 +204,7 @@ node ./node_modules/@stdiobus/workers-registry/out/dist/index.js echo-worker
     "id": "acp-worker",
     "command": "node",
     "args": [
-      "./workers/launcher",
+      "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
       "acp-worker"
     ],
     "instances": 1
@@ -220,7 +220,7 @@ node ./node_modules/@stdiobus/workers-registry/out/dist/index.js echo-worker
       "id": "registry-launcher",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "registry-launcher",
         "./api-keys.json"
       ],
@@ -238,7 +238,7 @@ node ./node_modules/@stdiobus/workers-registry/out/dist/index.js echo-worker
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "acp-worker"
       ],
       "instances": 2
@@ -247,7 +247,7 @@ node ./node_modules/@stdiobus/workers-registry/out/dist/index.js echo-worker
       "id": "echo-worker",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "echo-worker"
       ],
       "instances": 1
@@ -305,7 +305,7 @@ Using Docker:
 docker run \
   --name stdiobus-acp \
   -p 9000:9000 \
-  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd):/stdiobus:ro \
   -v $(pwd)/workers-registry/acp-worker/acp-worker-config.json:/config.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -347,7 +347,7 @@ Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotoc
       "id": "registry-launcher",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "registry-launcher",
         "./api-keys.json"
       ],
@@ -364,7 +364,7 @@ Using Docker:
 docker run \
   --name stdiobus-registry \
   -p 9000:9000 \
-  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd):/stdiobus:ro \
   -v $(pwd)/workers-registry/acp-registry/registry-launcher-config.json:/config.json:ro \
   -v $(pwd)/api-keys.json:/api-keys.json:ro \
   stdiobus/stdiobus:latest \
@@ -396,7 +396,7 @@ IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → AC
     "stdio-bus-acp": {
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "mcp-to-acp-proxy"
       ],
       "env": {
@@ -436,7 +436,7 @@ Using Docker:
 docker run \
   --name stdiobus-echo \
   -p 9000:9000 \
-  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd):/stdiobus:ro \
   -v $(pwd)/workers-registry/echo-worker/echo-worker-config.json:/config.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -531,7 +531,10 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
   "pools": [{
     "id": "echo-worker",
     "command": "node",
-    "args": ["@stdiobus/workers-registry/workers/echo-worker"],
+    "args": [
+      "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+      "echo-worker"
+    ],
     "instances": 1
   }]
 }
@@ -545,7 +548,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "acp-worker"
       ],
       "instances": 4
@@ -567,7 +570,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "acp-worker"
       ],
       "instances": 2
@@ -576,7 +579,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
       "id": "echo-worker",
       "command": "node",
       "args": [
-        "./workers/launcher",
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
         "echo-worker"
       ],
       "instances": 1
@@ -658,7 +661,7 @@ npm run test:property
 docker run \
   --name stdiobus-test \
   -p 9000:9000 \
-  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd):/stdiobus:ro \
   -v $(pwd)/workers-registry/echo-worker/echo-worker-config.json:/config.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -676,7 +679,7 @@ docker stop stdiobus-test && docker rm stdiobus-test
 docker run \
   --name stdiobus-acp-test \
   -p 9000:9000 \
-  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd):/stdiobus:ro \
   -v $(pwd)/workers-registry/acp-worker/acp-worker-config.json:/config.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -694,7 +697,7 @@ docker stop stdiobus-acp-test && docker rm stdiobus-acp-test
 docker run \
   --name stdiobus-registry-test \
   -p 9000:9000 \
-  -v $(pwd)/workers-registry:/workers-registry:ro \
+  -v $(pwd):/stdiobus:ro \
   -v $(pwd)/workers-registry/acp-registry/registry-launcher-config.json:/config.json:ro \
   -v $(pwd)/api-keys.json:/api-keys.json:ro \
   stdiobus/stdiobus:latest \

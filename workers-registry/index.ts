@@ -23,6 +23,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export * from './launcher';
+export * from './launch';
 export * from './acp-worker/src';
 export * from './mcp-echo-server';

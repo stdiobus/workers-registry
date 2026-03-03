@@ -5,11 +5,10 @@
     {
       "_comment": "Registry Launcher worker pool - routes messages to ACP Registry agents",
       "id": "registry-launcher",
-      "command": "/usr/bin/env",
+      "command": "node",
       "args": [
-        "node",
-        "./workers-registry/acp-worker/dist/registry-launcher/index.js",
-        "./workers-registry/acp-registry/registry-launcher-worker-config.json"
+        "/workers-registry/launch/index.js",
+        "acp-registry"
       ],
       "instances": 1
     }

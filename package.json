@@ -1,39 +1,54 @@
 {
   "name": "@stdiobus/workers-registry",
-  "version": "1.3.12",
+  "version": "1.3.19",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
-  "main": "./out/dist/workers/acp-worker/index.js",
+  "main": "./out/dist/workers-registry/acp-worker/index.js",
   "types": "./out/tsc/workers-registry/acp-worker/src/index.d.ts",
   "exports": {
     ".": {
-      "import": "./out/dist/workers/acp-worker/index.js",
+      "import": "./out/dist/workers-registry/acp-worker/index.js",
       "types": "./out/tsc/workers-registry/acp-worker/src/index.d.ts"
     },
-    "./launcher": {
-      "import": "./launcher/index.js",
-      "types": "./out/tsc/workers-registry/launcher/index.d.ts"
+    "./launch": {
+      "import": "./launch/index.js",
+      "types": "./out/tsc/workers-registry/launch/index.d.ts"
     },
     "./workers/acp-worker": {
-      "import": "./out/dist/workers/acp-worker/index.js",
+      "import": "./out/dist/workers-registry/acp-worker/index.js",
       "types": "./out/tsc/workers-registry/acp-worker/src/index.d.ts"
     },
-    "./workers/echo-worker": "./out/dist/workers/echo-worker/echo-worker.js",
+    "./workers/acp-worker/agent": {
+      "import": "./out/dist/workers-registry/acp-worker/agent.js",
+      "types": "./out/tsc/workers-registry/acp-worker/src/agent.d.ts"
+    },
+    "./workers/acp-worker/registry": {
+      "import": "./out/dist/workers-registry/acp-worker/registry-launcher/registry/index.js",
+      "types": "./out/tsc/workers-registry/acp-worker/src/registry-launcher/registry/index.d.ts"
+    },
+    "./workers/acp-worker/runtime": {
+      "import": "./out/dist/workers-registry/acp-worker/registry-launcher/runtime/manager.js",
+      "types": "./out/tsc/workers-registry/acp-worker/src/registry-launcher/runtime/manager.d.ts"
+    },
+    "./workers/acp-worker/config": {
+      "import": "./out/dist/workers-registry/acp-worker/registry-launcher/config/config.js",
+      "types": "./out/tsc/workers-registry/acp-worker/src/registry-launcher/config/config.d.ts"
+    },
+    "./workers/acp-worker/mcp": {
+      "import": "./out/dist/workers-registry/acp-worker/mcp/manager.js",
+      "types": "./out/tsc/workers-registry/acp-worker/src/mcp/manager.d.ts"
+    },
+    "./workers/echo-worker": "./out/dist/workers-registry/echo-worker/echo-worker.js",
     "./workers/mcp-echo-server": {
-      "import": "./out/dist/workers/mcp-echo-server/index.js",
+      "import": "./out/dist/workers-registry/mcp-echo-server/index.js",
       "types": "./out/tsc/workers-registry/mcp-echo-server/index.d.ts"
     },
-    "./workers/mcp-to-acp-proxy": "./out/dist/workers/mcp-to-acp-proxy/proxy.js",
-    "./workers": "./out/dist/workers/index.js",
+    "./workers/mcp-to-acp-proxy": "./out/dist/workers-registry/mcp-to-acp-proxy/proxy.js",
     "./package.json": "./package.json"
-  },
-  "bin": {
-    "stdiobus-worker": "./index.js"
   },
   "files": [
     "out/",
-    "launcher/",
-    "index.js",
+    "launch/",
     "README.md",
     "LICENSE"
   ],
@@ -43,12 +58,6 @@
     "clean": "rm -rf out",
     "types": "tsc --emitDeclarationOnly && tsc-alias",
     "prepublishOnly": "npm run build",
-    "start": "node index.js",
-    "start:acp-worker": "node index.js acp-worker",
-    "start:echo-worker": "node index.js echo-worker",
-    "start:mcp-echo-server": "node index.js mcp-echo-server",
-    "start:mcp-to-acp-proxy": "node index.js mcp-to-acp-proxy",
-    "start:acp-registry": "node index.js acp-registry",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
     "test:property": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/property",
