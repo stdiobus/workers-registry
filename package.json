@@ -11,7 +11,7 @@
       "types": "./out/tsc/workers-registry/acp-worker/src/index.d.ts"
     },
     "./launcher": {
-      "import": "./out/dist/workers/launcher/index.js",
+      "import": "./launcher/index.js",
       "types": "./out/tsc/workers-registry/launcher/index.d.ts"
     },
     "./workers/acp-worker": {
@@ -32,6 +32,7 @@
   },
   "files": [
     "out/",
+    "launcher/",
     "index.js",
     "README.md",
     "LICENSE"

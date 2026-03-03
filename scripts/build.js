@@ -282,7 +282,15 @@ async function buildWorkerWithEsbuild(worker) {
 
   // Construct full paths
   const workerEntrypoint = join(worker.path, worker.entrypoint);
-  const outputDir = join(workersDistPath, worker.name);
+
+  // Special case: launcher goes to root launcher/ directory for npm package
+  let outputDir;
+  if (worker.name === 'launcher') {
+    outputDir = join(rootDir, 'launcher');
+  } else {
+    outputDir = join(workersDistPath, worker.name);
+  }
+
   const outfile = join(outputDir, outputFilename);
 
   // Ensure output directory exists
@@ -457,8 +465,14 @@ async function validateBuild(workers, paths = {}) {
       entrypointFilename = worker.entrypoint;
     }
 
-    // Check 1: Verify worker entrypoint exists in out/dist/workers/{worker-name}/
-    const entrypointPath = join(configDistPath, worker.name, entrypointFilename);
+    // Check 1: Verify worker entrypoint exists
+    // Special case: launcher is in root launcher/ directory
+    let entrypointPath;
+    if (worker.name === 'launcher') {
+      entrypointPath = join(rootDir, 'launcher', entrypointFilename);
+    } else {
+      entrypointPath = join(configDistPath, worker.name, entrypointFilename);
+    }
     checkedFiles.push(entrypointPath);
 
     if (!await fileExists(entrypointPath)) {

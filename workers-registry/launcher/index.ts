@@ -55,23 +55,23 @@ interface WorkerConfig {
  */
 const WORKERS: Readonly<Record<string, WorkerConfig>> = {
   'acp-worker': {
-    path: '../acp-worker/index.js',
+    path: '../out/dist/workers/acp-worker/index.js',
     description: 'Full ACP protocol implementation with MCP integration'
   },
   'acp-registry': {
-    path: '../acp-registry/registry-launcher-client.js',
+    path: '../out/dist/workers/acp-registry/registry-launcher-client.js',
     description: 'Registry Launcher for ACP Registry agents'
   },
   'echo-worker': {
-    path: '../echo-worker/echo-worker.js',
+    path: '../out/dist/workers/echo-worker/echo-worker.js',
     description: 'Simple echo worker for testing NDJSON protocol'
   },
   'mcp-echo-server': {
-    path: '../mcp-echo-server/index.js',
+    path: '../out/dist/workers/mcp-echo-server/index.js',
     description: 'MCP server example for testing'
   },
   'mcp-to-acp-proxy': {
-    path: '../mcp-to-acp-proxy/proxy.js',
+    path: '../out/dist/workers/mcp-to-acp-proxy/proxy.js',
     description: 'MCP-to-ACP protocol bridge'
   }
 } as const;

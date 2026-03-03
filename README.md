@@ -87,18 +87,6 @@ Workers Registry (this repo)
 
 ## Package API
 
-### Binary Commands
-
-After installation, the following commands are available:
-
-```bash
-stdiobus-acp-worker              # ACP Worker
-stdiobus-registry-launcher       # Registry Launcher
-stdiobus-mcp-to-acp-proxy       # MCP-to-ACP Proxy
-stdiobus-echo-worker            # Echo Worker
-stdiobus-mcp-echo-server        # MCP Echo Server
-```
-
 ### Module Imports
 
 ```javascript
