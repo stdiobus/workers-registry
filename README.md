@@ -483,7 +483,7 @@ npm run build
 
 **Run:**
 ```bash
-node workers-registry/mcp-echo-server/dist/mcp-echo-server.js
+node workers-registry/mcp-echo-server/dist/index.js
 ```
 
 ---

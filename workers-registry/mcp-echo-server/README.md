@@ -39,7 +39,7 @@ npm run build
 Run the server directly:
 
 ```bash
-node dist/mcp-echo-server.js
+node dist/index.js
 ```
 
 The server will listen on stdin/stdout for MCP protocol messages.
@@ -54,7 +54,7 @@ The MCP Echo Server can be integrated with the ACP Worker through MCP server con
   "mcpServers": {
     "echo": {
       "command": "node",
-      "args": ["./workers-registry/mcp-echo-server/dist/mcp-echo-server.js"],
+      "args": ["./workers-registry/mcp-echo-server/dist/index.js"],
       "env": {}
     }
   }
@@ -74,19 +74,19 @@ The MCP Echo Server can be integrated with the ACP Worker through MCP server con
 
 ```bash
 # Start the server
-node dist/mcp-echo-server.js
+node dist/index.js
 
 # Send initialize request
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | \
-  node dist/mcp-echo-server.js
+  node dist/index.js
 
 # List tools
 echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | \
-  node dist/mcp-echo-server.js
+  node dist/index.js
 
 # Call echo tool
 echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"text":"Hello, World!"}}}' | \
-  node dist/mcp-echo-server.js
+  node dist/index.js
 ```
 
 ### Integration Testing
@@ -290,7 +290,7 @@ When using with ACP Worker, configure in the MCP servers config file:
   "mcpServers": {
     "echo": {
       "command": "node",
-      "args": ["./workers-registry/mcp-echo-server/dist/mcp-echo-server.js"],
+      "args": ["./workers-registry/mcp-echo-server/dist/index.js"],
       "env": {
         "LOG_LEVEL": "debug"
       }

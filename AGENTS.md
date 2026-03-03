@@ -151,7 +151,7 @@ sandbox/                  # Additional documentation and examples
 - `workers-registry/echo-worker/echo-worker.js` - Simple reference implementation
 
 **MCP Echo Server:**
-- `workers-registry/mcp-echo-server/mcp-echo-server.ts` - MCP server example
+- `workers-registry/mcp-echo-server/index.ts` - MCP server example
 
 **MCP-to-ACP Proxy:**
 - `workers-registry/mcp-to-acp-proxy/proxy.js` - Protocol bridge entry point

@@ -177,7 +177,7 @@ describe('generateWorkersIndex', () => {
 
     // TypeScript workers should have types path pointing to tsc output
     expect(workersObject['acp-worker'].types).toBe('../tsc/workers/acp-worker/src/index.d.ts');
-    expect(workersObject['mcp-echo-server'].types).toBe('../tsc/workers/mcp-echo-server/mcp-echo-server.d.ts');
+    expect(workersObject['mcp-echo-server'].types).toBe('../tsc/workers/mcp-echo-server/index.d.ts');
   });
 
   it('should set types to null for JavaScript workers', async () => {

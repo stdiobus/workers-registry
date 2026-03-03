@@ -120,3 +120,21 @@ connection.closed.then(() => {
   console.error('[worker] Connection error:', error);
   process.exit(1);
 });
+
+// Export types for npm package consumers
+export type {
+  Platform,
+  BinaryTarget,
+  BinaryDistribution,
+  NpxDistribution,
+  UvxDistribution,
+  Distribution,
+  RegistryAgent,
+  Registry,
+  SpawnCommand,
+} from './registry-launcher/registry/types.js';
+
+export type {
+  RegistryIndex,
+  IRegistryIndex,
+} from './registry-launcher/registry/index.js';

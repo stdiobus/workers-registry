@@ -52,7 +52,7 @@ const outPath = join(rootDir, 'out');
 const distPath = join(outPath, 'dist');
 const tscPath = join(outPath, 'tsc');
 const workersDistPath = join(distPath, 'workers');
-const workersTscPath = join(tscPath, 'workers');
+const workersTscPath = join(tscPath, 'workers-registry');
 
 /**
  * Check if a file exists
@@ -372,7 +372,7 @@ async function generateTypeDefinitions(tsWorkers, options = {}) {
 
   // Use provided options or defaults
   const configRootDir = options.rootDir || rootDir;
-  const configOutDir = options.outDir || join(outPath, 'tsc', 'workers');
+  const configOutDir = options.outDir || join(outPath, 'tsc', 'workers-registry');
   const configRegistryDir = options.registryDir || registryPath;
   const configWorkersTscPath = options.workersTscPath || workersTscPath;
 
@@ -542,9 +542,9 @@ async function generateWorkersIndex(workers, options = {}) {
     // Determine types path (relative to index.js, pointing to tsc output)
     let typesPath = null;
     if (worker.type === 'typescript') {
-      // Types are in ../tsc/workers/{worker-name}/
+      // Types are in ../tsc/workers-registry/{worker-name}/
       const typeDefPath = worker.entrypoint.replace(/\.ts$/, '.d.ts');
-      typesPath = `../tsc/workers/${worker.name}/${typeDefPath}`;
+      typesPath = `../tsc/workers-registry/${worker.name}/${typeDefPath}`;
     }
 
     // Determine config path
