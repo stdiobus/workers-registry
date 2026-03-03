@@ -306,9 +306,22 @@ async function buildWorkerWithEsbuild(worker) {
       format: 'esm',
       outfile,
       external: [
-        // '@agentclientprotocol/sdk',
-        // '@modelcontextprotocol/sdk',
-        'node:*'
+        'node:*',
+        // Built-in Node.js modules without node: prefix
+        'child_process',
+        'fs',
+        'path',
+        'stream',
+        'readline',
+        'process',
+        'util',
+        'events',
+        'crypto',
+        'http',
+        'https',
+        'net',
+        'os',
+        'url'
       ],
       sourcemap: true,
       minifyWhitespace: true,
