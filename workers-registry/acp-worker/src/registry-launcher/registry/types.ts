@@ -45,7 +45,7 @@ export type Platform =
  */
 export interface BinaryTarget {
   /** URL to download archive */
-  archive: string;
+  archive?: string;
   /** Command to execute after extraction */
   cmd: string;
   /** Optional command-line arguments */

@@ -56,11 +56,10 @@ class MockRegistryIndex implements IRegistryIndex {
     for (const agent of agents) {
       this.agents.set(agent.id, agent);
       // Default spawn command for npx agents
-      if (agent.distribution.type === 'npx') {
+      if (agent.distribution.npx) {
         this.spawnCommands.set(agent.id, {
           command: 'npx',
-          args: [agent.distribution.package],
-          env: agent.env,
+          args: [agent.distribution.npx.package],
         });
       }
     }

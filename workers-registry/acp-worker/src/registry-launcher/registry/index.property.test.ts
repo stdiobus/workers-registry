@@ -40,6 +40,7 @@ import * as fc from 'fast-check';
 import { AgentNotFoundError, parseRegistry, RegistryIndex, RegistryParseError } from './index.js';
 import type {
   BinaryDistribution,
+  BinaryTarget,
   Distribution,
   NpxDistribution,
   Platform,
@@ -52,11 +53,11 @@ import type {
  * All valid platform identifiers.
  */
 const PLATFORMS: Platform[] = [
-  'darwin-x64',
-  'darwin-arm64',
-  'linux-x64',
-  'linux-arm64',
-  'win32-x64',
+  'darwin-x86_64',
+  'darwin-aarch64',
+  'linux-x86_64',
+  'linux-aarch64',
+  'windows-x86_64',
 ];
 
 /**
@@ -93,41 +94,37 @@ const versionStringArb = fc.oneof(
 const binaryDistributionArb: fc.Arbitrary<BinaryDistribution> = fc
   .array(fc.tuple(platformArb, nonEmptyStringArb), { minLength: 1, maxLength: 5 })
   .map((entries) => {
-    const platforms: Partial<Record<Platform, string>> = {};
+    const distribution: Partial<Record<Platform, BinaryTarget>> = {};
     for (const [platform, path] of entries) {
-      platforms[platform] = path;
+      distribution[platform] = {
+        cmd: path,
+        args: [],
+      };
     }
-    return {
-      type: 'binary' as const,
-      platforms,
-    };
+    return distribution;
   });
 
 /**
  * Arbitrary for generating valid npx distribution objects.
  */
 const npxDistributionArb: fc.Arbitrary<NpxDistribution> = fc.record({
-  type: fc.constant('npx' as const),
   package: packageNameArb,
-  version: fc.option(versionStringArb, { nil: undefined }),
 });
 
 /**
  * Arbitrary for generating valid uvx distribution objects.
  */
 const uvxDistributionArb: fc.Arbitrary<UvxDistribution> = fc.record({
-  type: fc.constant('uvx' as const),
   package: packageNameArb,
-  version: fc.option(versionStringArb, { nil: undefined }),
 });
 
 /**
  * Arbitrary for generating any valid distribution object.
  */
 const distributionArb: fc.Arbitrary<Distribution> = fc.oneof(
-  binaryDistributionArb,
-  npxDistributionArb,
-  uvxDistributionArb,
+  binaryDistributionArb.map((binary) => ({ binary })),
+  npxDistributionArb.map((npx) => ({ npx })),
+  uvxDistributionArb.map((uvx) => ({ uvx })),
 );
 
 /**
@@ -163,10 +160,9 @@ const argsArrayArb: fc.Arbitrary<string[]> = fc.array(
 const registryAgentArb: fc.Arbitrary<RegistryAgent> = fc.record({
   id: nonEmptyStringArb,
   name: nonEmptyStringArb,
+  version: versionStringArb,
   description: fc.option(fc.string({ maxLength: 200 }), { nil: undefined }),
   distribution: distributionArb,
-  args: fc.option(argsArrayArb, { nil: undefined }),
-  env: fc.option(envRecordArb, { nil: undefined }),
 });
 
 /**
@@ -181,29 +177,33 @@ const registryArb: fc.Arbitrary<Registry> = fc.record({
  * Deep equality check for Distribution objects.
  */
 function distributionsEqual(a: Distribution, b: Distribution): boolean {
-  if (a.type !== b.type) return false;
-
-  if (a.type === 'binary' && b.type === 'binary') {
-    const aPlatforms = Object.keys(a.platforms).sort();
-    const bPlatforms = Object.keys(b.platforms).sort();
+  // Check binary distribution
+  if (a.binary || b.binary) {
+    if (!a.binary || !b.binary) return false;
+    const aPlatforms = Object.keys(a.binary).sort();
+    const bPlatforms = Object.keys(b.binary).sort();
     if (aPlatforms.length !== bPlatforms.length) return false;
     for (const platform of aPlatforms) {
-      if (a.platforms[platform as Platform] !== b.platforms[platform as Platform]) {
-        return false;
-      }
+      const aTarget = a.binary[platform as Platform];
+      const bTarget = b.binary[platform as Platform];
+      if (!aTarget || !bTarget) return false;
+      if (aTarget.cmd !== bTarget.cmd) return false;
     }
-    return true;
   }
 
-  if (a.type === 'npx' && b.type === 'npx') {
-    return a.package === b.package && a.version === b.version;
+  // Check npx distribution
+  if (a.npx || b.npx) {
+    if (!a.npx || !b.npx) return false;
+    if (a.npx.package !== b.npx.package) return false;
   }
 
-  if (a.type === 'uvx' && b.type === 'uvx') {
-    return a.package === b.package && a.version === b.version;
+  // Check uvx distribution
+  if (a.uvx || b.uvx) {
+    if (!a.uvx || !b.uvx) return false;
+    if (a.uvx.package !== b.uvx.package) return false;
   }
 
-  return false;
+  return true;
 }
 
 /**
@@ -212,26 +212,9 @@ function distributionsEqual(a: Distribution, b: Distribution): boolean {
 function agentsEqual(a: RegistryAgent, b: RegistryAgent): boolean {
   if (a.id !== b.id) return false;
   if (a.name !== b.name) return false;
+  if (a.version !== b.version) return false;
   if (a.description !== b.description) return false;
   if (!distributionsEqual(a.distribution, b.distribution)) return false;
-
-  // Compare args arrays
-  const aArgs = a.args ?? [];
-  const bArgs = b.args ?? [];
-  if (aArgs.length !== bArgs.length) return false;
-  for (let i = 0; i < aArgs.length; i++) {
-    if (aArgs[i] !== bArgs[i]) return false;
-  }
-
-  // Compare env records
-  const aEnv = a.env ?? {};
-  const bEnv = b.env ?? {};
-  const aEnvKeys = Object.keys(aEnv).sort();
-  const bEnvKeys = Object.keys(bEnv).sort();
-  if (aEnvKeys.length !== bEnvKeys.length) return false;
-  for (const key of aEnvKeys) {
-    if (aEnv[key] !== bEnv[key]) return false;
-  }
 
   return true;
 }
@@ -351,7 +334,14 @@ describe('Registry Parsing Property Tests', () => {
           const result = parseRegistry(parsed);
 
           return originalRegistry.agents.every((agent, i) => {
-            return agent.distribution.type === result.agents[i].distribution.type;
+            const orig = agent.distribution;
+            const res = result.agents[i].distribution;
+            // Check that the same distribution types are present
+            return (
+              (!!orig.binary === !!res.binary) &&
+              (!!orig.npx === !!res.npx) &&
+              (!!orig.uvx === !!res.uvx)
+            );
           });
         }),
         { numRuns: 100 },
@@ -367,7 +357,8 @@ describe('Registry Parsing Property Tests', () => {
               fc.record({
                 id: nonEmptyStringArb,
                 name: nonEmptyStringArb,
-                distribution: binaryDistributionArb,
+                version: versionStringArb,
+                distribution: binaryDistributionArb.map((binary) => ({ binary })),
               }),
               { minLength: 1, maxLength: 5 },
             ),
@@ -378,19 +369,20 @@ describe('Registry Parsing Property Tests', () => {
             const result = parseRegistry(parsed);
 
             return originalRegistry.agents.every((agent, i) => {
-              const originalDist = agent.distribution as BinaryDistribution;
-              const resultDist = result.agents[i].distribution as BinaryDistribution;
+              const originalDist = agent.distribution.binary;
+              const resultDist = result.agents[i].distribution.binary;
 
-              const originalPlatforms = Object.keys(originalDist.platforms).sort();
-              const resultPlatforms = Object.keys(resultDist.platforms).sort();
+              if (!originalDist || !resultDist) return false;
+
+              const originalPlatforms = Object.keys(originalDist).sort();
+              const resultPlatforms = Object.keys(resultDist).sort();
 
               if (originalPlatforms.length !== resultPlatforms.length) return false;
 
               return originalPlatforms.every((platform) => {
-                return (
-                  originalDist.platforms[platform as Platform] ===
-                  resultDist.platforms[platform as Platform]
-                );
+                const origTarget = originalDist[platform as Platform];
+                const resTarget = resultDist[platform as Platform];
+                return origTarget?.cmd === resTarget?.cmd;
               });
             });
           },
@@ -408,7 +400,8 @@ describe('Registry Parsing Property Tests', () => {
               fc.record({
                 id: nonEmptyStringArb,
                 name: nonEmptyStringArb,
-                distribution: npxDistributionArb,
+                version: versionStringArb,
+                distribution: npxDistributionArb.map((npx) => ({ npx })),
               }),
               { minLength: 1, maxLength: 5 },
             ),
@@ -419,13 +412,12 @@ describe('Registry Parsing Property Tests', () => {
             const result = parseRegistry(parsed);
 
             return originalRegistry.agents.every((agent, i) => {
-              const originalDist = agent.distribution as NpxDistribution;
-              const resultDist = result.agents[i].distribution as NpxDistribution;
+              const originalDist = agent.distribution.npx;
+              const resultDist = result.agents[i].distribution.npx;
 
-              return (
-                originalDist.package === resultDist.package &&
-                originalDist.version === resultDist.version
-              );
+              if (!originalDist || !resultDist) return false;
+
+              return originalDist.package === resultDist.package;
             });
           },
         ),
@@ -442,7 +434,8 @@ describe('Registry Parsing Property Tests', () => {
               fc.record({
                 id: nonEmptyStringArb,
                 name: nonEmptyStringArb,
-                distribution: uvxDistributionArb,
+                version: versionStringArb,
+                distribution: uvxDistributionArb.map((uvx) => ({ uvx })),
               }),
               { minLength: 1, maxLength: 5 },
             ),
@@ -453,13 +446,12 @@ describe('Registry Parsing Property Tests', () => {
             const result = parseRegistry(parsed);
 
             return originalRegistry.agents.every((agent, i) => {
-              const originalDist = agent.distribution as UvxDistribution;
-              const resultDist = result.agents[i].distribution as UvxDistribution;
+              const originalDist = agent.distribution.uvx;
+              const resultDist = result.agents[i].distribution.uvx;
 
-              return (
-                originalDist.package === resultDist.package &&
-                originalDist.version === resultDist.version
-              );
+              if (!originalDist || !resultDist) return false;
+
+              return originalDist.package === resultDist.package;
             });
           },
         ),
@@ -476,47 +468,6 @@ describe('Registry Parsing Property Tests', () => {
 
           return originalRegistry.agents.every((agent, i) => {
             return agent.description === result.agents[i].description;
-          });
-        }),
-        { numRuns: 100 },
-      );
-    });
-
-    it('should preserve optional args array through round-trip', () => {
-      fc.assert(
-        fc.property(registryArb, (originalRegistry) => {
-          const json = JSON.stringify(originalRegistry);
-          const parsed = JSON.parse(json);
-          const result = parseRegistry(parsed);
-
-          return originalRegistry.agents.every((agent, i) => {
-            const originalArgs = agent.args ?? [];
-            const resultArgs = result.agents[i].args ?? [];
-
-            if (originalArgs.length !== resultArgs.length) return false;
-            return originalArgs.every((arg, j) => arg === resultArgs[j]);
-          });
-        }),
-        { numRuns: 100 },
-      );
-    });
-
-    it('should preserve optional env record through round-trip', () => {
-      fc.assert(
-        fc.property(registryArb, (originalRegistry) => {
-          const json = JSON.stringify(originalRegistry);
-          const parsed = JSON.parse(json);
-          const result = parseRegistry(parsed);
-
-          return originalRegistry.agents.every((agent, i) => {
-            const originalEnv = agent.env ?? {};
-            const resultEnv = result.agents[i].env ?? {};
-
-            const originalKeys = Object.keys(originalEnv).sort();
-            const resultKeys = Object.keys(resultEnv).sort();
-
-            if (originalKeys.length !== resultKeys.length) return false;
-            return originalKeys.every((key) => originalEnv[key] === resultEnv[key]);
           });
         }),
         { numRuns: 100 },
@@ -1218,7 +1169,13 @@ describe('Property 3: Agent Lookup Correctness', () => {
 
         return registry.agents.every((agent) => {
           const result = lookup(agent.id);
-          return result !== undefined && result.distribution.type === agent.distribution.type;
+          if (!result) return false;
+          // Check that the same distribution types are present
+          return (
+            (!!result.distribution.binary === !!agent.distribution.binary) &&
+            (!!result.distribution.npx === !!agent.distribution.npx) &&
+            (!!result.distribution.uvx === !!agent.distribution.uvx)
+          );
         });
       }),
       { numRuns: 100 },
@@ -1233,49 +1190,6 @@ describe('Property 3: Agent Lookup Correctness', () => {
         return registry.agents.every((agent) => {
           const result = lookup(agent.id);
           return result !== undefined && distributionsEqual(agent.distribution, result.distribution);
-        });
-      }),
-      { numRuns: 100 },
-    );
-  });
-
-  it('should return agent with matching args array', () => {
-    fc.assert(
-      fc.property(uniqueIdRegistryArb, (registry) => {
-        const { lookup } = createPopulatedRegistryIndex(registry);
-
-        return registry.agents.every((agent) => {
-          const result = lookup(agent.id);
-          if (!result) return false;
-
-          const originalArgs = agent.args ?? [];
-          const resultArgs = result.args ?? [];
-
-          if (originalArgs.length !== resultArgs.length) return false;
-          return originalArgs.every((arg, i) => arg === resultArgs[i]);
-        });
-      }),
-      { numRuns: 100 },
-    );
-  });
-
-  it('should return agent with matching env record', () => {
-    fc.assert(
-      fc.property(uniqueIdRegistryArb, (registry) => {
-        const { lookup } = createPopulatedRegistryIndex(registry);
-
-        return registry.agents.every((agent) => {
-          const result = lookup(agent.id);
-          if (!result) return false;
-
-          const originalEnv = agent.env ?? {};
-          const resultEnv = result.env ?? {};
-
-          const originalKeys = Object.keys(originalEnv).sort();
-          const resultKeys = Object.keys(resultEnv).sort();
-
-          if (originalKeys.length !== resultKeys.length) return false;
-          return originalKeys.every((key) => originalEnv[key] === resultEnv[key]);
         });
       }),
       { numRuns: 100 },
@@ -1375,10 +1289,9 @@ describe('Property 3: Agent Lookup Correctness', () => {
           fc.record({
             id: nonEmptyStringArb,
             name: nonEmptyStringArb,
+            version: versionStringArb,
             description: fc.option(fc.string({ maxLength: 200 }), { nil: undefined }),
-            distribution: binaryDistributionArb,
-            args: fc.option(argsArrayArb, { nil: undefined }),
-            env: fc.option(envRecordArb, { nil: undefined }),
+            distribution: binaryDistributionArb.map((binary) => ({ binary })),
           }),
           { minLength: 1, maxLength: 5 },
         ),
@@ -1401,17 +1314,20 @@ describe('Property 3: Agent Lookup Correctness', () => {
           if (!result) return false;
 
           // Verify binary distribution details
-          if (result.distribution.type !== 'binary') return false;
-          const originalDist = agent.distribution as BinaryDistribution;
-          const resultDist = result.distribution as BinaryDistribution;
+          const originalDist = agent.distribution.binary;
+          const resultDist = result.distribution.binary;
 
-          const originalPlatforms = Object.keys(originalDist.platforms).sort();
-          const resultPlatforms = Object.keys(resultDist.platforms).sort();
+          if (!originalDist || !resultDist) return false;
+
+          const originalPlatforms = Object.keys(originalDist).sort();
+          const resultPlatforms = Object.keys(resultDist).sort();
 
           if (originalPlatforms.length !== resultPlatforms.length) return false;
-          return originalPlatforms.every(
-            (p) => originalDist.platforms[p as Platform] === resultDist.platforms[p as Platform],
-          );
+          return originalPlatforms.every((p) => {
+            const origTarget = originalDist[p as Platform];
+            const resTarget = resultDist[p as Platform];
+            return origTarget?.cmd === resTarget?.cmd;
+          });
         });
       }),
       { numRuns: 100 },
@@ -1426,10 +1342,9 @@ describe('Property 3: Agent Lookup Correctness', () => {
           fc.record({
             id: nonEmptyStringArb,
             name: nonEmptyStringArb,
+            version: versionStringArb,
             description: fc.option(fc.string({ maxLength: 200 }), { nil: undefined }),
-            distribution: npxDistributionArb,
-            args: fc.option(argsArrayArb, { nil: undefined }),
-            env: fc.option(envRecordArb, { nil: undefined }),
+            distribution: npxDistributionArb.map((npx) => ({ npx })),
           }),
           { minLength: 1, maxLength: 5 },
         ),
@@ -1452,14 +1367,12 @@ describe('Property 3: Agent Lookup Correctness', () => {
           if (!result) return false;
 
           // Verify npx distribution details
-          if (result.distribution.type !== 'npx') return false;
-          const originalDist = agent.distribution as NpxDistribution;
-          const resultDist = result.distribution as NpxDistribution;
+          const originalDist = agent.distribution.npx;
+          const resultDist = result.distribution.npx;
 
-          return (
-            originalDist.package === resultDist.package &&
-            originalDist.version === resultDist.version
-          );
+          if (!originalDist || !resultDist) return false;
+
+          return originalDist.package === resultDist.package;
         });
       }),
       { numRuns: 100 },
@@ -1474,10 +1387,9 @@ describe('Property 3: Agent Lookup Correctness', () => {
           fc.record({
             id: nonEmptyStringArb,
             name: nonEmptyStringArb,
+            version: versionStringArb,
             description: fc.option(fc.string({ maxLength: 200 }), { nil: undefined }),
-            distribution: uvxDistributionArb,
-            args: fc.option(argsArrayArb, { nil: undefined }),
-            env: fc.option(envRecordArb, { nil: undefined }),
+            distribution: uvxDistributionArb.map((uvx) => ({ uvx })),
           }),
           { minLength: 1, maxLength: 5 },
         ),
@@ -1500,14 +1412,12 @@ describe('Property 3: Agent Lookup Correctness', () => {
           if (!result) return false;
 
           // Verify uvx distribution details
-          if (result.distribution.type !== 'uvx') return false;
-          const originalDist = agent.distribution as UvxDistribution;
-          const resultDist = result.distribution as UvxDistribution;
+          const originalDist = agent.distribution.uvx;
+          const resultDist = result.distribution.uvx;
 
-          return (
-            originalDist.package === resultDist.package &&
-            originalDist.version === resultDist.version
-          );
+          if (!originalDist || !resultDist) return false;
+
+          return originalDist.package === resultDist.package;
         });
       }),
       { numRuns: 100 },
@@ -1802,10 +1712,12 @@ describe('Property 4: Agent Not Found Error', () => {
           fc.record({
             id: nonEmptyStringArb,
             name: nonEmptyStringArb,
+            version: versionStringArb,
             description: fc.option(fc.string({ maxLength: 200 }), { nil: undefined }),
-            distribution: fc.oneof(npxDistributionArb, uvxDistributionArb),
-            args: fc.option(argsArrayArb, { nil: undefined }),
-            env: fc.option(envRecordArb, { nil: undefined }),
+            distribution: fc.oneof(
+              npxDistributionArb.map((npx) => ({ npx })),
+              uvxDistributionArb.map((uvx) => ({ uvx })),
+            ),
           }),
           { minLength: 1, maxLength: 5 },
         ),

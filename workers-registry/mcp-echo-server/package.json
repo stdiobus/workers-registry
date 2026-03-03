@@ -1,8 +1,9 @@
 {
-  "name": "mcp-echo-server",
+  "name": "@stdiobus/workers-registry-mcp-echo",
   "version": "1.0.0",
   "description": "Example MCP server that echoes back requests - demonstrates basic stdio Bus kernel integration with Agent Client Protocol",
   "type": "module",
+  "private": true,
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -20,11 +21,6 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1"
-  }
+  "devDependencies": {},
+  "dependencies": {}
 }

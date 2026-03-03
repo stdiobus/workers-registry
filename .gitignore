@@ -753,6 +753,7 @@ venv.bak/
 
 # mkdocs documentation
 /site
+.kiro
 
 # mypy
 .mypy_cache/
@@ -775,4 +776,3 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 sandbox
-

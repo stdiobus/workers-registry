@@ -286,7 +286,7 @@ describe('StateManager Properties', () => {
             ),
             { minLength: 5, maxLength: 20 }
           ),
-          (operations) => {
+          (operations: any) => {
             // Ensure proxy session ID exists
             state.ensureProxySessionId();
 

@@ -1,7 +1,8 @@
 {
-  "name": "mcp-to-acp-proxy",
+  "name": "@stdiobus/workers-registry-mcp-acp-proxy",
   "version": "1.0.0",
   "type": "module",
+  "private": true,
   "description": "Proxy to convert MCP protocol to ACP protocol",
   "main": "proxy.js",
   "bin": {
