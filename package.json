@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
+  "workspaces": [
+    "workers-registry/acp-worker",
+    "workers-registry/mcp-echo-server",
+    "workers-registry/mcp-to-acp-proxy"
+  ],
   "main": "./out/dist/workers/acp-worker/index.js",
   "types": "./out/tsc/workers/acp-worker/index.d.ts",
   "exports": {
@@ -66,9 +71,12 @@
     "@modelcontextprotocol/sdk": "^1.27.1"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.0.0",
     "fast-check": "^3.22.0",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
   }
 }
