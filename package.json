@@ -10,6 +10,10 @@
       "import": "./out/dist/workers/acp-worker/index.js",
       "types": "./out/tsc/workers/acp-worker/index.d.ts"
     },
+    "./launcher": {
+      "import": "./out/dist/workers/launcher/index.js",
+      "types": "./out/tsc/workers/launcher/index.d.ts"
+    },
     "./workers/acp-worker": {
       "import": "./out/dist/workers/acp-worker/index.js",
       "types": "./out/tsc/workers/acp-worker/index.d.ts"
@@ -23,8 +27,12 @@
     "./workers": "./out/dist/workers/index.js",
     "./package.json": "./package.json"
   },
+  "bin": {
+    "stdiobus-worker": "./index.js"
+  },
   "files": [
     "out/",
+    "index.js",
     "README.md",
     "LICENSE"
   ],
@@ -33,6 +41,12 @@
     "build:workers": "node scripts/build.js",
     "clean": "rm -rf out",
     "prepublishOnly": "npm run build",
+    "start": "node index.js",
+    "start:acp-worker": "node index.js acp-worker",
+    "start:echo-worker": "node index.js echo-worker",
+    "start:mcp-echo-server": "node index.js mcp-echo-server",
+    "start:mcp-to-acp-proxy": "node index.js mcp-to-acp-proxy",
+    "start:acp-registry": "node index.js acp-registry",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
     "test:property": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/property",

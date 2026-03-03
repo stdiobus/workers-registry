@@ -1,0 +1,22 @@
+{
+  "name": "@stdiobus/launcher",
+  "version": "1.0.0",
+  "description": "Universal worker launcher for stdio Bus Workers Registry",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "stdiobus",
+    "launcher",
+    "worker"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

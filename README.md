@@ -150,19 +150,24 @@ See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for buil
 **Create config.json:**
 ```json
 {
-  "pools": [{
-    "id": "acp-worker",
-    "command": "node",
-    "args": ["@stdiobus/workers-registry/workers/acp-worker"],
-    "instances": 1
-  }]
+  "pools": [
+    {
+      "id": "acp-worker",
+      "command": "node",
+      "args": [
+        "./workers/launcher",
+        "acp-worker"
+      ],
+      "instances": 1
+    }
+  ]
 }
 ```
 
 **Run with Docker:**
 ```bash
 docker run -p 9000:9000 \
-  -v $(pwd)/node_modules/@stdiobus/workers-registry:/workers:ro \
+  -v $(pwd)/node_modules/@stdiobus/workers-registry:/workers-registry:ro \
   -v $(pwd)/config.json:/config.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -173,7 +178,7 @@ docker run -p 9000:9000 \
 ./stdio_bus --config config.json --tcp 0.0.0.0:9000
 ```
 
-### 4. Test Connection
+### 5. Test Connection
 
 ```bash
 echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"name":"test","version":"1.0"}}}' | nc localhost 9000
@@ -183,22 +188,23 @@ echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"n
 
 ## Usage Examples
 
-### Using as Binary Commands
+### Using the Universal Launcher
 
-The package provides executable commands for each worker:
+The simplest way to run any worker:
 
 ```bash
-# Run ACP worker directly
-stdiobus-acp-worker
+# Run any worker by name
+node ./node_modules/@stdiobus/workers-registry/out/dist/index.js <worker-name>
 
-# Run Registry Launcher with API keys
-stdiobus-registry-launcher ./api-keys.json
+# Available workers:
+# - acp-worker
+# - acp-registry  
+# - echo-worker
+# - mcp-echo-server
+# - mcp-to-acp-proxy
 
-# Run MCP-to-ACP Proxy
-ACP_HOST=localhost ACP_PORT=9000 AGENT_ID=claude-acp stdiobus-mcp-to-acp-proxy
-
-# Run Echo worker for testing
-stdiobus-echo-worker
+# Example: Run echo worker for testing
+node ./node_modules/@stdiobus/workers-registry/out/dist/index.js echo-worker
 ```
 
 ### Using in stdio Bus Configuration
@@ -209,7 +215,10 @@ stdiobus-echo-worker
   "pools": [{
     "id": "acp-worker",
     "command": "node",
-    "args": ["@stdiobus/workers-registry/workers/acp-worker"],
+    "args": [
+      "./workers/launcher",
+      "acp-worker"
+    ],
     "instances": 1
   }]
 }
@@ -218,12 +227,18 @@ stdiobus-echo-worker
 **Registry Launcher with API Keys:**
 ```json
 {
-  "pools": [{
-    "id": "registry-launcher",
-    "command": "node",
-    "args": ["@stdiobus/workers-registry/workers/registry-launcher", "./api-keys.json"],
-    "instances": 1
-  }]
+  "pools": [
+    {
+      "id": "registry-launcher",
+      "command": "node",
+      "args": [
+        "./workers/launcher",
+        "registry-launcher",
+        "./api-keys.json"
+      ],
+      "instances": 1
+    }
+  ]
 }
 ```
 
@@ -234,13 +249,19 @@ stdiobus-echo-worker
     {
       "id": "acp-worker",
       "command": "node",
-      "args": ["@stdiobus/workers-registry/workers/acp-worker"],
+      "args": [
+        "./workers/launcher",
+        "acp-worker"
+      ],
       "instances": 2
     },
     {
       "id": "echo-worker",
       "command": "node",
-      "args": ["@stdiobus/workers-registry/workers/echo-worker"],
+      "args": [
+        "./workers/launcher",
+        "echo-worker"
+      ],
       "instances": 1
     }
   ]
@@ -333,12 +354,18 @@ Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotoc
 **Configuration:**
 ```json
 {
-  "pools": [{
-    "id": "registry-launcher",
-    "command": "node",
-    "args": ["@stdiobus/workers-registry/workers/registry-launcher", "./api-keys.json"],
-    "instances": 1
-  }]
+  "pools": [
+    {
+      "id": "registry-launcher",
+      "command": "node",
+      "args": [
+        "./workers/launcher",
+        "registry-launcher",
+        "./api-keys.json"
+      ],
+      "instances": 1
+    }
+  ]
 }
 ```
 
@@ -380,7 +407,10 @@ IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → AC
   "mcpServers": {
     "stdio-bus-acp": {
       "command": "node",
-      "args": ["@stdiobus/workers-registry/workers/mcp-to-acp-proxy"],
+      "args": [
+        "./workers/launcher",
+        "mcp-to-acp-proxy"
+      ],
       "env": {
         "ACP_HOST": "0.0.0.0",
         "ACP_PORT": "9000",
@@ -522,12 +552,17 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
 **High-Throughput Configuration:**
 ```json
 {
-  "pools": [{
-    "id": "acp-worker",
-    "command": "node",
-    "args": ["@stdiobus/workers-registry/workers/acp-worker"],
-    "instances": 4
-  }],
+  "pools": [
+    {
+      "id": "acp-worker",
+      "command": "node",
+      "args": [
+        "./workers/launcher",
+        "acp-worker"
+      ],
+      "instances": 4
+    }
+  ],
   "limits": {
     "max_input_buffer": 4194304,
     "max_output_queue": 16777216,
@@ -543,13 +578,19 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
     {
       "id": "acp-worker",
       "command": "node",
-      "args": ["@stdiobus/workers-registry/workers/acp-worker"],
+      "args": [
+        "./workers/launcher",
+        "acp-worker"
+      ],
       "instances": 2
     },
     {
       "id": "echo-worker",
       "command": "node",
-      "args": ["@stdiobus/workers-registry/workers/echo-worker"],
+      "args": [
+        "./workers/launcher",
+        "echo-worker"
+      ],
       "instances": 1
     }
   ]
