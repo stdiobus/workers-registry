@@ -306,23 +306,17 @@ async function buildWorkerWithEsbuild(worker) {
       format: 'esm',
       outfile,
       external: [
-        'node:*',
-        // Built-in Node.js modules without node: prefix
-        'child_process',
-        'fs',
-        'path',
-        'stream',
-        'readline',
-        'process',
-        'util',
-        'events',
-        'crypto',
-        'http',
-        'https',
-        'net',
-        'os',
-        'url'
+        'node:*'
       ],
+      // Add require polyfill for ESM
+      banner: {
+        js: `import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);`
+      },
       sourcemap: true,
       minifyWhitespace: true,
       treeShaking: true,
