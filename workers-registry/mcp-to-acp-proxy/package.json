@@ -1,5 +1,5 @@
 {
-  "name": "mcp-to-acp-proxy",
+  "name": "@stdiobus/workers-mcp-acp-proxy",
   "version": "1.0.0",
   "type": "module",
   "description": "Proxy to convert MCP protocol to ACP protocol",

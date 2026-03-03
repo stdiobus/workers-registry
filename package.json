@@ -1,9 +1,38 @@
 {
-  "name": "stdio-bus-workers-registry",
+  "name": "@stdiobus/workers",
   "version": "0.1.0",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
+  "main": "./out/dist/workers/acp-worker/index.js",
+  "types": "./out/tsc/workers/acp-worker/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./out/dist/workers/acp-worker/index.js",
+      "types": "./out/tsc/workers/acp-worker/index.d.ts"
+    },
+    "./workers/acp-worker": {
+      "import": "./out/dist/workers/acp-worker/index.js",
+      "types": "./out/tsc/workers/acp-worker/index.d.ts"
+    },
+    "./workers/echo-worker": "./out/dist/workers/echo-worker/echo-worker.js",
+    "./workers/mcp-echo-server": {
+      "import": "./out/dist/workers/mcp-echo-server/index.js",
+      "types": "./out/tsc/workers/mcp-echo-server/index.d.ts"
+    },
+    "./workers/mcp-to-acp-proxy": "./out/dist/workers/mcp-to-acp-proxy/proxy.js",
+    "./workers": "./out/dist/workers/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "out/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "node scripts/build.js",
+    "build:workers": "node scripts/build.js",
+    "clean": "rm -rf out",
+    "prepublishOnly": "npm run build",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
     "test:property": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/property",
@@ -37,6 +66,8 @@
     "@modelcontextprotocol/sdk": "^1.27.1"
   },
   "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.0.0",
     "fast-check": "^3.22.0",
     "jest": "^29.7.0"
   }

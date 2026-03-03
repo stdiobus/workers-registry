@@ -113,9 +113,9 @@ export class ACPConnection {
    *
    * @param data - Raw data received from the socket
    */
-  private handleData(data: Buffer): void {
+  private handleData(data: Buffer | string): void {
     // Append incoming data to buffer
-    this.buffer += data.toString();
+    this.buffer += typeof data === 'string' ? data : data.toString();
 
     // Process all complete lines (ending with \n) in the buffer
     let newlineIndex: number;

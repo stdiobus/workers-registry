@@ -1,5 +1,5 @@
 {
-  "name": "mcp-echo-server",
+  "name": "@stdiobus/workers-mcp-echo",
   "version": "1.0.0",
   "description": "Example MCP server that echoes back requests - demonstrates basic stdio Bus kernel integration with Agent Client Protocol",
   "type": "module",

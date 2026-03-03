@@ -1,5 +1,5 @@
 {
-  "name": "stdio-bus-worker",
+  "name": "@stdiobus/workers-acp",
   "version": "1.0.0",
   "description": "ACP/MCP Protocol Worker for stdio Bus kernel",
   "type": "module",
