@@ -1,8 +1,9 @@
 {
-  "name": "@stdiobus/workers-acp",
+  "name": "@stdiobus/workers-registry-acp",
   "version": "1.0.0",
   "description": "ACP/MCP Protocol Worker for stdio Bus kernel",
   "type": "module",
+  "private": true,
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc && node scripts/prepare-executables.js",

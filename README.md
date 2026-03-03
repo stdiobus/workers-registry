@@ -1,52 +1,142 @@
-# stdio Bus Workers Registry
+# @stdiobus/workers-registry
 
-This repository contains worker implementations and examples for [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - a high-performance message routing daemon for agent protocols.
+[![npm version](https://img.shields.io/npm/v/@stdiobus/workers-registry.svg)](https://www.npmjs.com/package/@stdiobus/workers-registry)
+[![License](https://img.shields.io/npm/l/@stdiobus/workers-registry.svg)](https://github.com/stdiobus/workers-registry/blob/main/LICENSE)
+[![Node.js Version](https://img.shields.io/node/v/@stdiobus/workers-registry.svg)](https://nodejs.org)
+[![Downloads](https://img.shields.io/npm/dm/@stdiobus/workers-registry.svg)](https://www.npmjs.com/package/@stdiobus/workers-registry)
 
-> **Quick Start:** You can run stdio Bus using [Docker images](https://hub.docker.com/r/stdiobus/stdiobus) or build from [source](https://github.com/stdiobus/stdiobus). See [Docker Hub README](sandbox/DOCKER_HUB_README.md) for Docker instructions.
+Worker implementations for [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - a high-performance message routing daemon for agent protocols.
+
+**Features:**
+- Full ACP (Agent Client Protocol) implementation
+- MCP (Model Context Protocol) server integration
+- Protocol bridges (MCP ↔ ACP)
+- Ready-to-use binary commands
+- TypeScript support with full type definitions
+- High-performance NDJSON protocol
+- Docker-ready
+
+## Installation
+
+```bash
+npm install @stdiobus/workers-registry
+```
+
+**Requirements:**
+- Node.js ≥20.0.0
+- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) (Docker or binary)
+
+**Keywords:** `stdiobus`, `protocol`, `acp`, `mcp`, `agent`, `transport`, `json-rpc`, `stdio-bus`, `worker`
+
+---
 
 ## Overview
 
-stdio Bus kernel provides the core protocol and message routing infrastructure. This repository contains the worker implementations that run as child processes of stdio Bus kernel, handling various agent protocols and use cases.
+stdio Bus kernel provides the core protocol and message routing infrastructure. This package contains the worker implementations that run as child processes of stdio Bus kernel, handling various agent protocols and use cases.
 
 ## Architecture
 
 ```mermaid
-graph TD
-    A["<b>stdio Bus kernel</b><br/>github.com/stdiobus/stdiobus"] -->|"spawns workers via<br/>stdin/stdout NDJSON"| B["<b>Workers Registry</b><br/>(this repo)"]
-    B --> C["<b>ACP Worker</b><br/>Agent Client Protocol"]
-    B --> D["<b>Registry Launcher</b><br/>ACP Registry integration"]
-    B --> E["<b>MCP-to-ACP Proxy</b><br/>protocol bridge"]
-    B --> F["<b>Echo Worker</b><br/>testing/examples"]
+graph TB
+    Client[Client Application] -->|TCP/Unix Socket| Kernel[stdio Bus kernel]
+    Kernel -->|NDJSON stdin/stdout| ACP[ACP Worker]
+    Kernel -->|NDJSON stdin/stdout| Registry[Registry Launcher]
+    Kernel -->|NDJSON stdin/stdout| Echo[Echo Worker]
+    Kernel -->|NDJSON stdin/stdout| Proxy[MCP-to-ACP Proxy]
     
-    style A fill:#0d47a1,stroke:#1976d2,stroke-width:3px,color:#fff
-    style B fill:#e65100,stroke:#ff6f00,stroke-width:3px,color:#fff
-    style C fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
-    style D fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
-    style E fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
-    style F fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
+    Registry -->|Spawns| Claude[Claude Agent]
+    Registry -->|Spawns| Goose[Goose Agent]
+    Registry -->|Spawns| Cline[Cline Agent]
+    Registry -->|Spawns| Other[Other ACP Agents]
+    
+    ACP -->|Connects to| MCP[MCP Servers]
+    
+    IDE[IDE] -->|MCP Protocol| Proxy
+    Proxy -->|ACP Protocol| Kernel
+    
+    style Kernel fill:#4a90e2,stroke:#2e5c8a,stroke-width:3px,color:#fff
+    style Registry fill:#50c878,stroke:#2d7a4a,stroke-width:2px,color:#fff
+    style ACP fill:#9b59b6,stroke:#6c3483,stroke-width:2px,color:#fff
+    style Proxy fill:#e67e22,stroke:#a04000,stroke-width:2px,color:#fff
 ```
 
-## Workers
-
-| Worker | Description | Protocol |
-|--------|-------------|----------|
-| `acp-worker` | Full ACP protocol implementation using official SDK | ACP |
-| `registry-launcher` | Routes messages to any agent in the ACP Registry | ACP |
-| `mcp-to-acp-proxy` | Bridges MCP clients (like Kiro) to ACP agents | MCP → ACP |
-| `echo-worker` | Simple echo worker for testing NDJSON protocol | NDJSON |
-| `mcp-echo-server` | MCP server example for testing | MCP |
+**Architecture layers:**
+```
+stdio Bus kernel ← https://github.com/stdiobus/stdiobus
+    ↓ (spawns workers via stdin/stdout NDJSON)
+Workers Registry (this repo)
+    ├── ACP Worker (Agent Client Protocol)
+    ├── Registry Launcher (ACP Registry integration)
+    ├── MCP-to-ACP Proxy (protocol bridge)
+    └── Echo Worker (testing/examples)
+```
 
 ## Prerequisites
 
 - stdio Bus kernel - available via [Docker](https://hub.docker.com/r/stdiobus/stdiobus) or [build from source](https://github.com/stdiobus/stdiobus)
 - Node.js 20.0.0 or later (for building workers)
 
+## Workers
+
+| Worker | Description | Protocol | Command |
+|--------|-------------|----------|---------|
+| `acp-worker` | Full ACP protocol implementation using official SDK | ACP | `stdiobus-acp-worker` |
+| `registry-launcher` | Routes messages to any agent in the ACP Registry | ACP | `stdiobus-registry-launcher` |
+| `mcp-to-acp-proxy` | Bridges MCP clients (like IDEs) to ACP agents | MCP → ACP | `stdiobus-mcp-to-acp-proxy` |
+| `echo-worker` | Simple echo worker for testing NDJSON protocol | NDJSON | `stdiobus-echo-worker` |
+| `mcp-echo-server` | MCP server example for testing | MCP | `stdiobus-mcp-echo-server` |
+
+## Package API
+
+### Binary Commands
+
+After installation, the following commands are available:
+
+```bash
+stdiobus-acp-worker              # ACP Worker
+stdiobus-registry-launcher       # Registry Launcher
+stdiobus-mcp-to-acp-proxy       # MCP-to-ACP Proxy
+stdiobus-echo-worker            # Echo Worker
+stdiobus-mcp-echo-server        # MCP Echo Server
+```
+
+### Module Imports
+
+```javascript
+// Import ACP worker (default export)
+import worker from '@stdiobus/workers-registry';
+
+// Import specific workers
+import acpWorker from '@stdiobus/workers-registry/workers/acp-worker';
+import echoWorker from '@stdiobus/workers-registry/workers/echo-worker';
+import mcpEchoServer from '@stdiobus/workers-registry/workers/mcp-echo-server';
+import mcpToAcpProxy from '@stdiobus/workers-registry/workers/mcp-to-acp-proxy';
+
+// Import workers metadata
+import { workers } from '@stdiobus/workers-registry/workers';
+console.log(workers['acp-worker'].entrypoint);
+```
+
+### TypeScript Support
+
+Full TypeScript definitions are included:
+
+```typescript
+import type { ACPAgent } from '@stdiobus/workers-registry/workers/acp-worker';
+import type { MCPServer } from '@stdiobus/workers-registry/workers/mcp-echo-server';
+```
 
 ## Quick Start
 
-### 1. Get stdio Bus kernel
+### 1. Install Package
 
-**Option A: Using Docker (recommended for quick start)**
+```bash
+npm install @stdiobus/workers-registry
+```
+
+### 2. Get stdio Bus kernel
+
+**Option A: Using Docker (recommended)**
 
 ```bash
 docker pull stdiobus/stdiobus:latest
@@ -56,51 +146,125 @@ docker pull stdiobus/stdiobus:latest
 
 See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for build instructions.
 
-### 2. Build Workers
+### 3. Run with ACP Worker
 
-```bash
-# Install dependencies
-npm install
-
-# Build ACP worker
-cd workers-registry/acp-worker
-npm install
-npm run build
-cd ../..
+**Create config.json:**
+```json
+{
+  "pools": [{
+    "id": "acp-worker",
+    "command": "node",
+    "args": ["@stdiobus/workers-registry/workers/acp-worker"],
+    "instances": 1
+  }]
+}
 ```
 
-### 3. Run Echo Worker Example
-
-**Using Docker:**
-
+**Run with Docker:**
 ```bash
-# Terminal 1: Start stdio Bus with echo worker using Docker
-docker run \
-  --name stdiobus-echo \
-  -p 9000:9000 \
-  -v $(pwd)/workers-registry:/workers-registry:ro \
-  -v $(pwd)/workers-registry/echo-worker/echo-worker-config.json:/config.json:ro \
+docker run -p 9000:9000 \
+  -v $(pwd)/node_modules/@stdiobus/workers-registry:/workers:ro \
+  -v $(pwd)/config.json:/config.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
-
-# Terminal 2: Test with a simple message
-echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"hello":"world"}}' | (cat; sleep 1) | nc 0.0.0.0 9001
-
-# View logs
-docker logs -f stdiobus-echo
-
-# Stop container
-docker stop stdiobus-echo && docker rm stdiobus-echo
 ```
 
-**Using binary:**
+**Or with binary:**
+```bash
+./stdio_bus --config config.json --tcp 0.0.0.0:9000
+```
+
+### 4. Test Connection
 
 ```bash
-# Terminal 1: Start stdio Bus with echo worker
-./stdio_bus --config workers-registry/echo-worker/echo-worker-config.json --tcp 0.0.0.0:9000
+echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"name":"test","version":"1.0"}}}' | nc localhost 9000
+```
 
-# Terminal 2: Test with a simple message
-echo '{"jsonrpc":"2.0","id":"1","method":"echo","params":{"hello":"world"}}' | (cat; sleep 1) | nc 0.0.0.0 9000
+---
+
+## Usage Examples
+
+### Using as Binary Commands
+
+The package provides executable commands for each worker:
+
+```bash
+# Run ACP worker directly
+stdiobus-acp-worker
+
+# Run Registry Launcher with API keys
+stdiobus-registry-launcher ./api-keys.json
+
+# Run MCP-to-ACP Proxy
+ACP_HOST=localhost ACP_PORT=9000 AGENT_ID=claude-acp stdiobus-mcp-to-acp-proxy
+
+# Run Echo worker for testing
+stdiobus-echo-worker
+```
+
+### Using in stdio Bus Configuration
+
+**Basic ACP Worker:**
+```json
+{
+  "pools": [{
+    "id": "acp-worker",
+    "command": "node",
+    "args": ["@stdiobus/workers-registry/workers/acp-worker"],
+    "instances": 1
+  }]
+}
+```
+
+**Registry Launcher with API Keys:**
+```json
+{
+  "pools": [{
+    "id": "registry-launcher",
+    "command": "node",
+    "args": ["@stdiobus/workers-registry/workers/registry-launcher", "./api-keys.json"],
+    "instances": 1
+  }]
+}
+```
+
+**Multiple Workers:**
+```json
+{
+  "pools": [
+    {
+      "id": "acp-worker",
+      "command": "node",
+      "args": ["@stdiobus/workers-registry/workers/acp-worker"],
+      "instances": 2
+    },
+    {
+      "id": "echo-worker",
+      "command": "node",
+      "args": ["@stdiobus/workers-registry/workers/echo-worker"],
+      "instances": 1
+    }
+  ]
+}
+```
+
+### Using with Kiro IDE (MCP Client)
+
+Configure MCP-to-ACP Proxy in Kiro's MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "stdio-bus-acp": {
+      "command": "stdiobus-mcp-to-acp-proxy",
+      "env": {
+        "ACP_HOST": "localhost",
+        "ACP_PORT": "9000",
+        "AGENT_ID": "claude-acp"
+      }
+    }
+  }
+}
 ```
 
 ---
@@ -173,7 +337,7 @@ Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotoc
   "pools": [{
     "id": "registry-launcher",
     "command": "node",
-    "args": ["./workers-registry/acp-worker/dist/registry-launcher/index.js", "./config.json"],
+    "args": ["@stdiobus/workers-registry/workers/registry-launcher", "./api-keys.json"],
     "instances": 1
   }]
 }
@@ -202,22 +366,22 @@ Using binary:
 
 ### MCP-to-ACP Proxy
 
-Bridges MCP clients (like Kiro IDE) to ACP agents through stdio Bus.
+Bridges MCP clients (like IDE) to ACP agents through stdio Bus.
 
 **Location:** `workers-registry/mcp-to-acp-proxy/`
 
 **Architecture:**
 ```
-Kiro (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → ACP Agent
+IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → ACP Agent
 ```
 
-**Configuration for Kiro:**
+**Configuration for IDE:**
 ```json
 {
   "mcpServers": {
     "stdio-bus-acp": {
       "command": "node",
-      "args": ["./workers-registry/mcp-to-acp-proxy/proxy.js"],
+      "args": ["@stdiobus/workers-registry/workers/mcp-to-acp-proxy"],
       "env": {
         "ACP_HOST": "0.0.0.0",
         "ACP_PORT": "9000",
@@ -350,7 +514,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
   "pools": [{
     "id": "echo-worker",
     "command": "node",
-    "args": ["./workers-registry/echo-worker/echo-worker.js"],
+    "args": ["@stdiobus/workers-registry/workers/echo-worker"],
     "instances": 1
   }]
 }
@@ -362,7 +526,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
   "pools": [{
     "id": "acp-worker",
     "command": "node",
-    "args": ["./workers-registry/acp-worker/dist/index.js"],
+    "args": ["@stdiobus/workers-registry/workers/acp-worker"],
     "instances": 4
   }],
   "limits": {
@@ -380,13 +544,13 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
     {
       "id": "acp-worker",
       "command": "node",
-      "args": ["./workers-registry/acp-worker/dist/index.js"],
+      "args": ["@stdiobus/workers-registry/workers/acp-worker"],
       "instances": 2
     },
     {
       "id": "echo-worker",
       "command": "node",
-      "args": ["./workers-registry/echo-worker/echo-worker.js"],
+      "args": ["@stdiobus/workers-registry/workers/echo-worker"],
       "instances": 1
     }
   ]
@@ -589,6 +753,141 @@ workers-registry/
 
 ---
 
+## API Reference
+
+### Package Exports
+
+The package provides the following exports:
+
+```javascript
+// Default export - ACP Worker
+import worker from '@stdiobus/workers-registry';
+
+// Named exports for specific workers
+import { 
+  acpWorker,
+  echoWorker,
+  mcpEchoServer,
+  mcpToAcpProxy,
+  workers  // Metadata object
+} from '@stdiobus/workers-registry/workers';
+```
+
+### Binary Commands
+
+| Command | Description | Usage |
+|---------|-------------|-------|
+| `stdiobus-acp-worker` | ACP protocol worker | `stdiobus-acp-worker` |
+| `stdiobus-registry-launcher` | Registry launcher | `stdiobus-registry-launcher <api-keys.json>` |
+| `stdiobus-mcp-to-acp-proxy` | MCP-to-ACP proxy | `ACP_HOST=host ACP_PORT=port stdiobus-mcp-to-acp-proxy` |
+| `stdiobus-echo-worker` | Echo worker | `stdiobus-echo-worker` |
+| `stdiobus-mcp-echo-server` | MCP echo server | `stdiobus-mcp-echo-server` |
+
+### Environment Variables
+
+**MCP-to-ACP Proxy:**
+- `ACP_HOST` - stdio Bus host (default: `localhost`)
+- `ACP_PORT` - stdio Bus port (default: `9000`)
+- `AGENT_ID` - Target agent ID (e.g., `claude-acp`)
+
+---
+
+## Versioning
+
+This package follows [Semantic Versioning](https://semver.org/):
+
+- **MAJOR** version for incompatible API changes
+- **MINOR** version for backwards-compatible functionality additions
+- **PATCH** version for backwards-compatible bug fixes
+
+Current version: `0.1.0` (pre-release)
+
+---
+
+## Troubleshooting
+
+### Installation Issues
+
+**Node.js version mismatch:**
+```bash
+node --version  # Must be ≥20.0.0
+nvm install 20  # If using nvm
+```
+
+**Permission errors:**
+```bash
+npm install -g @stdiobus/workers-registry  # Global install (may need sudo)
+# Or use npx
+npx stdiobus-acp-worker
+```
+
+### Runtime Issues
+
+**Command not found:**
+```bash
+# Verify installation
+npm list @stdiobus/workers-registry
+
+# Check binary paths
+which stdiobus-acp-worker
+
+# Use npx as fallback
+npx stdiobus-acp-worker
+```
+
+**Worker crashes:**
+```bash
+# Check stdio Bus logs
+docker logs <container-name>
+
+# Increase restart limits in config
+{
+  "limits": {
+    "max_restarts": 10,
+    "restart_window_sec": 120
+  }
+}
+```
+
+**Connection refused:**
+```bash
+# Verify stdio Bus is running
+netstat -an | grep 9000
+
+# Check Docker container status
+docker ps | grep stdiobus
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+**Development setup:**
+```bash
+git clone https://github.com/stdiobus/workers-registry
+cd workers-registry
+npm install
+npm run build
+npm test
+```
+
+**Before submitting:**
+- All tests pass (`npm test`)
+- Code follows existing style
+- Documentation is updated
+- Workers handle SIGTERM gracefully
+- No output to stdout except NDJSON protocol messages
+
+---
+
 ## Resources
 
 - [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon (source code)
@@ -597,15 +896,24 @@ workers-registry/
 - [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) - Available ACP agents
 - [Agent Client Protocol SDK](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Official ACP SDK
 - [Model Context Protocol SDK](https://www.npmjs.com/package/@modelcontextprotocol/sdk) - Official MCP SDK
+- [npm package](https://www.npmjs.com/package/@stdiobus/workers-registry) - Package on npm registry
 
 ## Worker Documentation
 
-- [ACP Worker](workers-registry/acp-worker/README.md) - Full ACP protocol implementation
-- [Registry Launcher](workers-registry/acp-registry/README.md) - ACP Registry integration
-- [Echo Worker](workers-registry/echo-worker/README.md) - Reference implementation
-- [MCP Echo Server](workers-registry/mcp-echo-server/README.md) - MCP server example
-- [MCP-to-ACP Proxy](workers-registry/mcp-to-acp-proxy/README.md) - Protocol bridge
-- [FAQ](docs/FAQ.md) - Frequently asked questions
+- [ACP Worker](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/acp-worker) - Full ACP protocol implementation
+- [Registry Launcher](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/acp-registry) - ACP Registry integration
+- [Echo Worker](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/echo-worker) - Reference implementation
+- [MCP Echo Server](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/mcp-echo-server) - MCP server example
+- [MCP-to-ACP Proxy](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/mcp-to-acp-proxy) - Protocol bridge
+- [FAQ](https://github.com/stdiobus/workers-registry/blob/main/docs/FAQ.md) - Frequently asked questions
+
+---
+
+## Support
+
+- **Issues:** [GitHub Issues](https://github.com/stdiobus/workers-registry/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/stdiobus/workers-registry/discussions)
+- **Repository:** [github.com/stdiobus/workers-registry](https://github.com/stdiobus/workers-registry)
 
 ---
 
@@ -615,15 +923,10 @@ Apache License 2.0
 
 Copyright (c) 2025–present Raman Marozau, Target Insight Function.
 
-See [LICENSE](LICENSE) file for details.
+See [LICENSE](https://github.com/stdiobus/workers-registry/blob/main/LICENSE) file for details.
 
 ---
 
-## Contributing
+## Changelog
 
-Contributions are welcome! Please ensure:
-- All tests pass (`npm test`)
-- Code follows existing style
-- Documentation is updated
-- Workers handle SIGTERM gracefully
-- No output to stdout except NDJSON protocol messages
+See [CHANGELOG.md](https://github.com/stdiobus/workers-registry/blob/main/CHANGELOG.md) for version history and release notes.

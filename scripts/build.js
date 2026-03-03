@@ -239,6 +239,30 @@ async function discoverWorkers() {
 }
 
 /**
+ * Add shebang to a file and make it executable
+ * @param {string} filePath - Path to the file
+ * @returns {Promise<void>}
+ */
+async function addShebang(filePath) {
+  const { readFile, writeFile, chmod } = await import('fs/promises');
+
+  try {
+    let content = await readFile(filePath, 'utf8');
+
+    // Check if shebang already exists
+    if (!content.startsWith('#!')) {
+      content = '#!/usr/bin/env node\n' + content;
+      await writeFile(filePath, content, 'utf8');
+    }
+
+    // Make executable (chmod +x)
+    await chmod(filePath, 0o755);
+  } catch (error) {
+    console.error(`[warn] Could not add shebang to ${filePath}: ${error.message}`);
+  }
+}
+
+/**
  * Build a worker with esbuild
  * @param {Object} worker - WorkerMetadata object
  * @returns {Promise<void>}
@@ -289,6 +313,9 @@ async function buildWorkerWithEsbuild(worker) {
   } catch (error) {
     throw new Error(`Failed to build ${worker.name}: ${error.message}`);
   }
+
+  // Add shebang to make executable
+  await addShebang(outfile);
 
   // Copy config file if present
   await copyWorkerConfigs(worker, outputDir);
@@ -367,7 +394,7 @@ async function generateTypeDefinitions(tsWorkers, options = {}) {
       skipLibCheck: true
     },
     include: tsWorkers.map(w => join(w.path, '**/*.ts')),
-    exclude: ['**/*.test.ts', '**/*.property.test.ts', '**/node_modules']
+    exclude: ['**/*.test.ts', '**/*.property.test.ts', '**/*.property.ts', '**/tests/**', '**/node_modules']
   };
 
   try {
