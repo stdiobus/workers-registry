@@ -298,8 +298,8 @@ async function buildWorkerWithEsbuild(worker) {
       format: 'esm',
       outfile,
       external: [
-        '@agentclientprotocol/sdk',
-        '@modelcontextprotocol/sdk',
+        // '@agentclientprotocol/sdk',
+        // '@modelcontextprotocol/sdk',
         'node:*'
       ],
       sourcemap: true,

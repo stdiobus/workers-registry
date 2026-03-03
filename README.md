@@ -11,7 +11,6 @@ Worker implementations for [stdio Bus kernel](https://github.com/stdiobus/stdiob
 - Full ACP (Agent Client Protocol) implementation
 - MCP (Model Context Protocol) server integration
 - Protocol bridges (MCP ↔ ACP)
-- Ready-to-use binary commands
 - TypeScript support with full type definitions
 - High-performance NDJSON protocol
 - Docker-ready
@@ -773,16 +772,6 @@ import {
 } from '@stdiobus/workers-registry/workers';
 ```
 
-### Binary Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `stdiobus-acp-worker` | ACP protocol worker | `stdiobus-acp-worker` |
-| `stdiobus-registry-launcher` | Registry launcher | `stdiobus-registry-launcher <api-keys.json>` |
-| `stdiobus-mcp-to-acp-proxy` | MCP-to-ACP proxy | `ACP_HOST=host ACP_PORT=port stdiobus-mcp-to-acp-proxy` |
-| `stdiobus-echo-worker` | Echo worker | `stdiobus-echo-worker` |
-| `stdiobus-mcp-echo-server` | MCP echo server | `stdiobus-mcp-echo-server` |
-
 ### Environment Variables
 
 **MCP-to-ACP Proxy:**
@@ -828,11 +817,6 @@ npx stdiobus-acp-worker
 # Verify installation
 npm list @stdiobus/workers-registry
 
-# Check binary paths
-which stdiobus-acp-worker
-
-# Use npx as fallback
-npx stdiobus-acp-worker
 ```
 
 **Worker crashes:**
