@@ -59,17 +59,6 @@ graph TB
     style Proxy fill:#e67e22,stroke:#a04000,stroke-width:2px,color:#fff
 ```
 
-**Architecture layers:**
-```
-stdio Bus kernel ← https://github.com/stdiobus/stdiobus
-    ↓ (spawns workers via stdin/stdout NDJSON)
-Workers Registry (this repo)
-    ├── ACP Worker (Agent Client Protocol)
-    ├── Registry Launcher (ACP Registry integration)
-    ├── MCP-to-ACP Proxy (protocol bridge)
-    └── Echo Worker (testing/examples)
-```
-
 ## Prerequisites
 
 - stdio Bus kernel - available via [Docker](https://hub.docker.com/r/stdiobus/stdiobus) or [build from source](https://github.com/stdiobus/stdiobus)
