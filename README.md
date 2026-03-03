@@ -10,14 +10,20 @@ stdio Bus kernel provides the core protocol and message routing infrastructure. 
 
 ## Architecture
 
-```
-stdio Bus kernel ← https://github.com/stdiobus/stdiobus
-    ↓ (spawns workers via stdin/stdout NDJSON)
-Workers Registry (this repo)
-    ├── ACP Worker (Agent Client Protocol)
-    ├── Registry Launcher (ACP Registry integration)
-    ├── MCP-to-ACP Proxy (protocol bridge)
-    └── Echo Worker (testing/examples)
+```mermaid
+graph TD
+    A["<b>stdio Bus kernel</b><br/>github.com/stdiobus/stdiobus"] -->|"spawns workers via<br/>stdin/stdout NDJSON"| B["<b>Workers Registry</b><br/>(this repo)"]
+    B --> C["<b>ACP Worker</b><br/>Agent Client Protocol"]
+    B --> D["<b>Registry Launcher</b><br/>ACP Registry integration"]
+    B --> E["<b>MCP-to-ACP Proxy</b><br/>protocol bridge"]
+    B --> F["<b>Echo Worker</b><br/>testing/examples"]
+    
+    style A fill:#0d47a1,stroke:#1976d2,stroke-width:3px,color:#fff
+    style B fill:#e65100,stroke:#ff6f00,stroke-width:3px,color:#fff
+    style C fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
+    style D fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
+    style E fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
+    style F fill:#4a148c,stroke:#7b1fa2,stroke-width:2px,color:#fff
 ```
 
 ## Workers
