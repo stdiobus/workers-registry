@@ -1,4 +1,4 @@
-# @stdiobus/workers-registry
+# stdio Bus Worker Registry
 
 [![npm version](https://img.shields.io/npm/v/@stdiobus/workers-registry.svg)](https://www.npmjs.com/package/@stdiobus/workers-registry)
 [![License](https://img.shields.io/npm/l/@stdiobus/workers-registry.svg)](https://github.com/stdiobus/workers-registry/blob/main/LICENSE)
