@@ -1,15 +1,15 @@
 # MCP-to-ACP Protocol Proxy
 
-Converts MCP protocol (from Kiro) to ACP protocol (for stdio Bus – https://github.com/stdiobus/stdiobus).
+Converts MCP protocol (from IDE) to ACP protocol (for stdio Bus – https://github.com/stdiobus/stdiobus).
 
 ## Purpose
 
-This proxy allows MCP clients (like Kiro IDE) to communicate with ACP agents through stdio Bus kernel.
+This proxy allows MCP clients (like IDE) to communicate with ACP agents through stdio Bus kernel.
 
 ## Architecture
 
 ```
-Kiro (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → ACP Agent
+IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → ACP Agent
 ```
 
 ## Configuration
@@ -30,7 +30,7 @@ See the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/re
 - `github-copilot` - GitHub Copilot
 - And many more...
 
-## Usage with Kiro
+## Usage with IDE
 
 1. Start stdio Bus with Registry Launcher:
 ```bash
@@ -39,7 +39,7 @@ See the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/re
   --tcp 127.0.0.1:9000
 ```
 
-2. Configure in `.kiro/settings/mcp.json`:
+2. Configure in `.ai/mcp/mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -58,7 +58,7 @@ See the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/re
 }
 ```
 
-3. Restart MCP server in Kiro (Command Palette → "MCP: Reconnect Server")
+3. Restart MCP server in IDE (Command Palette → "MCP: Reconnect Server")
 
 ## Protocol Mapping
 
