@@ -137,7 +137,7 @@ See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for buil
   "pools": [
     {
       "id": "acp-registry",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "acp-registry"
@@ -166,7 +166,7 @@ route to the ACP Registry. Use `acp-registry` when you need real registry agents
   "pools": [
     {
       "id": "acp-worker",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "acp-worker"
@@ -234,7 +234,7 @@ node ./node_modules/@stdiobus/workers-registry/launch echo-worker
 {
   "pools": [{
     "id": "acp-worker",
-    "command": "node",
+    "command": "npx",
     "args": [
       "@stdiobus/workers-registry",
       "acp-worker"
@@ -250,7 +250,7 @@ node ./node_modules/@stdiobus/workers-registry/launch echo-worker
   "pools": [
     {
       "id": "acp-registry",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "acp-registry"
@@ -270,7 +270,7 @@ arg to `launch acp-registry`.
   "pools": [
     {
       "id": "acp-worker",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "acp-worker"
@@ -279,7 +279,7 @@ arg to `launch acp-registry`.
     },
     {
       "id": "echo-worker",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "echo-worker"
@@ -298,9 +298,9 @@ Configure MCP-to-ACP Proxy in Kiro's MCP settings:
 {
   "mcpServers": {
     "stdio-bus-acp": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "./node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "mcp-to-acp-proxy"
       ],
       "env": {
@@ -388,7 +388,7 @@ Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotoc
   "pools": [
     {
       "id": "acp-registry",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "acp-registry"
@@ -440,7 +440,7 @@ IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → ACP Registry Worker (acp
 {
   "mcpServers": {
     "stdio-bus-acp": {
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "mcp-to-acp-proxy"
@@ -576,7 +576,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
 {
   "pools": [{
     "id": "echo-worker",
-    "command": "node",
+    "command": "npx",
     "args": [
       "@stdiobus/workers-registry",
       "echo-worker"
@@ -592,7 +592,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
   "pools": [
     {
       "id": "acp-worker",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "acp-worker"
@@ -614,7 +614,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
   "pools": [
     {
       "id": "acp-worker",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "acp-worker"
@@ -623,7 +623,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
     },
     {
       "id": "echo-worker",
-      "command": "node",
+      "command": "npx",
       "args": [
         "@stdiobus/workers-registry",
         "echo-worker"
