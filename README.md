@@ -737,7 +737,7 @@ echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"n
 docker stop stdiobus-acp-test && docker rm stdiobus-acp-test
 ```
 
-**Test ACP Registry Worker (acp-registry):**
+**Test ACP Registry Worker – acp-registry:**
 ```bash
 # Start stdio Bus with ACP Registry worker
 docker run \
