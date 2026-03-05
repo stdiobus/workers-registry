@@ -365,9 +365,18 @@ export class MessageRouter {
           this.writeCallback(enriched);
           return;
         } else {
-          // FIX: Forward notification even without mapping - use agentSessionId
-          logInfo(`Forwarding notification with unmapped agentSessionId: ${agentSessionId}`);
-          this.writeCallback(response);
+          // CRITICAL FIX: If no mapping exists, use default sessionId for routing
+          // Cannot forward with unmapped agentSessionId as stdio_bus won't recognize it
+          logError(`Notification with unmapped agentSessionId: ${agentSessionId}, using default sessionId`);
+          const enriched = {
+            ...msg,
+            sessionId: 'global-notifications',
+            params: {
+              ...params,
+              sessionId: agentSessionId,  // Keep original in params for context
+            },
+          };
+          this.writeCallback(enriched);
           return;
         }
       } else {
