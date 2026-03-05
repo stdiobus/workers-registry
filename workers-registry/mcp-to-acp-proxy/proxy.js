@@ -76,7 +76,7 @@ acpSocket.on('data', (data) => {
 
         // Check if notification or response
         if (acpMsg.id === undefined || acpMsg.id === null) {
-          // Notification
+          // Notification from ACP worker - rewrite sessionId and send back to stdio Bus
           console.error(`[MCP-APC][proxy] Processing notification: ${acpMsg.method}`);
           handleACPNotification(acpMsg);
         } else {

@@ -32,24 +32,67 @@
  * @module index
  */
 
-import { Readable, Writable } from 'node:stream';
+import { Readable, Writable, Transform } from 'node:stream';
 import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
 import { ACPAgent } from './agent.js';
+import { SessionIdRouter } from './stdio/session-id-router.js';
 
 // Log startup message to stderr (not stdout - stdout is for protocol messages)
 console.error('[worker] Starting ACP/MCP Protocol Worker...');
 
-/**
- * Convert Node.js stdin to a web ReadableStream.
- * The SDK expects web streams for NDJSON communication.
- */
-const inputStream = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
+const sessionIdRouter = new SessionIdRouter();
 
 /**
- * Convert Node.js stdout to a web WritableStream.
- * The SDK expects web streams for NDJSON communication.
+ * Transform stream to intercept stdin and save sessionId from requests.
+ * Removes sessionId before passing to ACP SDK (SDK doesn't know about it).
  */
-const outputStream = Writable.toWeb(process.stdout) as WritableStream<Uint8Array>;
+const stdinTransform = new Transform({
+  objectMode: false,
+  transform(chunk: Buffer, _encoding, callback) {
+    const lines = chunk.toString().split('\n');
+    const processedLines: string[] = [];
+
+    for (const line of lines) {
+      processedLines.push(sessionIdRouter.processIncomingLine(line));
+    }
+
+    callback(null, Buffer.from(processedLines.join('\n')));
+  }
+});
+
+/**
+ * Transform stream to intercept stdout and restore sessionId in responses.
+ * Adds sessionId back for stdio_bus routing.
+ */
+const stdoutTransform = new Transform({
+  objectMode: false,
+  transform(chunk: Buffer, _encoding, callback) {
+    const lines = chunk.toString().split('\n');
+    const processedLines: string[] = [];
+
+    for (const line of lines) {
+      processedLines.push(sessionIdRouter.processOutgoingLine(line));
+    }
+
+    callback(null, Buffer.from(processedLines.join('\n')));
+  }
+});
+
+// Pipe stdin through transform before SDK
+process.stdin.pipe(stdinTransform);
+
+/**
+ * Convert transformed stdin to web ReadableStream for SDK.
+ */
+const inputStream = Readable.toWeb(stdinTransform) as ReadableStream<Uint8Array>;
+
+/**
+ * Convert stdout transform to web WritableStream for SDK.
+ */
+const outputStream = Writable.toWeb(stdoutTransform) as WritableStream<Uint8Array>;
+
+// Pipe transform output to actual stdout
+stdoutTransform.pipe(process.stdout);
 
 /**
  * Create the NDJSON stream for ACP communication.

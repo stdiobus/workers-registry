@@ -253,7 +253,11 @@ Configure MCP-to-ACP Proxy in Kiro's MCP settings:
 {
   "mcpServers": {
     "stdio-bus-acp": {
-      "command": "stdiobus-mcp-to-acp-proxy",
+      "command": "node",
+      "args": [
+        "@stdiobus/workers-registry/launch",
+        "mcp-to-acp-proxy"
+      ],
       "env": {
         "ACP_HOST": "localhost",
         "ACP_PORT": "9000",
