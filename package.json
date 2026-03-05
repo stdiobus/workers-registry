@@ -1,6 +1,6 @@
 {
   "name": "@stdiobus/workers-registry",
-  "version": "1.3.22",
+  "version": "1.3.23",
   "description": "Worker implementations for stdio Bus protocol kernel - ACP, MCP, and protocol bridges",
   "type": "module",
   "main": "./out/dist/workers-registry/acp-registry/index.js",
