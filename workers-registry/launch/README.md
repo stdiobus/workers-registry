@@ -18,13 +18,22 @@ This launcher provides a single entry point to run any worker in the registry by
 After building the project:
 
 ```bash
-# Run any worker by name
-node out/dist/workers/launch/index.js <worker-name>
+# Run any worker by name (package install)
+./node_modules/.bin/stdiobus <worker-name>
+
+# Or via npx (no local install)
+npx -y -p @stdiobus/workers-registry stdiobus <worker-name>
+
+# Direct Node invocation
+node ./node_modules/@stdiobus/workers-registry/launch <worker-name>
+
+# In this repo, after build
+node ./launch/index.js <worker-name>
 
 # Examples
-node out/dist/workers/launch/index.js acp-worker
-node out/dist/workers/launch/index.js echo-worker
-node out/dist/workers/launch/index.js mcp-echo-server
+./node_modules/.bin/stdiobus acp-worker
+./node_modules/.bin/stdiobus echo-worker
+./node_modules/.bin/stdiobus mcp-echo-server
 ```
 
 ## Available Workers

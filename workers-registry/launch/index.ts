@@ -27,10 +27,10 @@
  * Universal worker launcher for stdio Bus Workers Registry
  *
  * Usage:
- *   node index.js <worker-name>
- *   node index.js acp-worker
- *   node index.js echo-worker
- *   node index.js mcp-echo-server
+ *   stdiobus <worker-name>
+ *   stdiobus acp-worker
+ *   stdiobus echo-worker
+ *   stdiobus mcp-echo-server
  *
  * This script dynamically imports and runs the specified worker from the compiled output.
  */
@@ -85,7 +85,8 @@ type WorkerName = keyof typeof STDIO_BUS_WORKERS;
  * Display usage information
  */
 function showUsage(): void {
-  console.error('Usage: node index.js <worker-name>');
+  console.error('Usage: stdiobus <worker-name>');
+  console.error('       node ./node_modules/@stdiobus/workers-registry/launch <worker-name>');
   console.error('');
   console.error('Available workers:');
 
@@ -95,9 +96,9 @@ function showUsage(): void {
 
   console.error('');
   console.error('Examples:');
-  console.error('  node index.js acp-worker');
-  console.error('  node index.js echo-worker');
-  console.error('  node index.js mcp-echo-server');
+  console.error('  stdiobus acp-worker');
+  console.error('  stdiobus echo-worker');
+  console.error('  stdiobus mcp-echo-server');
 }
 
 /**

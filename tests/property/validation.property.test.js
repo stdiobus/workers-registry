@@ -403,6 +403,12 @@ describe('Build Output Validation Property Tests', () => {
 
           const actualMissingIndex = missingIndex % uniqueWorkers.length;
 
+          // Ensure a clean output directory for each run to avoid cross-run contamination
+          await rm(testDistDir, { recursive: true, force: true });
+          await rm(testTscDir, { recursive: true, force: true });
+          await mkdir(testDistDir, { recursive: true });
+          await mkdir(testTscDir, { recursive: true });
+
           // Build worker metadata array - all with config files
           const workers = uniqueWorkers.map(spec => ({
             name: spec.workerName,

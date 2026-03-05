@@ -34,7 +34,7 @@ import { dirname } from 'path';
 import { copyWorkerConfigs } from '../../scripts/build.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const testTmpDir = join(__dirname, '..', '..', 'test-tmp-config');
+const testTmpDir = join(__dirname, '..', '..', 'test-tmp-config-copy');
 const testWorkerDir = join(testTmpDir, 'worker-source');
 const testOutputDir = join(testTmpDir, 'worker-output');
 

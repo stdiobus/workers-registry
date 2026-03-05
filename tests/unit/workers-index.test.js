@@ -25,8 +25,8 @@
  * Unit tests for workers index generation
  *
  * Tests the generateWorkersIndex() function which creates:
- * - out/dist/workers/index.js with workers object
- * - out/dist/workers/index.d.ts with TypeScript definitions
+ * - out/dist/workers-registry/index.js with workers object
+ * - out/dist/workers-registry/index.d.ts with TypeScript definitions
  *
  * Requirements: 5.1, 5.2, 5.3
  */
@@ -46,7 +46,7 @@ describe('generateWorkersIndex', () => {
 
   beforeEach(async () => {
     // Create test directory structure
-    workersDistPath = join(testDir, 'dist', 'workers');
+    workersDistPath = join(testDir, 'dist', 'workers-registry');
     await mkdir(workersDistPath, { recursive: true });
   });
 
@@ -176,8 +176,10 @@ describe('generateWorkersIndex', () => {
     const workersObject = JSON.parse(workersMatch[1]);
 
     // TypeScript workers should have types path pointing to tsc output
-    expect(workersObject['acp-worker'].types).toBe('../tsc/workers/acp-worker/src/index.d.ts');
-    expect(workersObject['mcp-echo-server'].types).toBe('../tsc/workers/mcp-echo-server/index.d.ts');
+    expect(workersObject['acp-worker'].types)
+      .toBe('../tsc/workers-registry/acp-worker/src/index.d.ts');
+    expect(workersObject['mcp-echo-server'].types)
+      .toBe('../tsc/workers-registry/mcp-echo-server/mcp-echo-server.d.ts');
   });
 
   it('should set types to null for JavaScript workers', async () => {
@@ -395,9 +397,12 @@ describe('generateWorkersIndex', () => {
     expect(workersObject['worker-nested'].entrypoint).toBe('./worker-nested/index.js');
 
     // Types paths should reflect the original source structure
-    expect(workersObject['worker-with-src'].types).toBe('../tsc/workers/worker-with-src/src/index.d.ts');
-    expect(workersObject['worker-at-root'].types).toBe('../tsc/workers/worker-at-root/worker-at-root.d.ts');
-    expect(workersObject['worker-nested'].types).toBe('../tsc/workers/worker-nested/src/lib/main.d.ts');
+    expect(workersObject['worker-with-src'].types)
+      .toBe('../tsc/workers-registry/worker-with-src/src/index.d.ts');
+    expect(workersObject['worker-at-root'].types)
+      .toBe('../tsc/workers-registry/worker-at-root/worker-at-root.d.ts');
+    expect(workersObject['worker-nested'].types)
+      .toBe('../tsc/workers-registry/worker-nested/src/lib/main.d.ts');
   });
 
   it('should handle empty workers array', async () => {
