@@ -345,6 +345,7 @@ export class MessageRouter {
 
     // Handle notifications (no id) - map sessionId from agent to client
     if (id === null && msg.method) {
+      logInfo(`Received notification: ${msg.method}`);
       const params = msg.params as Record<string, unknown> | undefined;
       if (params && typeof params.sessionId === 'string') {
         const agentSessionId = params.sessionId;
@@ -360,10 +361,32 @@ export class MessageRouter {
               sessionId: agentSessionId,  // Keep original in params for agent context
             },
           };
+          logInfo(`Forwarding notification with mapped sessionId: ${clientSessionId}`);
           this.writeCallback(enriched);
           return;
         } else {
-          logError(`No sessionId mapping found for agent sessionId: ${agentSessionId}`);
+          // FIX: Forward notification even without mapping - use agentSessionId
+          logInfo(`Forwarding notification with unmapped agentSessionId: ${agentSessionId}`);
+          this.writeCallback(response);
+          return;
+        }
+      } else {
+        // CRITICAL FIX: Handle notifications without sessionId in params
+        // Check if sessionId is at top level or if this is a global notification
+        const topLevelSessionId = msg.sessionId as string | undefined;
+        if (topLevelSessionId) {
+          // sessionId already at top level, forward as-is
+          this.writeCallback(response);
+          return;
+        } else {
+          // Global notification without sessionId - add a default sessionId for routing
+          logError(`Notification without sessionId: ${msg.method}, adding default sessionId for routing`);
+          const enriched = {
+            ...msg,
+            sessionId: 'global-notifications', // Default sessionId for stdio_bus routing
+          };
+          this.writeCallback(enriched);
+          return;
         }
       }
     }

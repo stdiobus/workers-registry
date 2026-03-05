@@ -39,7 +39,7 @@ stdio Bus kernel provides the core protocol and message routing infrastructure. 
 graph TB
     Client[Client Application] -->|TCP/Unix Socket| Kernel[stdio Bus kernel]
     Kernel -->|NDJSON stdin/stdout| ACP[ACP Worker]
-    Kernel -->|NDJSON stdin/stdout| Registry[Registry Launcher]
+    Kernel -->|NDJSON stdin/stdout| Registry[ACP Registry Worker (acp-registry)]
     Kernel -->|NDJSON stdin/stdout| Echo[Echo Worker]
     Kernel -->|NDJSON stdin/stdout| Proxy[MCP-to-ACP Proxy]
     
@@ -68,11 +68,15 @@ graph TB
 
 | Worker | Description | Protocol | Command |
 |--------|-------------|----------|---------|
-| `acp-worker` | Full ACP protocol implementation using official SDK | ACP | `stdiobus-acp-worker` |
-| `registry-launcher` | Routes messages to any agent in the ACP Registry | ACP | `stdiobus-registry-launcher` |
-| `mcp-to-acp-proxy` | Bridges MCP clients (like IDEs) to ACP agents | MCP → ACP | `stdiobus-mcp-to-acp-proxy` |
-| `echo-worker` | Simple echo worker for testing NDJSON protocol | NDJSON | `stdiobus-echo-worker` |
-| `mcp-echo-server` | MCP server example for testing | MCP | `stdiobus-mcp-echo-server` |
+| `acp-registry` | Registry Launcher worker that routes to ACP Registry agents (requires `api-keys.json`) | ACP | `node ./node_modules/@stdiobus/workers-registry/launch acp-registry` |
+| `acp-worker` | Full ACP protocol implementation (standalone agent; does **not** route to ACP Registry) | ACP | `node ./node_modules/@stdiobus/workers-registry/launch acp-worker` |
+| `registry-launcher` | Registry Launcher implementation module used by `acp-registry` (not a launch target) | ACP | Use `acp-registry` |
+| `mcp-to-acp-proxy` | Bridges MCP clients (like IDEs) to ACP agents | MCP → ACP | `node ./node_modules/@stdiobus/workers-registry/launch mcp-to-acp-proxy` |
+| `echo-worker` | Simple echo worker for testing NDJSON protocol | NDJSON | `node ./node_modules/@stdiobus/workers-registry/launch echo-worker` |
+| `mcp-echo-server` | MCP server example for testing | MCP | `node ./node_modules/@stdiobus/workers-registry/launch mcp-echo-server` |
+
+**Note:** The universal launcher is `@stdiobus/workers-registry/launch`. In this repo, use
+`node ./launch/index.js <worker-name>` after `npm run build`.
 
 ## Package API
 
@@ -92,6 +96,9 @@ import mcpToAcpProxy from '@stdiobus/workers-registry/workers/mcp-to-acp-proxy';
 import { workers } from '@stdiobus/workers-registry/workers';
 console.log(workers['acp-worker'].entrypoint);
 ```
+
+**Note:** `acp-registry` is a worker runtime launched via
+`@stdiobus/workers-registry/launch` and is not exported as a module.
 
 ### TypeScript Support
 
@@ -122,7 +129,36 @@ docker pull stdiobus/stdiobus:latest
 
 See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for build instructions.
 
-### 3. Run with ACP Worker
+### 3. Run with ACP Registry (recommended for real agents)
+
+**Create config.json:**
+```json
+{
+  "pools": [
+    {
+      "id": "acp-registry",
+      "command": "node",
+      "args": [
+        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "acp-registry"
+      ],
+      "instances": 1
+    }
+  ]
+}
+```
+
+**Important:** Place `api-keys.json` next to your stdio Bus config (working directory),
+or pass a custom config file (third arg to `launch acp-registry`) with an absolute
+`apiKeysPath`. In this repo, the default file is
+`workers-registry/acp-registry/acp-registry-config.json`.
+Use the same Docker/binary commands below (they run `config.json`), and ensure
+`api-keys.json` is mounted into the container when using Docker.
+
+### 4. Run with ACP Worker
+
+**Note:** `acp-worker` is a standalone ACP agent for SDK/protocol testing. It does **not**
+route to the ACP Registry. Use `acp-registry` when you need real registry agents.
 
 **Create config.json:**
 ```json
@@ -158,7 +194,11 @@ docker run -p 9000:9000 \
 ### 5. Test Connection
 
 ```bash
+# ACP worker (standalone)
 echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"name":"test","version":"1.0"}}}' | nc localhost 9000
+
+# ACP Registry worker (route to a registry agent)
+echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"agentId":"claude-acp","clientInfo":{"name":"test","version":"1.0"}}}' | nc localhost 9000
 ```
 
 ---
@@ -170,18 +210,21 @@ echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"n
 The simplest way to run any worker:
 
 ```bash
-# Run any worker by name
-node ./node_modules/@stdiobus/workers-registry/out/dist/index.js <worker-name>
+# Run any worker by name (package install)
+node ./node_modules/@stdiobus/workers-registry/launch <worker-name>
+
+# Run any worker by name (this repo, after build)
+node ./launch/index.js <worker-name>
 
 # Available workers:
+# - acp-registry
 # - acp-worker
-# - acp-registry  
 # - echo-worker
 # - mcp-echo-server
 # - mcp-to-acp-proxy
 
 # Example: Run echo worker for testing
-node ./node_modules/@stdiobus/workers-registry/out/dist/index.js echo-worker
+node ./node_modules/@stdiobus/workers-registry/launch echo-worker
 ```
 
 ### Using in stdio Bus Configuration
@@ -201,23 +244,25 @@ node ./node_modules/@stdiobus/workers-registry/out/dist/index.js echo-worker
 }
 ```
 
-**Registry Launcher with API Keys:**
+**ACP Registry Worker with API Keys:**
 ```json
 {
   "pools": [
     {
-      "id": "registry-launcher",
+      "id": "acp-registry",
       "command": "node",
       "args": [
         "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
-        "registry-launcher",
-        "./api-keys.json"
+        "acp-registry"
       ],
       "instances": 1
     }
   ]
 }
 ```
+**Note:** `acp-registry` reads `api-keys.json` via its config. The default
+`apiKeysPath` is `./api-keys.json`. You can pass a custom config file as the third
+arg to `launch acp-registry`.
 
 **Multiple Workers:**
 ```json
@@ -253,7 +298,11 @@ Configure MCP-to-ACP Proxy in Kiro's MCP settings:
 {
   "mcpServers": {
     "stdio-bus-acp": {
-      "command": "stdiobus-mcp-to-acp-proxy",
+      "command": "node",
+      "args": [
+        "./node_modules/@stdiobus/workers-registry/launch",
+        "mcp-to-acp-proxy"
+      ],
       "env": {
         "ACP_HOST": "localhost",
         "ACP_PORT": "9000",
@@ -263,6 +312,9 @@ Configure MCP-to-ACP Proxy in Kiro's MCP settings:
   }
 }
 ```
+
+**Note:** Run `acp-registry` on the stdio Bus side so `AGENT_ID` resolves to real
+ACP Registry agents. `acp-worker` is a standalone agent and will not route to the registry.
 
 ---
 
@@ -309,11 +361,13 @@ Using binary:
 
 ---
 
-### Registry Launcher
+### ACP Registry Worker (acp-registry)
 
 Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json).
 
-**Location:** `workers-registry/acp-worker/src/registry-launcher/`
+**Location (worker entrypoint):** `workers-registry/acp-registry/`
+
+**Implementation:** `workers-registry/acp-worker/src/registry-launcher/`
 
 **Features:**
 - Automatic agent discovery from ACP Registry
@@ -333,18 +387,21 @@ Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotoc
 {
   "pools": [
     {
-      "id": "registry-launcher",
+      "id": "acp-registry",
       "command": "node",
       "args": [
         "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
-        "registry-launcher",
-        "./api-keys.json"
+        "acp-registry"
       ],
       "instances": 1
     }
   ]
 }
 ```
+**Note:** `acp-registry` uses its default config when no path is provided. You can
+pass a custom config file as the third arg to `launch acp-registry`. The default
+file in this repo is `workers-registry/acp-registry/acp-registry-config.json`, which
+expects `api-keys.json` at `./api-keys.json` unless you override `apiKeysPath`.
 
 **Run:**
 
@@ -354,7 +411,7 @@ docker run \
   --name stdiobus-registry \
   -p 9000:9000 \
   -v $(pwd):/stdiobus:ro \
-  -v $(pwd)/workers-registry/acp-registry/registry-launcher-config.json:/config.json:ro \
+  -v $(pwd)/workers-registry/acp-registry/acp-registry-config.json:/config.json:ro \
   -v $(pwd)/api-keys.json:/api-keys.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -362,7 +419,7 @@ docker run \
 
 Using binary:
 ```bash
-./stdio_bus --config workers-registry/acp-registry/registry-launcher-config.json --tcp 0.0.0.0:9000
+./stdio_bus --config workers-registry/acp-registry/acp-registry-config.json --tcp 0.0.0.0:9000
 ```
 
 ---
@@ -375,7 +432,7 @@ Bridges MCP clients (like IDE) to ACP agents through stdio Bus.
 
 **Architecture:**
 ```
-IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → Registry Launcher → ACP Agent
+IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → ACP Registry Worker (acp-registry) → ACP Agent
 ```
 
 **Configuration for IDE:**
@@ -680,14 +737,14 @@ echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"clientInfo":{"n
 docker stop stdiobus-acp-test && docker rm stdiobus-acp-test
 ```
 
-**Test Registry Launcher:**
+**Test ACP Registry Worker (acp-registry):**
 ```bash
-# Start stdio Bus with Registry Launcher
+# Start stdio Bus with ACP Registry worker
 docker run \
   --name stdiobus-registry-test \
   -p 9000:9000 \
   -v $(pwd):/stdiobus:ro \
-  -v $(pwd)/workers-registry/acp-registry/registry-launcher-config.json:/config.json:ro \
+  -v $(pwd)/workers-registry/acp-registry/acp-registry-config.json:/config.json:ro \
   -v $(pwd)/api-keys.json:/api-keys.json:ro \
   stdiobus/stdiobus:latest \
   --config /config.json --tcp 0.0.0.0:9000
@@ -765,7 +822,7 @@ workers-registry/
 │   │   ├── session/         # Session management
 │   │   └── registry-launcher/  # Registry Launcher implementation
 │   └── tests/               # Test suites
-├── acp-registry/            # Registry Launcher configs
+├── acp-registry/            # ACP Registry worker entrypoint + configs
 ├── echo-worker/             # Simple echo worker example
 ├── mcp-echo-server/         # MCP server example
 └── mcp-to-acp-proxy/        # MCP-to-ACP protocol bridge
@@ -827,8 +884,8 @@ nvm install 20  # If using nvm
 **Permission errors:**
 ```bash
 npm install -g @stdiobus/workers-registry  # Global install (may need sudo)
-# Or use npx
-npx stdiobus-acp-worker
+# Or use a local install
+node ./node_modules/@stdiobus/workers-registry/launch acp-worker
 ```
 
 ### Runtime Issues
@@ -906,7 +963,7 @@ npm test
 ## Worker Documentation
 
 - [ACP Worker](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/acp-worker) - Full ACP protocol implementation
-- [Registry Launcher](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/acp-registry) - ACP Registry integration
+- [ACP Registry Worker (acp-registry)](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/acp-registry) - ACP Registry integration
 - [Echo Worker](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/echo-worker) - Reference implementation
 - [MCP Echo Server](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/mcp-echo-server) - MCP server example
 - [MCP-to-ACP Proxy](https://github.com/stdiobus/workers-registry/tree/main/workers-registry/mcp-to-acp-proxy) - Protocol bridge

@@ -159,7 +159,7 @@ export class ProtocolConverter {
         return this.handleSessionNewResponse(id, result, pending);
 
       case 'session/prompt':
-        return this.convertSessionPromptResponse(id);
+        return this.convertSessionPromptResponse(id, result);
 
       default:
         console.error(`[mcp-proxy] Unhandled method ${pending.method}`);
@@ -417,16 +417,81 @@ export class ProtocolConverter {
    * Convert ACP session/prompt response to MCP tool call result.
    * Returns accumulated text from streaming notifications.
    */
-  private convertSessionPromptResponse(id: string | number): MCPResponse {
-    const text = this.state.takeAccumulatedText(id) || '';
-    console.error(`[mcp-proxy] Returning accumulated text (${text.length} chars): "${text.substring(0, 50)}..."`);
+  private convertSessionPromptResponse(id: string | number, result: unknown): MCPResponse {
+    const accumulated = this.state.takeAccumulatedText(id) || '';
+    const fallbackText = accumulated ? null : this.extractTextFromResult(result);
+    const finalText = accumulated || fallbackText || 'No response';
+    const source = accumulated ? 'accumulated' : (fallbackText ? 'fallback' : 'empty');
+    console.error(
+      `[mcp-proxy] Returning ${source} text (${finalText.length} chars): "${finalText.substring(0, 50)}..."`,
+    );
     return {
       jsonrpc: '2.0',
       id,
       result: {
-        content: [{ type: 'text', text: text || 'No response' }],
+        content: [{ type: 'text', text: finalText }],
       },
     };
+  }
+
+  private extractTextFromResult(result: unknown): string | null {
+    if (!result || typeof result !== 'object') {
+      return null;
+    }
+
+    const directText = this.readText((result as any).text);
+    if (directText) {
+      return directText;
+    }
+
+    const contentText = this.extractTextFromContentBlocks((result as any).content);
+    if (contentText) {
+      return contentText;
+    }
+
+    const message = (result as any).message;
+    if (message && typeof message === 'object') {
+      const messageText = this.readText((message as any).text);
+      if (messageText) {
+        return messageText;
+      }
+
+      const messageContent = this.extractTextFromContentBlocks((message as any).content);
+      if (messageContent) {
+        return messageContent;
+      }
+    }
+
+    const meta = (result as any)._meta;
+    if (meta && typeof meta === 'object') {
+      const metaText = this.readText((meta as any).text) || this.readText((meta as any).output_text);
+      if (metaText) {
+        return metaText;
+      }
+    }
+
+    return null;
+  }
+
+  private extractTextFromContentBlocks(content: unknown): string | null {
+    if (!Array.isArray(content)) {
+      return null;
+    }
+
+    const textParts = content
+      .filter((block) => block && typeof block === 'object' && (block as any).type === 'text')
+      .map((block) => (block as any).text)
+      .filter((text) => typeof text === 'string' && text.length > 0);
+
+    if (textParts.length === 0) {
+      return null;
+    }
+
+    return textParts.join('');
+  }
+
+  private readText(value: unknown): string | null {
+    return typeof value === 'string' && value.length > 0 ? value : null;
   }
 
   /**
