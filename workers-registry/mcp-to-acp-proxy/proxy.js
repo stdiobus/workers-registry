@@ -142,6 +142,20 @@ function handleACPNotification(msg) {
       }
     }
   }
+
+  // CRITICAL FIX: Add sessionId to notification before sending back to stdio_bus
+  // Without sessionId, stdio_bus cannot route the message and shows warning:
+  // "Worker message has no id or sessionId, cannot route"
+  if (proxySessionId) {
+    const notificationWithSession = {
+      ...msg,
+      sessionId: proxySessionId
+    };
+    console.error(`[MCP-ACP][proxy] → stdio_bus notification with sessionId: ${JSON.stringify(notificationWithSession)}`);
+    if (acpConnected) {
+      acpSocket.write(JSON.stringify(notificationWithSession) + '\n');
+    }
+  }
 }
 
 function convertMCPtoACP(mcpReq) {
