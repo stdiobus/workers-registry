@@ -142,6 +142,8 @@ function handleACPNotification(msg) {
       }
     }
   }
+  // Note: Notifications are processed internally, not forwarded
+  // They accumulate text for the final response
 }
 
 function convertMCPtoACP(mcpReq) {

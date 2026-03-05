@@ -2,7 +2,7 @@
  * Tests for the universal worker launcher (TypeScript version)
  *
  * The launcher is now implemented in TypeScript at workers-registry/launch/index.ts
- * and compiled to out/dist/workers/launch/index.js
+ * and compiled to launch/index.js
  */
 
 import { describe, it, expect } from '@jest/globals';
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const launcherPath = join(__dirname, '../../index.js');
+const launcherPath = join(__dirname, '../../launch/index.js');
 
 /**
  * Helper to run launcher and capture output
@@ -101,7 +101,10 @@ describe('Universal Worker Launcher', () => {
     // This test assumes the build hasn't been run or out/ doesn't exist
     // We'll skip it if the files exist
     const { access } = await import('fs/promises');
-    const workerPath = join(__dirname, '../../out/dist/workers/echo-worker/echo-worker.js');
+    const workerPath = join(
+      __dirname,
+      '../../out/dist/workers-registry/echo-worker/echo-worker.js'
+    );
 
     try {
       await access(workerPath);

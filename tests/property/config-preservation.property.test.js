@@ -34,10 +34,10 @@ import { dirname } from 'path';
 import { copyWorkerConfigs } from '../../scripts/build.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const testTmpDir = join(__dirname, '..', '..', 'test-tmp-config');
+const testTmpDir = join(__dirname, '..', '..', 'test-tmp-config-preservation');
 const testRegistryDir = join(testTmpDir, 'workers-registry');
 const testOutDir = join(testTmpDir, 'out');
-const testDistDir = join(testOutDir, 'dist', 'workers');
+const testDistDir = join(testOutDir, 'dist', 'workers-registry');
 
 /**
  * Setup a temporary test directory
