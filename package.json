@@ -1,6 +1,6 @@
 {
-  "name": "@stdiobus/registry",
-  "version": "1.5.0",
+  "name": "@stdiobus/workers-registry",
+  "version": "1.4.1",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
   "main": "./out/dist/workers-registry/acp-worker/index.js",
@@ -45,6 +45,9 @@
     },
     "./workers/mcp-to-acp-proxy": "./out/dist/workers-registry/mcp-to-acp-proxy/proxy.js",
     "./package.json": "./package.json"
+  },
+  "bin": {
+    "stdiobus": "./launch/index.js"
   },
   "files": [
     "out/",
