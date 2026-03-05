@@ -139,7 +139,7 @@ See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for buil
       "id": "acp-registry",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "acp-registry"
       ],
       "instances": 1
@@ -168,7 +168,7 @@ route to the ACP Registry. Use `acp-registry` when you need real registry agents
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "acp-worker"
       ],
       "instances": 1
@@ -236,7 +236,7 @@ node ./node_modules/@stdiobus/workers-registry/launch echo-worker
     "id": "acp-worker",
     "command": "node",
     "args": [
-      "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+      "@stdiobus/workers-registry",
       "acp-worker"
     ],
     "instances": 1
@@ -252,7 +252,7 @@ node ./node_modules/@stdiobus/workers-registry/launch echo-worker
       "id": "acp-registry",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "acp-registry"
       ],
       "instances": 1
@@ -272,7 +272,7 @@ arg to `launch acp-registry`.
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "acp-worker"
       ],
       "instances": 2
@@ -281,7 +281,7 @@ arg to `launch acp-registry`.
       "id": "echo-worker",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "echo-worker"
       ],
       "instances": 1
@@ -390,7 +390,7 @@ Routes messages to any agent in the [ACP Registry](https://cdn.agentclientprotoc
       "id": "acp-registry",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "acp-registry"
       ],
       "instances": 1
@@ -442,7 +442,7 @@ IDE (MCP Client) → MCP-to-ACP Proxy → stdio Bus → ACP Registry Worker (acp
     "stdio-bus-acp": {
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "mcp-to-acp-proxy"
       ],
       "env": {
@@ -578,7 +578,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
     "id": "echo-worker",
     "command": "node",
     "args": [
-      "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+      "@stdiobus/workers-registry",
       "echo-worker"
     ],
     "instances": 1
@@ -594,7 +594,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "acp-worker"
       ],
       "instances": 4
@@ -616,7 +616,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
       "id": "acp-worker",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "acp-worker"
       ],
       "instances": 2
@@ -625,7 +625,7 @@ stdio Bus kernel is configured via JSON files. This repository includes example 
       "id": "echo-worker",
       "command": "node",
       "args": [
-        "./stdiobus/node_modules/@stdiobus/workers-registry/launch",
+        "@stdiobus/workers-registry",
         "echo-worker"
       ],
       "instances": 1
