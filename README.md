@@ -39,7 +39,7 @@ stdio Bus kernel provides the core protocol and message routing infrastructure. 
 graph TB
     Client[Client Application] -->|TCP/Unix Socket| Kernel[stdio Bus kernel]
     Kernel -->|NDJSON stdin/stdout| ACP[ACP Worker]
-    Kernel -->|NDJSON stdin/stdout| Registry[ACP Registry Worker (acp-registry)]
+    Kernel -->|NDJSON stdin/stdout| Registry[ACP Registry Worker – acp-registry]
     Kernel -->|NDJSON stdin/stdout| Echo[Echo Worker]
     Kernel -->|NDJSON stdin/stdout| Proxy[MCP-to-ACP Proxy]
     
