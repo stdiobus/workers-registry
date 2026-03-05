@@ -59,8 +59,8 @@ const STDIO_BUS_WORKERS: Readonly<Record<string, WorkerConfig>> = {
     description: 'Full ACP protocol implementation with MCP integration'
   },
   'acp-registry': {
-    path: '../out/dist/workers-registry/acp-registry/registry-launcher-client.js',
-    description: 'Registry Launcher for ACP Registry agents'
+    path: '../out/dist/workers-registry/acp-registry/index.js',
+    description: 'Registry Launcher worker for ACP Registry agents'
   },
   'echo-worker': {
     path: '../out/dist/workers-registry/echo-worker/echo-worker.js',
