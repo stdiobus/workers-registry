@@ -1,5 +1,5 @@
 {
-  "name": "@stdiobus/workers-registry",
+  "name": "@stdiobus/registry",
   "version": "1.4.1-beta.4",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
