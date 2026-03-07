@@ -266,6 +266,24 @@ function convertACPtoMCP(acpResp) {
   pendingRequests.delete(id);
 
   if (error) {
+    // For session/prompt errors: if we already accumulated text from streaming,
+    // return the accumulated text as a successful response instead of the error.
+    // This handles the case where the agent streams the full response via
+    // session/update notifications but then fails to serialize the final response.
+    if (pending.method === 'session/prompt') {
+      const text = accumulatedText.get(id) || '';
+      accumulatedText.delete(id);
+      if (text.length > 0) {
+        console.error(`[MCP-APC][proxy] Agent error after streaming, returning accumulated text (${text.length} chars) instead of error`);
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text }]
+          }
+        };
+      }
+    }
     accumulatedText.delete(id);
     return {
       jsonrpc: '2.0',
