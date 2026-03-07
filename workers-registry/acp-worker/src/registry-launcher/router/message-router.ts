@@ -189,8 +189,8 @@ export class MessageRouter {
   /** API keys for agent authentication */
   private readonly apiKeys: Record<string, any>;
 
-  /** Map of request ID to pending request info for correlation */
-  private readonly pendingRequests: Map<string | number, PendingRequest> = new Map();
+  /** Map of request ID (as string) to pending request info for correlation */
+  private readonly pendingRequests: Map<string, PendingRequest> = new Map();
 
   /** Map of agent ID to authentication state */
   private readonly authState: Map<string, 'none' | 'pending' | 'authenticated'> = new Map();
@@ -276,12 +276,15 @@ export class MessageRouter {
       const msg = message as Record<string, unknown>;
       const clientSessionId = typeof msg.sessionId === 'string' ? msg.sessionId : undefined;
 
-      this.pendingRequests.set(id, {
+      // Use string key for consistent lookup (JSON-RPC id can be string or number)
+      const idKey = String(id);
+      this.pendingRequests.set(idKey, {
         id,
         agentId,
         timestamp: Date.now(),
         clientSessionId,
       } as any);
+      logInfo(`Tracked pending request id=${idKey} for agent ${agentId}, sessionId=${clientSessionId}`);
     }
 
     // Transform message (remove agentId) and forward to agent
@@ -292,7 +295,7 @@ export class MessageRouter {
       logError(`Failed to write to agent ${agentId}`);
       // Remove from pending if write failed
       if (id !== null) {
-        this.pendingRequests.delete(id);
+        this.pendingRequests.delete(String(id));
       }
     } else {
       logInfo(`Routed message to agent ${agentId}`);
@@ -320,7 +323,12 @@ export class MessageRouter {
 
     // Check if this is a response to a tracked request
     if (id !== null) {
-      const pending = this.pendingRequests.get(id);
+      // Use string key for consistent lookup (JSON-RPC id can be string or number)
+      const idKey = String(id);
+      const pending = this.pendingRequests.get(idKey);
+
+      logInfo(`Looking up pending request id=${idKey}, found=${!!pending}, agentId match=${pending?.agentId === agentId}`);
+
       if (pending && pending.agentId === agentId) {
         // Extract clientSessionId before deleting pending request
         clientSessionId = (pending as any).clientSessionId;
@@ -344,7 +352,7 @@ export class MessageRouter {
           }
         }
 
-        this.pendingRequests.delete(id);
+        this.pendingRequests.delete(idKey);
       }
     }
 
@@ -515,7 +523,7 @@ export class MessageRouter {
    * @returns true if the request is pending, false otherwise
    */
   isPending(id: string | number): boolean {
-    return this.pendingRequests.has(id);
+    return this.pendingRequests.has(String(id));
   }
 
   /**
