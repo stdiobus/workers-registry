@@ -306,7 +306,7 @@ export class MessageRouter {
    *
    * Intercepts initialize responses to trigger automatic authentication.
    * Tracks sessionId mapping for proper notification routing.
-   * Forwards all responses to stdout.
+   * Forwards all responses to stdout with proper sessionId for stdio Bus routing.
    *
    * @param agentId - The agent that sent the response
    * @param response - The response object from the agent
@@ -315,10 +315,16 @@ export class MessageRouter {
     const id = extractId(response);
     const msg = response as Record<string, unknown>;
 
+    // Track clientSessionId for restoring in response
+    let clientSessionId: string | undefined;
+
     // Check if this is a response to a tracked request
     if (id !== null) {
       const pending = this.pendingRequests.get(id);
       if (pending && pending.agentId === agentId) {
+        // Extract clientSessionId before deleting pending request
+        clientSessionId = (pending as any).clientSessionId;
+
         const result = msg.result as Record<string, unknown> | undefined;
 
         // Check if this is an initialize response with authMethods
@@ -332,7 +338,6 @@ export class MessageRouter {
         // session/new responses have sessionId in result, not in params
         if (result && typeof result.sessionId === 'string') {
           const agentSessionId = result.sessionId;
-          const clientSessionId = (pending as any).clientSessionId;
           if (clientSessionId) {
             this.sessionIdMap.set(agentSessionId, clientSessionId);
             logInfo(`Mapped agent sessionId ${agentSessionId} to client sessionId ${clientSessionId}`);
@@ -349,19 +354,19 @@ export class MessageRouter {
       const params = msg.params as Record<string, unknown> | undefined;
       if (params && typeof params.sessionId === 'string') {
         const agentSessionId = params.sessionId;
-        const clientSessionId = this.sessionIdMap.get(agentSessionId);
+        const mappedClientSessionId = this.sessionIdMap.get(agentSessionId);
 
-        if (clientSessionId) {
+        if (mappedClientSessionId) {
           // Replace agent sessionId with client sessionId for stdio Bus routing
           const enriched = {
             ...msg,
-            sessionId: clientSessionId,
+            sessionId: mappedClientSessionId,
             params: {
               ...params,
               sessionId: agentSessionId,  // Keep original in params for agent context
             },
           };
-          logInfo(`Forwarding notification with mapped sessionId: ${clientSessionId}`);
+          logInfo(`Forwarding notification with mapped sessionId: ${mappedClientSessionId}`);
           this.writeCallback(enriched);
           return;
         } else {
@@ -400,7 +405,23 @@ export class MessageRouter {
       }
     }
 
-    // Forward response unchanged
+    // CRITICAL FIX: Restore clientSessionId in response for stdio Bus routing
+    // stdio Bus requires sessionId to route responses back to the correct client
+    if (clientSessionId) {
+      const enrichedResponse = {
+        ...msg,
+        sessionId: clientSessionId,
+      };
+      logInfo(`Forwarding response with restored sessionId: ${clientSessionId}`);
+      this.writeCallback(enrichedResponse);
+      return;
+    }
+
+    // Forward response unchanged (fallback for responses without tracked sessionId)
+    // This may cause routing issues if sessionId is missing
+    if (id !== null && !msg.sessionId) {
+      logError(`Response id=${id} has no sessionId and no pending request found - routing may fail`);
+    }
     this.writeCallback(response);
   }
 
