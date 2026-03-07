@@ -295,6 +295,18 @@ async function main(): Promise<void> {
   // Set up stdin handler and wire up routing
   setupStdinHandler(router, ndjsonHandler);
 
+  // Handle stdout errors (e.g., EPIPE when stdio Bus closes the pipe)
+  // Without this, an unhandled 'error' event on stdout can crash the process
+  // or leave it in a broken state where it stops processing messages.
+  process.stdout.on('error', (error: Error) => {
+    logError(`stdout error: ${error.message}`);
+  });
+
+  // Handle unhandled promise rejections to prevent silent hangs
+  process.on('unhandledRejection', (reason: unknown) => {
+    logError(`Unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}`);
+  });
+
   logInfo('Registry Launcher ready, waiting for messages');
 }
 
