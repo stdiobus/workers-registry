@@ -2,11 +2,6 @@
   "name": "@stdiobus/workers-registry-acp",
   "version": "1.0.0",
   "description": "ACP/MCP Protocol Worker for stdio Bus kernel",
-  "author": {
-    "name": "Raman Marozau",
-    "email": "raman@worktif.com",
-    "url": "https://worktif.com"
-  },
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -26,6 +21,11 @@
     "agent",
     "protocol"
   ],
+  "author": {
+    "name": "Raman Marozau",
+    "email": "raman@worktif.com",
+    "url": "https://worktif.com"
+  },
   "license": "Apache-2.0",
   "engines": {
     "node": ">=18.0.0"

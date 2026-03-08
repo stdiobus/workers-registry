@@ -2,11 +2,6 @@
   "name": "@stdiobus/workers-registry-mcp-echo",
   "version": "1.0.0",
   "description": "Example MCP server that echoes back requests - demonstrates basic stdio Bus kernel integration with Agent Client Protocol",
-  "author": {
-    "name": "Raman Marozau",
-    "email": "raman@worktif.com",
-    "url": "https://worktif.com"
-  },
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -22,6 +17,11 @@
     "c-os",
     "example"
   ],
+  "author": {
+    "name": "Raman Marozau",
+    "email": "raman@worktif.com",
+    "url": "https://worktif.com"
+  },
   "license": "Apache-2.0",
   "engines": {
     "node": ">=18.0.0"

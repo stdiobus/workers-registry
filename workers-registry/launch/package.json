@@ -2,11 +2,6 @@
   "name": "@stdiobus/launch",
   "version": "1.0.0",
   "description": "Universal worker launcher for stdio Bus Workers Registry",
-  "author": {
-    "name": "Raman Marozau",
-    "email": "raman@worktif.com",
-    "url": "https://worktif.com"
-  },
   "type": "module",
   "private": true,
   "main": "./dist/index.js",
@@ -20,6 +15,11 @@
     "launcher",
     "worker"
   ],
+  "author": {
+    "name": "Raman Marozau",
+    "email": "raman@worktif.com",
+    "url": "https://worktif.com"
+  },
   "license": "Apache-2.0",
   "engines": {
     "node": ">=20.0.0"
