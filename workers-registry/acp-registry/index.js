@@ -38,13 +38,14 @@ const __dirname = dirname(__filename);
 const DEFAULT_CONFIG_FILE = 'acp-registry-config.json';
 
 function ensureDefaultConfigArg() {
-  const hasExplicitConfig = process.argv.length > 2 && process.argv[2] && !process.argv[2].startsWith('-');
-  if (hasExplicitConfig) {
-    return;
-  }
+  const userArgs = process.argv.slice(2);
 
-  const defaultConfigPath = join(__dirname, DEFAULT_CONFIG_FILE);
-  process.argv.splice(2, 0, defaultConfigPath);
+  // Check if a positional config path was provided (first non-flag argument)
+  const hasExplicitConfig = userArgs.length > 0 && userArgs[0] && !userArgs[0].startsWith('-');
+  if (!hasExplicitConfig) {
+    const defaultConfigPath = join(__dirname, DEFAULT_CONFIG_FILE);
+    process.argv.splice(2, 0, defaultConfigPath);
+  }
 }
 
 ensureDefaultConfigArg();

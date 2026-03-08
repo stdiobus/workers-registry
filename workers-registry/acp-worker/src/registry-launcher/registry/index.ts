@@ -32,6 +32,7 @@
 
 import { Distribution, Registry, RegistryAgent, SpawnCommand } from './types.js';
 import { resolve as resolveDistribution } from './resolver.js';
+import { readFileSync } from 'node:fs';
 
 // Re-export types for external use
 export type {
@@ -389,5 +390,129 @@ export class RegistryIndex implements IRegistryIndex {
   getRegistry(): Registry | null {
     return this.registry;
   }
+
+  /**
+   * Merge custom agents into the registry.
+   *
+   * Custom agents take precedence over remote registry agents with the same ID.
+   * This allows users to override or extend the official ACP Registry with
+   * locally-defined agents (e.g., AWS Bedrock, custom internal agents).
+   *
+   * @param agents - Array of custom RegistryAgent entries to merge
+   */
+  mergeCustomAgents(agents: RegistryAgent[]): void {
+    if (agents.length === 0) {
+      return;
+    }
+
+    // Initialize registry if fetch() hasn't been called yet
+    if (!this.registry) {
+      this.registry = { version: 'custom', agents: [] };
+    }
+
+    for (const agent of agents) {
+      // Custom agents override remote agents with the same ID
+      const existingIndex = this.registry.agents.findIndex((a) => a.id === agent.id);
+      if (existingIndex !== -1) {
+        this.registry.agents[existingIndex] = agent;
+        logInfo(`Custom agent "${agent.id}" overrides remote registry entry`);
+      } else {
+        this.registry.agents.push(agent);
+        logInfo(`Custom agent "${agent.id}" added to registry`);
+      }
+
+      this.agentMap.set(agent.id, agent);
+    }
+
+    logInfo(`Registry now contains ${this.registry.agents.length} agents (${agents.length} custom)`);
+  }
+}
+
+/**
+ * Error thrown when custom agents file cannot be loaded.
+ */
+export class CustomAgentsLoadError extends Error {
+  constructor(message: string, public readonly cause?: Error) {
+    super(message);
+    this.name = 'CustomAgentsLoadError';
+  }
+}
+
+/**
+ * Load and validate custom agents from a JSON file.
+ *
+ * The file must contain a JSON object with an "agents" array field.
+ * Each agent entry is validated using the same rules as the remote registry.
+ *
+ * Expected file format:
+ * ```json
+ * {
+ *   "agents": [
+ *     {
+ *       "id": "my-custom-agent",
+ *       "name": "My Custom Agent",
+ *       "version": "1.0.0",
+ *       "distribution": {
+ *         "npx": { "package": "@my-org/my-agent@latest" }
+ *       }
+ *     }
+ *   ]
+ * }
+ * ```
+ *
+ * @param filePath - Path to the custom agents JSON file
+ * @returns Array of validated RegistryAgent entries
+ * @throws CustomAgentsLoadError if file cannot be read or parsed
+ * @throws RegistryParseError if agent entries are malformed
+ */
+export function loadCustomAgents(filePath: string): RegistryAgent[] {
+  let fileContent: string;
+  try {
+    fileContent = readFileSync(filePath, 'utf-8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new CustomAgentsLoadError(`Custom agents file not found: ${filePath}`);
+    }
+    if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+      throw new CustomAgentsLoadError(`Custom agents file not readable: ${filePath}`);
+    }
+    throw new CustomAgentsLoadError(
+      `Failed to read custom agents file "${filePath}": ${(error as Error).message}`,
+      error as Error,
+    );
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(fileContent);
+  } catch (error) {
+    throw new CustomAgentsLoadError(
+      `Custom agents file "${filePath}" contains malformed JSON: ${(error as Error).message}`,
+      error as Error,
+    );
+  }
+
+  if (data === null || typeof data !== 'object') {
+    throw new CustomAgentsLoadError(
+      `Custom agents file "${filePath}" does not contain a valid object`,
+    );
+  }
+
+  const raw = data as Record<string, unknown>;
+
+  if (!Array.isArray(raw.agents)) {
+    throw new CustomAgentsLoadError(
+      `Custom agents file "${filePath}" does not contain a valid "agents" array`,
+    );
+  }
+
+  // Reuse parseRegistry for validation — wrap in registry structure
+  const registryData = {
+    version: 'custom',
+    agents: raw.agents,
+  };
+
+  const parsed = parseRegistry(registryData);
+  return parsed.agents;
 }
 

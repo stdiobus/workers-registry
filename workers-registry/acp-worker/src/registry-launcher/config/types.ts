@@ -31,6 +31,8 @@ export interface LauncherConfig {
   apiKeysPath: string;
   /** Agent shutdown timeout in seconds (default: 5) */
   shutdownTimeoutSec: number;
+  /** Path to custom agents JSON file (optional, loaded via --custom-agents CLI arg) */
+  customAgentsPath?: string;
 }
 
 /**
