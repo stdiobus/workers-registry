@@ -1,6 +1,11 @@
 {
   "name": "@stdiobus/workers-registry-mcp-acp-proxy",
   "version": "1.0.0",
+  "author": {
+    "name": "Raman Marozau",
+    "email": "raman@worktif.com",
+    "url": "https://worktif.com"
+  },
   "type": "module",
   "private": true,
   "description": "Proxy to convert MCP protocol to ACP protocol",
