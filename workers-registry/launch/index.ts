@@ -73,6 +73,10 @@ const STDIO_BUS_WORKERS: Readonly<Record<string, WorkerConfig>> = {
   'mcp-to-acp-proxy': {
     path: '../out/dist/workers-registry/mcp-to-acp-proxy/proxy.js',
     description: 'MCP-to-ACP protocol bridge'
+  },
+  'openai-agent': {
+    path: '../out/dist/workers-registry/openai-agent/index.js',
+    description: 'OpenAI Chat Completions API agent via ACP protocol'
   }
 } as const;
 

@@ -46,6 +46,11 @@ const ENV_REGISTRY_URL = 'ACP_REGISTRY_URL';
 const ENV_API_KEYS_PATH = 'ACP_API_KEYS_PATH';
 
 /**
+ * Environment variable name for custom agents file path override.
+ */
+const ENV_CUSTOM_AGENTS_PATH = 'ACP_CUSTOM_AGENTS_PATH';
+
+/**
  * Log a warning message to stderr with ISO 8601 timestamp.
  * @param message - Warning message to log
  */
@@ -116,6 +121,15 @@ function parseConfigObject(obj: unknown): LauncherConfig {
     }
   }
 
+  // Parse customAgentsPath
+  if ('customAgentsPath' in rawConfig) {
+    if (isNonEmptyString(rawConfig.customAgentsPath)) {
+      config.customAgentsPath = rawConfig.customAgentsPath;
+    } else {
+      logWarning('Config field "customAgentsPath" is not a valid string, ignoring');
+    }
+  }
+
   return config;
 }
 
@@ -129,6 +143,7 @@ function parseConfigObject(obj: unknown): LauncherConfig {
 function applyEnvironmentOverrides(config: LauncherConfig): LauncherConfig {
   const envRegistryUrl = process.env[ENV_REGISTRY_URL];
   const envApiKeysPath = process.env[ENV_API_KEYS_PATH];
+  const envCustomAgentsPath = process.env[ENV_CUSTOM_AGENTS_PATH];
 
   const overrides: Partial<LauncherConfig> = {};
 
@@ -138,6 +153,10 @@ function applyEnvironmentOverrides(config: LauncherConfig): LauncherConfig {
 
   if (isNonEmptyString(envApiKeysPath)) {
     overrides.apiKeysPath = envApiKeysPath;
+  }
+
+  if (isNonEmptyString(envCustomAgentsPath)) {
+    overrides.customAgentsPath = envCustomAgentsPath;
   }
 
   return {

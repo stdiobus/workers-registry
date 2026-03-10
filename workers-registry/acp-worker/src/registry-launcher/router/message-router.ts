@@ -305,6 +305,8 @@ export class MessageRouter {
    * Handle a response from an agent process.
    *
    * Intercepts initialize responses to trigger automatic authentication.
+   * Handles agent-to-client requests (like session/request_permission) by
+   * auto-responding when they cannot be forwarded to the client.
    * Tracks sessionId mapping for proper notification routing.
    * Forwards all responses to stdout.
    *
@@ -314,8 +316,18 @@ export class MessageRouter {
   handleAgentResponse(agentId: string, response: object): void {
     const id = extractId(response);
     const msg = response as Record<string, unknown>;
+    const method = typeof msg.method === 'string' ? msg.method : undefined;
 
-    // Check if this is a response to a tracked request
+    // Handle agent-to-client requests (messages with both id and method).
+    // These are requests FROM the agent TO the client (e.g., session/request_permission).
+    // Since we are a headless launcher we cannot forward them to a human,
+    // so we auto-respond to keep the agent unblocked.
+    if (id !== null && method) {
+      this.handleAgentRequest(agentId, id, method, msg);
+      return;
+    }
+
+    // Check if this is a response to a tracked request (has id, no method)
     if (id !== null) {
       const pending = this.pendingRequests.get(id);
       if (pending && pending.agentId === agentId) {
@@ -344,8 +356,8 @@ export class MessageRouter {
     }
 
     // Handle notifications (no id) - map sessionId from agent to client
-    if (id === null && msg.method) {
-      logInfo(`Received notification: ${msg.method}`);
+    if (id === null && method) {
+      logInfo(`Received notification: ${method}`);
       const params = msg.params as Record<string, unknown> | undefined;
       if (params && typeof params.sessionId === 'string') {
         const agentSessionId = params.sessionId;
@@ -389,7 +401,7 @@ export class MessageRouter {
           return;
         } else {
           // Global notification without sessionId - add a default sessionId for routing
-          logError(`Notification without sessionId: ${msg.method}, adding default sessionId for routing`);
+          logError(`Notification without sessionId: ${method}, adding default sessionId for routing`);
           const enriched = {
             ...msg,
             sessionId: 'global-notifications', // Default sessionId for stdio_bus routing
@@ -402,6 +414,116 @@ export class MessageRouter {
 
     // Forward response unchanged
     this.writeCallback(response);
+  }
+
+  /**
+   * Handle a request from an agent to the client.
+   *
+   * Agent-to-client requests (JSON-RPC messages with both `id` and `method`)
+   * require a response. Since the Registry Launcher is headless and cannot
+   * forward these to a human, we auto-respond to keep the agent unblocked.
+   *
+   * Known methods:
+   * - session/request_permission: Auto-approve with the first "allow" option
+   *
+   * Unknown methods get a generic success response so the agent continues.
+   *
+   * @param agentId - The agent that sent the request
+   * @param id - The JSON-RPC request id
+   * @param method - The JSON-RPC method name
+   * @param msg - The full message object
+   */
+  private handleAgentRequest(
+    agentId: string,
+    id: string | number,
+    method: string,
+    msg: Record<string, unknown>,
+  ): void {
+    logInfo(`Agent ${agentId} sent request: ${method} (id=${id}), auto-responding`);
+
+    let result: Record<string, unknown>;
+
+    if (method === 'session/request_permission') {
+      result = this.buildPermissionResponse(msg);
+    } else {
+      // Fallback: generic success so the agent is never stuck waiting
+      logInfo(`Unknown agent request method: ${method}, sending generic success`);
+      result = {};
+    }
+
+    const response = {
+      jsonrpc: '2.0' as const,
+      id,
+      result,
+    };
+
+    // Send directly to the agent, not to stdout
+    this.sendToAgent(agentId, response);
+  }
+
+  /**
+   * Build an auto-approve result for session/request_permission.
+   *
+   * Picks the first "allow" option from the request, preferring
+   * allow_always > allow_once > first option as fallback.
+   *
+   * @param msg - The request_permission message
+   * @returns The result object for the response
+   */
+  private buildPermissionResponse(msg: Record<string, unknown>): Record<string, unknown> {
+    const params = msg.params as Record<string, unknown> | undefined;
+    const options = params?.options as Array<Record<string, unknown>> | undefined;
+
+    if (!options || options.length === 0) {
+      return { optionId: 'approved' };
+    }
+
+    // Prefer allow_always, then allow_once, then first option
+    const allowAlways = options.find(o => o.kind === 'allow_always');
+    if (allowAlways && typeof allowAlways.optionId === 'string') {
+      logInfo(`Auto-approving permission with option: ${allowAlways.optionId} (allow_always)`);
+      return { optionId: allowAlways.optionId };
+    }
+
+    const allowOnce = options.find(o => o.kind === 'allow_once');
+    if (allowOnce && typeof allowOnce.optionId === 'string') {
+      logInfo(`Auto-approving permission with option: ${allowOnce.optionId} (allow_once)`);
+      return { optionId: allowOnce.optionId };
+    }
+
+    // Fallback to first option
+    const firstOption = options[0];
+    const optionId = typeof firstOption.optionId === 'string' ? firstOption.optionId : 'approved';
+    logInfo(`Auto-approving permission with fallback option: ${optionId}`);
+    return { optionId };
+  }
+
+  /**
+   * Send a JSON-RPC message directly to an agent process.
+   *
+   * @param agentId - The agent to send to
+   * @param message - The message to send
+   */
+  private sendToAgent(agentId: string, message: object): void {
+    let runtime: AgentRuntime | undefined;
+    try {
+      runtime = this.runtimeManager.get(agentId);
+    } catch {
+      logError(`Failed to get runtime for agent ${agentId} to send response`);
+      return;
+    }
+
+    if (!runtime) {
+      logError(`No runtime found for agent ${agentId}, cannot send response`);
+      return;
+    }
+
+    const success = runtime.write(message);
+    if (!success) {
+      logError(`Failed to write response to agent ${agentId}`);
+    } else {
+      logInfo(`Sent auto-response to agent ${agentId}`);
+    }
   }
 
   /**

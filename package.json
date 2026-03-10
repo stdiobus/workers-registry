@@ -1,6 +1,6 @@
 {
   "name": "@stdiobus/workers-registry",
-  "version": "1.4.6",
+  "version": "1.4.12",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
   "main": "./out/dist/workers-registry/acp-registry/index.js",
@@ -44,6 +44,10 @@
       "types": "./out/tsc/workers-registry/mcp-echo-server/index.d.ts"
     },
     "./workers/mcp-to-acp-proxy": "./out/dist/workers-registry/mcp-to-acp-proxy/proxy.js",
+    "./workers/openai-agent": {
+      "import": "./out/dist/workers-registry/openai-agent/index.js",
+      "types": "./out/tsc/workers-registry/openai-agent/src/index.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "bin": {

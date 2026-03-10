@@ -204,9 +204,11 @@ describe('Config Parsing Property Tests', () => {
       /**
        * Arbitrary for generating extra fields that should be ignored.
        */
+      const knownConfigKeys = ['registryUrl', 'apiKeysPath', 'shutdownTimeoutSec', 'customAgentsPath'];
+
       const extraFieldsArb = fc.dictionary(
         fc.string({ minLength: 1, maxLength: 20 }).filter(
-          (s) => s !== 'registryUrl' && s !== 'shutdownTimeoutSec',
+          (s) => !knownConfigKeys.includes(s),
         ),
         fc.jsonValue(),
       );
@@ -229,10 +231,7 @@ describe('Config Parsing Property Tests', () => {
 
             // Verify extra fields are not present in result
             const resultKeys = Object.keys(result);
-            const onlyKnownFields =
-              resultKeys.length === 2 &&
-              resultKeys.includes('registryUrl') &&
-              resultKeys.includes('shutdownTimeoutSec');
+            const onlyKnownFields = resultKeys.every((key) => knownConfigKeys.includes(key));
 
             return knownFieldsCorrect && onlyKnownFields;
           },

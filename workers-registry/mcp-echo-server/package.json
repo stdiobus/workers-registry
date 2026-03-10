@@ -17,6 +17,11 @@
     "c-os",
     "example"
   ],
+  "author": {
+    "name": "Raman Marozau",
+    "email": "raman@worktif.com",
+    "url": "https://worktif.com"
+  },
   "license": "Apache-2.0",
   "engines": {
     "node": ">=18.0.0"

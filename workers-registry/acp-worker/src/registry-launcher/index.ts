@@ -37,11 +37,11 @@
 
 import { loadConfig } from './config/config.js';
 import { loadApiKeys } from './config/api-keys.js';
-import { RegistryFetchError, RegistryIndex, RegistryParseError } from './registry/index.js';
+import { RegistryFetchError, RegistryIndex, RegistryParseError, CustomAgentsLoadError, loadCustomAgents } from './registry/index.js';
 import { NDJSONHandler } from './stream/ndjson-handler.js';
 import { AgentRuntimeManager } from './runtime/manager.js';
 import { MessageRouter } from './router/message-router.js';
-import { logError, logExit, logInfo } from './log.js';
+import { logError, logExit, logInfo, logWarn } from './log.js';
 
 /**
  * Exit codes for the Registry Launcher.
@@ -59,22 +59,53 @@ const ExitCodes = {
 let isShuttingDown = false;
 
 /**
- * Parse command-line arguments to get the config file path.
- *
- * Usage: node index.js [config-path]
- *
- * @returns The config file path or undefined if not provided
+ * Parsed command-line arguments.
  */
-function parseArgs(): string | undefined {
-  // argv[0] is node, argv[1] is the script path
-  // argv[2] is the first argument (config path)
-  const args = process.argv.slice(2);
+interface ParsedArgs {
+  /** Path to the config file (positional argument) */
+  configPath?: string;
+  /** Path to the custom agents JSON file (--custom-agents <path>) */
+  customAgentsPath?: string;
+}
 
-  if (args.length > 0 && args[0] && !args[0].startsWith('-')) {
-    return args[0];
+/**
+ * Parse command-line arguments.
+ *
+ * Usage: node index.js [config-path] [--custom-agents <path>]
+ *
+ * @returns Parsed arguments
+ */
+function parseArgs(): ParsedArgs {
+  // argv[0] is node, argv[1] is the script path
+  const args = process.argv.slice(2);
+  const result: ParsedArgs = {};
+
+  let i = 0;
+  while (i < args.length) {
+    const arg = args[i];
+
+    if (arg === '--custom-agents') {
+      const nextArg = args[i + 1];
+      if (nextArg && !nextArg.startsWith('-')) {
+        result.customAgentsPath = nextArg;
+        i += 2;
+        continue;
+      }
+      // --custom-agents without value: log warning and skip
+      logWarn('--custom-agents requires a file path argument, ignoring');
+      i += 1;
+      continue;
+    }
+
+    // First non-flag argument is the config path
+    if (!arg.startsWith('-') && !result.configPath) {
+      result.configPath = arg;
+    }
+
+    i += 1;
   }
 
-  return undefined;
+  return result;
 }
 
 /**
@@ -240,13 +271,19 @@ async function main(): Promise<void> {
   logInfo('Registry Launcher starting');
 
   // Parse command-line arguments
-  const configPath = parseArgs();
-  if (configPath) {
-    logInfo(`Loading configuration from: ${configPath}`);
+  const parsedArgs = parseArgs();
+  if (parsedArgs.configPath) {
+    logInfo(`Loading configuration from: ${parsedArgs.configPath}`);
   }
 
   // Load configuration
-  const config = loadConfig(configPath);
+  const config = loadConfig(parsedArgs.configPath);
+
+  // CLI --custom-agents takes precedence over config file and env
+  if (parsedArgs.customAgentsPath) {
+    config.customAgentsPath = parsedArgs.customAgentsPath;
+  }
+
   logInfo(`Configuration loaded: registryUrl=${config.registryUrl}, apiKeysPath=${config.apiKeysPath}, shutdownTimeoutSec=${config.shutdownTimeoutSec}`);
 
   // Load API keys
@@ -269,6 +306,26 @@ async function main(): Promise<void> {
     }
     logError(`Unexpected error fetching registry: ${(error as Error).message}`);
     process.exit(ExitCodes.FATAL_ERROR);
+  }
+
+  // Load and merge custom agents if --custom-agents was provided
+  if (config.customAgentsPath) {
+    try {
+      logInfo(`Loading custom agents from: ${config.customAgentsPath}`);
+      const customAgents = loadCustomAgents(config.customAgentsPath);
+      registry.mergeCustomAgents(customAgents);
+    } catch (error) {
+      if (error instanceof CustomAgentsLoadError) {
+        logError(`Failed to load custom agents: ${error.message}`);
+        process.exit(ExitCodes.FATAL_ERROR);
+      }
+      if (error instanceof RegistryParseError) {
+        logError(`Invalid custom agents file: ${error.message}`);
+        process.exit(ExitCodes.FATAL_ERROR);
+      }
+      logError(`Unexpected error loading custom agents: ${(error as Error).message}`);
+      process.exit(ExitCodes.FATAL_ERROR);
+    }
   }
 
   // Create runtime manager

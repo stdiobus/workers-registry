@@ -7,5 +7,14 @@
   "main": "proxy.js",
   "bin": {
     "mcp-to-acp-proxy": "./proxy.js"
+  },
+  "author": {
+    "name": "Raman Marozau",
+    "email": "raman@worktif.com",
+    "url": "https://worktif.com"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

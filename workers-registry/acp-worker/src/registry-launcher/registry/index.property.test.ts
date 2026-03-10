@@ -128,33 +128,6 @@ const distributionArb: fc.Arbitrary<Distribution> = fc.oneof(
 );
 
 /**
- * Arbitrary for generating valid environment variable keys.
- * Excludes __proto__, constructor, and other prototype-related keys that have
- * special behavior in JavaScript and are not valid environment variable names.
- */
-const envKeyArb = fc
-  .string({ minLength: 1, maxLength: 20 })
-  .filter((s) => /^[A-Z_][A-Z0-9_]*$/i.test(s))
-  .filter((s) => !['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString'].includes(s));
-
-/**
- * Arbitrary for generating valid environment variable records.
- */
-const envRecordArb: fc.Arbitrary<Record<string, string>> = fc.dictionary(
-  envKeyArb,
-  fc.string({ maxLength: 100 }),
-  { minKeys: 0, maxKeys: 5 },
-);
-
-/**
- * Arbitrary for generating valid command-line arguments.
- */
-const argsArrayArb: fc.Arbitrary<string[]> = fc.array(
-  fc.string({ maxLength: 50 }),
-  { minLength: 0, maxLength: 5 },
-);
-
-/**
  * Arbitrary for generating valid RegistryAgent objects.
  */
 const registryAgentArb: fc.Arbitrary<RegistryAgent> = fc.record({
