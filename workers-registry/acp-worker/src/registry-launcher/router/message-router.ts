@@ -219,6 +219,59 @@ export class MessageRouter {
   }
 
   /**
+   * Inject mcpServers from registry into session/new request params.
+   *
+   * If the agent has mcpServers configured in the registry, they are merged
+   * with any mcpServers already present in the request params.
+   * Registry servers are added first, then request servers (request takes precedence for duplicates).
+   *
+   * @param message - The transformed message (without agentId)
+   * @param agentId - The agent ID to look up in registry
+   * @returns Message with mcpServers injected into params
+   */
+  private injectMcpServers(message: object, agentId: string): object {
+    const agent = this.registry.lookup(agentId);
+    if (!agent?.mcpServers || agent.mcpServers.length === 0) {
+      return message;
+    }
+
+    const msg = message as Record<string, unknown>;
+    const params = (msg.params as Record<string, unknown>) || {};
+    const existingServers = Array.isArray(params.mcpServers) ? params.mcpServers : [];
+
+    // Convert registry McpServerConfig to ACP McpServer format
+    const registryServers = agent.mcpServers.map((server) => ({
+      name: server.name,
+      command: server.command,
+      args: server.args,
+      env: server.env ? Object.entries(server.env).map(([name, value]) => ({ name, value })) : undefined,
+    }));
+
+    // Merge: registry servers first, then existing (existing can override by name)
+    const existingNames = new Set(
+      existingServers
+        .filter((s): s is Record<string, unknown> => s !== null && typeof s === 'object')
+        .map((s) => s.name)
+        .filter((n): n is string => typeof n === 'string'),
+    );
+
+    const mergedServers = [
+      ...registryServers.filter((s) => !existingNames.has(s.name)),
+      ...existingServers,
+    ];
+
+    logInfo(`Injecting ${registryServers.length} MCP servers from registry for agent ${agentId}`);
+
+    return {
+      ...msg,
+      params: {
+        ...params,
+        mcpServers: mergedServers,
+      },
+    };
+  }
+
+  /**
    * Route an incoming message to the appropriate agent.
    *
    * Extracts agentId, resolves spawn command, and forwards message.
@@ -285,7 +338,14 @@ export class MessageRouter {
     }
 
     // Transform message (remove agentId) and forward to agent
-    const transformedMessage = transformMessage(message);
+    let transformedMessage = transformMessage(message);
+
+    // For session/new requests, inject mcpServers from registry if agent has them configured
+    const msg = message as Record<string, unknown>;
+    if (msg.method === 'session/new') {
+      transformedMessage = this.injectMcpServers(transformedMessage, agentId);
+    }
+
     const success = runtime.write(transformedMessage);
 
     if (!success) {

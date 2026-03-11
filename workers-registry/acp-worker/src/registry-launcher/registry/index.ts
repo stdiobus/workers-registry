@@ -30,7 +30,7 @@
  * @module registry/index
  */
 
-import { Distribution, Registry, RegistryAgent, SpawnCommand } from './types.js';
+import { Distribution, McpServerConfig, Registry, RegistryAgent, SpawnCommand } from './types.js';
 import { resolve as resolveDistribution } from './resolver.js';
 import { readFileSync } from 'node:fs';
 
@@ -45,6 +45,7 @@ export type {
   RegistryAgent,
   Registry,
   SpawnCommand,
+  McpServerConfig,
 } from './types.js';
 
 // Re-export resolver functions and errors for external use
@@ -175,6 +176,77 @@ function isValidDistribution(value: unknown): value is Distribution {
 }
 
 /**
+ * Validate and parse a single MCP server configuration.
+ */
+function parseMcpServer(value: unknown, agentIndex: number, serverIndex: number): McpServerConfig | null {
+  if (value === null || typeof value !== 'object') {
+    logWarning(`Agent at index ${agentIndex}: mcpServers[${serverIndex}] is not an object, skipping`);
+    return null;
+  }
+
+  const raw = value as Record<string, unknown>;
+
+  if (!isNonEmptyString(raw.name)) {
+    logWarning(`Agent at index ${agentIndex}: mcpServers[${serverIndex}] has invalid or missing "name" field, skipping`);
+    return null;
+  }
+
+  if (!isNonEmptyString(raw.command)) {
+    logWarning(`Agent at index ${agentIndex}: mcpServers[${serverIndex}] has invalid or missing "command" field, skipping`);
+    return null;
+  }
+
+  const server: McpServerConfig = {
+    name: raw.name,
+    command: raw.command,
+  };
+
+  // Optional args
+  if (Array.isArray(raw.args)) {
+    server.args = raw.args.filter((a): a is string => typeof a === 'string');
+  }
+
+  // Optional env
+  if (raw.env !== null && typeof raw.env === 'object' && !Array.isArray(raw.env)) {
+    const env: Record<string, string> = {};
+    for (const [key, val] of Object.entries(raw.env as Record<string, unknown>)) {
+      if (typeof val === 'string') {
+        env[key] = val;
+      }
+    }
+    if (Object.keys(env).length > 0) {
+      server.env = env;
+    }
+  }
+
+  return server;
+}
+
+/**
+ * Parse and validate mcpServers array for an agent.
+ */
+function parseMcpServers(servers: unknown[], agentIndex: number): McpServerConfig[] {
+  const result: McpServerConfig[] = [];
+
+  for (let i = 0; i < servers.length; i++) {
+    const server = parseMcpServer(servers[i], agentIndex, i);
+    if (server !== null) {
+      result.push(server);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Log a warning message to stderr with ISO 8601 timestamp.
+ */
+function logWarning(message: string): void {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] [WARN] [registry] ${message}`);
+}
+
+/**
  * Validate and parse a registry agent entry.
  */
 function parseAgent(value: unknown, index: number): RegistryAgent {
@@ -226,6 +298,14 @@ function parseAgent(value: unknown, index: number): RegistryAgent {
 
   if (typeof raw.icon === 'string') {
     agent.icon = raw.icon;
+  }
+
+  // Parse mcpServers if present
+  if (Array.isArray(raw.mcpServers)) {
+    const mcpServers = parseMcpServers(raw.mcpServers, index);
+    if (mcpServers.length > 0) {
+      agent.mcpServers = mcpServers;
+    }
   }
 
   return agent;

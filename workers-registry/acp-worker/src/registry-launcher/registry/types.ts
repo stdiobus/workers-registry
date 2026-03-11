@@ -97,6 +97,21 @@ export interface Distribution {
 }
 
 /**
+ * MCP server configuration for agent.
+ * Defines an MCP server that should be connected when creating a session.
+ */
+export interface McpServerConfig {
+  /** Server name/identifier */
+  name: string;
+  /** Command to spawn the server */
+  command: string;
+  /** Optional command-line arguments */
+  args?: string[];
+  /** Optional environment variables */
+  env?: Record<string, string>;
+}
+
+/**
  * Agent entry in the ACP Registry.
  */
 export interface RegistryAgent {
@@ -118,6 +133,8 @@ export interface RegistryAgent {
   icon?: string;
   /** Distribution methods */
   distribution: Distribution;
+  /** MCP servers to connect when creating a session */
+  mcpServers?: McpServerConfig[];
 }
 
 /**

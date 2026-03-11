@@ -215,6 +215,97 @@ The ACP Worker includes the Registry Launcher feature, which routes messages to 
 }
 ```
 
+### Agent MCP Servers
+
+Agents in the registry can declare MCP servers that are automatically connected when a session is created. This allows agents to have built-in tools (filesystem access, shell execution, etc.) without client-side configuration.
+
+#### Registry Format
+
+```json
+{
+  "id": "my-agent",
+  "name": "My Agent",
+  "version": "1.0.0",
+  "distribution": {
+    "npx": { "package": "@my-org/my-agent" }
+  },
+  "mcpServers": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+    },
+    {
+      "name": "shell",
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-shell"],
+      "env": {
+        "SHELL_TIMEOUT": "30000"
+      }
+    }
+  ]
+}
+```
+
+#### MCP Server Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique identifier for the server |
+| `command` | string | Yes | Command to spawn the server |
+| `args` | string[] | No | Command-line arguments |
+| `env` | object | No | Environment variables (key-value pairs) |
+
+#### How It Works
+
+1. Client sends `session/new` request with `agentId`
+2. Registry Launcher looks up the agent in the registry
+3. If agent has `mcpServers` configured, they are injected into the request
+4. Agent receives the session with MCP servers already configured
+5. Agent can immediately use tools from those servers
+
+#### Merging Behavior
+
+If the client also provides `mcpServers` in the `session/new` request:
+- Registry servers are added first
+- Client servers are added after
+- Client servers with the same `name` override registry servers
+
+This allows clients to customize or extend the agent's default tools.
+
+#### Custom Agents File
+
+You can define custom agents with MCP servers in a local JSON file:
+
+```json
+{
+  "agents": [
+    {
+      "id": "my-local-agent",
+      "name": "My Local Agent",
+      "version": "1.0.0",
+      "distribution": {
+        "binary": {
+          "darwin-aarch64": { "cmd": "/usr/local/bin/my-agent" }
+        }
+      },
+      "mcpServers": [
+        {
+          "name": "filesystem",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Load with:
+```bash
+node dist/registry-launcher/index.js config.json --custom-agents ./my-agents.json
+```
+
 ### Usage
 
 ```bash
