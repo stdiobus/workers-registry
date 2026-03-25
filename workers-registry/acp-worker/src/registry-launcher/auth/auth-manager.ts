@@ -48,6 +48,21 @@ import type {
 import { isValidProviderId, VALID_PROVIDER_IDS } from './types.js';
 
 /**
+ * Marker token used to indicate client credentials are configured but not authenticated.
+ * This token should NEVER be sent in actual requests.
+ */
+export const CLIENT_CREDENTIALS_MARKER = '__CLIENT_CREDENTIALS_CONFIGURED__';
+
+/**
+ * Check if a token is the client credentials marker (not a real token).
+ * @param token - The token to check
+ * @returns True if the token is the marker
+ */
+export function isMarkerToken(token: string | null | undefined): boolean {
+  return token === CLIENT_CREDENTIALS_MARKER;
+}
+
+/**
  * Options for creating an AuthManager.
  */
 export interface AuthManagerOptions {
@@ -270,30 +285,51 @@ export class AuthManager {
   /**
    * Validate credentials collected during terminal auth flow.
    *
+   * Note: Terminal auth flow stores client credentials for later use.
+   * The actual token exchange happens when the credentials are used.
+   * This validation ensures the credentials are properly formatted.
+   *
    * @param providerId - The provider to validate against
    * @param credentials - The collected credentials
-   * @returns Validation result
+   * @returns Validation result with status indicator
    */
   private async validateTerminalCredentials(
     providerId: AuthProviderId,
     credentials: { clientId: string; clientSecret?: string }
   ): Promise<{ valid: boolean; error?: string; accessToken?: string }> {
     try {
-      // For terminal auth, we store the client credentials directly
-      // The actual token will be obtained when needed via the provider
-      // For now, we just validate that the credentials are non-empty
+      // Validate client ID format
       if (!credentials.clientId || credentials.clientId.trim().length === 0) {
         return { valid: false, error: 'Client ID is required' };
       }
 
-      // If provider requires client secret, validate it
-      const provider = this.providerResolver(providerId);
-      if (provider) {
-        // Basic validation passed
-        return { valid: true, accessToken: '' };
+      // Basic format validation for client ID (alphanumeric with common separators)
+      if (!/^[a-zA-Z0-9._-]+$/.test(credentials.clientId.trim())) {
+        return { valid: false, error: 'Client ID contains invalid characters' };
       }
 
-      return { valid: false, error: `Provider '${providerId}' is not available` };
+      // Validate provider is available
+      if (!isValidProviderId(providerId)) {
+        return { valid: false, error: `Provider '${providerId}' is not supported` };
+      }
+
+      try {
+        const provider = this.providerResolver(providerId);
+        if (!provider) {
+          return { valid: false, error: `Provider '${providerId}' is not available` };
+        }
+      } catch {
+        return { valid: false, error: `Provider '${providerId}' is not available` };
+      }
+
+      // Terminal auth stores client credentials, not access tokens
+      // Return a placeholder token to indicate "configured but not authenticated"
+      // The actual token will be obtained via OAuth flow when needed
+      return {
+        valid: true,
+        // Use a special marker to indicate this is a client credential config, not an access token
+        accessToken: CLIENT_CREDENTIALS_MARKER,
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       return { valid: false, error: errorMessage };
@@ -305,30 +341,57 @@ export class AuthManager {
    *
    * Requirement 10.3: Prefer OAuth credentials over legacy api-keys.json
    *
+   * Security: When providerId is specified, ONLY that provider is used.
+   * No fallback to other providers to prevent credential confusion.
+   *
    * @param agentId - The agent identifier
-   * @param providerId - Optional provider to get token from
+   * @param providerId - Optional provider to get token from (strict binding when specified)
    * @returns Access token or null if not available
    */
   async getTokenForAgent(
     agentId: string,
     providerId?: AuthProviderId
   ): Promise<string | null> {
-    // Step 1: Try to get OAuth token if provider is specified
+    // Step 1: If provider is specified, ONLY use that provider (strict binding)
     if (providerId) {
+      // Validate provider ID at runtime
+      if (!isValidProviderId(providerId)) {
+        console.error(`[AuthManager] Invalid provider ID: ${providerId}`);
+        return null;
+      }
+
       const oauthToken = await this.tokenManager.getAccessToken(providerId);
-      if (oauthToken) {
+      // Filter out marker tokens - they are not real access tokens
+      if (oauthToken && !isMarkerToken(oauthToken)) {
         console.error(`[AuthManager] Using OAuth token for agent ${agentId} (provider: ${providerId})`);
         return oauthToken;
       }
+
+      // Provider specified but no token available - do NOT fall back to other providers
+      // This prevents credential confusion between different services
+      console.error(`[AuthManager] No OAuth token available for specified provider ${providerId}`);
+
+      // Only fall back to legacy if the legacy key is for the same provider
+      const legacyKeys = this.legacyApiKeys[agentId];
+      if (legacyKeys?.apiKey) {
+        // Check if this agent is associated with the requested provider
+        const agentProvider = this.getProviderForAgent(agentId);
+        if (agentProvider === providerId) {
+          console.error(`[AuthManager] Using legacy API key for agent ${agentId} (provider: ${providerId})`);
+          return legacyKeys.apiKey;
+        }
+      }
+
+      return null;
     }
 
-    // Step 2: Try to find OAuth token from any configured provider
-    // Check all providers that have stored credentials
-    const providers = await this.credentialStore.listProviders();
-    for (const pid of providers) {
-      const token = await this.tokenManager.getAccessToken(pid);
-      if (token) {
-        console.error(`[AuthManager] Using OAuth token for agent ${agentId} (provider: ${pid})`);
+    // Step 2: No provider specified - try to find appropriate provider for agent
+    const agentProvider = this.getProviderForAgent(agentId);
+    if (agentProvider) {
+      const token = await this.tokenManager.getAccessToken(agentProvider);
+      // Filter out marker tokens - they are not real access tokens
+      if (token && !isMarkerToken(token)) {
+        console.error(`[AuthManager] Using OAuth token for agent ${agentId} (auto-detected provider: ${agentProvider})`);
         return token;
       }
     }
@@ -350,25 +413,42 @@ export class AuthManager {
    *
    * Requirement 11.4: Inject access token according to provider's token injection method
    *
+   * Security: Uses strict provider binding based on agent ID to prevent
+   * credential confusion between different services.
+   *
    * @param agentId - The agent identifier
    * @param request - The request object to inject auth into
    * @returns The request object with authentication injected
    */
   async injectAuth(agentId: string, request: object): Promise<object> {
-    // Find the provider with valid credentials
-    const providers = await this.credentialStore.listProviders();
+    // Determine the appropriate provider for this agent
+    const agentProvider = this.getProviderForAgent(agentId);
 
-    for (const providerId of providers) {
-      const token = await this.tokenManager.getAccessToken(providerId);
-      if (token) {
+    // Try OAuth token for the agent's provider
+    if (agentProvider) {
+      const token = await this.tokenManager.getAccessToken(agentProvider);
+      // Filter out marker tokens - they are not real access tokens
+      if (token && !isMarkerToken(token)) {
         try {
-          const provider = this.providerResolver(providerId);
+          const provider = this.providerResolver(agentProvider);
           const injection = provider.getTokenInjection();
 
-          return this.applyTokenInjection(request, token, injection);
-        } catch {
-          // Provider not available, continue to next
-          continue;
+          // Validate injection configuration
+          const validationError = this.validateInjectionConfig(injection);
+          if (validationError) {
+            console.error(`[AuthManager] Invalid injection config for ${agentProvider}: ${validationError}`);
+            // Fall through to legacy handling
+          } else {
+            const result = this.applyTokenInjection(request, token, injection);
+            if (result !== null) {
+              return result;
+            }
+            // Injection failed (e.g., control chars in token), fall through to legacy
+            console.error(`[AuthManager] Token injection failed for ${agentProvider}, trying legacy fallback`);
+          }
+        } catch (error) {
+          // Log the error but don't expose details
+          console.error(`[AuthManager] Provider resolution failed for ${agentProvider}`);
         }
       }
     }
@@ -376,15 +456,60 @@ export class AuthManager {
     // Fall back to legacy API key injection (Bearer header)
     const legacyKeys = this.legacyApiKeys[agentId];
     if (legacyKeys?.apiKey) {
-      return this.applyTokenInjection(request, legacyKeys.apiKey, {
+      const result = this.applyTokenInjection(request, legacyKeys.apiKey, {
         type: 'header',
         key: 'Authorization',
         format: 'Bearer {token}',
       });
+      if (result !== null) {
+        return result;
+      }
+      // Legacy key also has control chars - this is a security issue, return original request
+      console.error(`[AuthManager] Legacy API key contains control characters, refusing to inject`);
     }
 
     // No auth to inject
     return request;
+  }
+
+  /**
+   * Validate token injection configuration.
+   * Prevents header injection attacks and unsafe configurations.
+   *
+   * @param injection - The injection configuration to validate
+   * @returns Error message if invalid, null if valid
+   */
+  private validateInjectionConfig(
+    injection: { type: 'header' | 'query' | 'body'; key: string; format?: string }
+  ): string | null {
+    // Validate key - must be alphanumeric with hyphens/underscores
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(injection.key)) {
+      return 'Invalid injection key format';
+    }
+
+    // Prevent header injection via CR/LF
+    if (injection.key.includes('\r') || injection.key.includes('\n')) {
+      return 'Injection key contains invalid characters';
+    }
+
+    // Validate format if provided
+    if (injection.format) {
+      // Must contain {token} placeholder
+      if (!injection.format.includes('{token}')) {
+        return 'Injection format must contain {token} placeholder';
+      }
+      // Prevent CR/LF injection in format
+      if (injection.format.includes('\r') || injection.format.includes('\n')) {
+        return 'Injection format contains invalid characters';
+      }
+    }
+
+    // Warn about query injection (tokens in URLs are risky)
+    if (injection.type === 'query') {
+      console.error('[AuthManager] Warning: Token injection via query parameter is less secure');
+    }
+
+    return null;
   }
 
   /**
@@ -393,16 +518,23 @@ export class AuthManager {
    * @param request - The request object
    * @param token - The access token
    * @param injection - The injection method
-   * @returns The modified request object
+   * @returns The modified request object, or null if injection failed
    */
   private applyTokenInjection(
     request: object,
     token: string,
     injection: { type: 'header' | 'query' | 'body'; key: string; format?: string }
-  ): object {
+  ): object | null {
     const formattedToken = injection.format
       ? injection.format.replace('{token}', token)
       : token;
+
+    // Validate formatted token for control characters (prevent header injection)
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(formattedToken)) {
+      console.error('[AuthManager] Token contains control characters, refusing to inject');
+      return null; // Signal injection failure
+    }
 
     const result = { ...request } as Record<string, unknown>;
 
@@ -472,17 +604,26 @@ export class AuthManager {
   /**
    * Logout from a specific provider or all providers.
    *
-   * @param providerId - Optional provider to logout from (all if not specified)
+   * Note: This clears OAuth credentials only. Legacy API keys from api-keys.json
+   * are managed separately and are not affected by logout.
+   *
+   * @param providerId - Optional provider to logout from (all OAuth providers if not specified)
+   * @throws Error if an invalid provider ID is specified
    */
   async logout(providerId?: AuthProviderId): Promise<void> {
     if (providerId) {
+      // Validate provider ID at runtime
+      if (!isValidProviderId(providerId)) {
+        throw new Error(`Invalid provider ID for logout: ${providerId}`);
+      }
+
       // Logout from specific provider
       console.error(`[AuthManager] Logging out from ${providerId}`);
       await this.tokenManager.clearTokens(providerId);
       await this.credentialStore.delete(providerId);
     } else {
-      // Logout from all providers
-      console.error(`[AuthManager] Logging out from all providers`);
+      // Logout from all OAuth providers
+      console.error(`[AuthManager] Logging out from all OAuth providers`);
       const providers = await this.credentialStore.listProviders();
       for (const pid of providers) {
         await this.tokenManager.clearTokens(pid);
@@ -520,7 +661,12 @@ export class AuthManager {
   /**
    * Get the provider for a given agent ID.
    *
-   * Maps agent IDs to their OAuth providers based on configuration.
+   * Maps agent IDs to their OAuth providers based on keyword matching.
+   *
+   * WARNING: This is a heuristic-based mapping using keyword matching.
+   * Agent IDs with ambiguous names (e.g., containing multiple provider keywords)
+   * may be mapped to unexpected providers. For production use, consider
+   * implementing explicit agent-to-provider configuration.
    *
    * @param agentId - The agent identifier
    * @returns The provider ID or undefined if not mapped
@@ -530,6 +676,8 @@ export class AuthManager {
     // In a real implementation, this would come from configuration
     const agentLower = agentId.toLowerCase();
 
+    // Check for provider keywords in order of specificity
+    // More specific keywords first to avoid ambiguity
     if (agentLower.includes('openai') || agentLower.includes('gpt')) {
       return 'openai';
     }

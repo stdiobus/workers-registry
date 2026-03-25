@@ -40,8 +40,6 @@
  * @module flows/agent-auth-flow
  */
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import type {
   AuthProviderId,
   AuthResult,
@@ -53,8 +51,6 @@ import { createSession, DEFAULT_SESSION_TIMEOUT_MS } from '../session.js';
 import type { AuthSession } from '../session.js';
 import { CallbackServer } from './callback-server.js';
 import type { IAuthProvider } from '../providers/types.js';
-
-const execAsync = promisify(exec);
 
 /**
  * Default timeout for the agent auth flow in milliseconds (5 minutes).
@@ -296,30 +292,50 @@ export class AgentAuthFlow {
  * - Windows: `start`
  * - Linux: `xdg-open`
  *
+ * Security: Uses execFile with argument arrays to prevent command injection.
+ * Validates URL protocol before launching.
+ *
  * @param url - The URL to open
- * @throws Error if the browser cannot be launched
+ * @throws Error if the browser cannot be launched or URL is invalid
  */
 export async function openSystemBrowser(url: string): Promise<void> {
-  const platform = process.platform;
-
-  let command: string;
-  switch (platform) {
-    case 'darwin':
-      // macOS
-      command = `open "${url}"`;
-      break;
-    case 'win32':
-      // Windows - use start with empty title
-      command = `start "" "${url}"`;
-      break;
-    default:
-      // Linux and others - use xdg-open
-      command = `xdg-open "${url}"`;
-      break;
+  // Validate URL to prevent command injection and ensure it's a valid HTTP(S) URL
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new Error('Invalid URL format');
   }
 
+  // Only allow http and https protocols for security
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error(`Invalid URL protocol: ${parsedUrl.protocol}. Only http: and https: are allowed.`);
+  }
+
+  const platform = process.platform;
+
+  // Use execFile with argument arrays to prevent shell injection
+  // This is safer than exec() with string interpolation
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
+  const execFileAsync = promisify(execFile);
+
   try {
-    await execAsync(command);
+    switch (platform) {
+      case 'darwin':
+        // macOS: open command with URL as argument
+        await execFileAsync('open', [url]);
+        break;
+      case 'win32':
+        // Windows: use cmd.exe /c start with proper escaping
+        // Note: Windows requires special handling for URLs with special chars
+        await execFileAsync('cmd.exe', ['/c', 'start', '', url]);
+        break;
+      default:
+        // Linux and others: xdg-open with URL as argument
+        await execFileAsync('xdg-open', [url]);
+        break;
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to open browser: ${errorMessage}`);

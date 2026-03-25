@@ -653,4 +653,81 @@ describe('Error Handling Unit Tests', () => {
       });
     });
   });
+
+
+  describe('Security - Sensitive data in details', () => {
+    it('should redact sensitive data from error_description in details', () => {
+      const response = {
+        error: 'invalid_token',
+        error_description: 'Token access_token=secret123 is invalid',
+      };
+
+      const result = parseProviderErrorResponse(response);
+
+      // Both message and details.errorDescription should be redacted
+      expect(result.message).not.toContain('secret123');
+      expect(result.details?.errorDescription).not.toContain('secret123');
+      expect(result.details?.errorDescription).toContain('[REDACTED]');
+    });
+
+    it('should sanitize arrays in details', () => {
+      const authError = {
+        code: 'PROVIDER_ERROR' as const,
+        message: 'Error',
+        details: {
+          tokens: [
+            { accessToken: 'secret1', name: 'token1' },
+            { refreshToken: 'secret2', name: 'token2' },
+          ],
+          providerId: 'github',
+        },
+      };
+
+      const formatted = formatErrorResponse(authError);
+
+      // Array items should be sanitized
+      const tokens = formatted.details?.tokens as Array<Record<string, unknown>>;
+      expect(tokens[0].accessToken).toBe('[REDACTED]');
+      expect(tokens[0].name).toBe('token1');
+      expect(tokens[1].refreshToken).toBe('[REDACTED]');
+      expect(tokens[1].name).toBe('token2');
+    });
+
+    it('should sanitize nested arrays', () => {
+      const authError = {
+        code: 'PROVIDER_ERROR' as const,
+        message: 'Error',
+        details: {
+          nested: [
+            ['access_token=secret1', 'normal_value'],
+          ],
+        },
+      };
+
+      const formatted = formatErrorResponse(authError);
+
+      const nested = formatted.details?.nested as string[][];
+      expect(nested[0][0]).toContain('[REDACTED]');
+      expect(nested[0][1]).toBe('normal_value');
+    });
+
+    it('should sanitize string values in arrays', () => {
+      const authError = {
+        code: 'PROVIDER_ERROR' as const,
+        message: 'Error',
+        details: {
+          messages: [
+            'Error with access_token=secret1',
+            'Normal message',
+          ],
+        },
+      };
+
+      const formatted = formatErrorResponse(authError);
+
+      const messages = formatted.details?.messages as string[];
+      expect(messages[0]).toContain('[REDACTED]');
+      expect(messages[1]).toBe('Normal message');
+    });
+  });
 });

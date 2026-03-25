@@ -80,6 +80,19 @@ function getStatusLabel(status: TokenStatus): string {
 }
 
 /**
+ * Sanitize a string for safe terminal output.
+ * Removes control characters and ANSI escape sequences.
+ *
+ * @param value - The string to sanitize
+ * @returns Sanitized string safe for terminal output
+ */
+function sanitizeForOutput(value: string): string {
+  // Remove ANSI escape sequences
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x1f\x7f]|\x1b\[[0-9;]*[a-zA-Z]/g, '');
+}
+
+/**
  * Format a single provider status entry for display.
  *
  * @param entry - Auth status entry
@@ -101,7 +114,8 @@ function formatProviderStatus(entry: AuthStatusEntry): string[] {
     }
 
     if (entry.scope) {
-      lines.push(`    Scope: ${entry.scope}`);
+      // Sanitize scope to prevent terminal output injection
+      lines.push(`    Scope: ${sanitizeForOutput(entry.scope)}`);
     }
 
     if (entry.lastRefresh) {

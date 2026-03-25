@@ -357,6 +357,7 @@ describe('Registry Launcher Auth Integration Tests', () => {
         id: 1,
         agentId: 'test-agent',
         timestamp: Date.now(),
+        method: 'initialize',  // Required for initialize response detection
       });
 
       router.handleAgentResponse('test-agent', agentResponse);

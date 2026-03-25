@@ -327,15 +327,18 @@ export function parseProviderErrorResponse(
       message += ` - ${errorDescription}`;
     }
 
+    // Sanitize details to prevent sensitive data leakage
+    const rawDetails = {
+      errorCode,
+      ...(errorDescription && { errorDescription }),
+      ...(response.error_uri && { errorUri: response.error_uri }),
+      ...(providerId && { providerId }),
+    };
+
     return {
       code: 'PROVIDER_ERROR',
       message: redactSensitiveData(message),
-      details: {
-        errorCode,
-        ...(errorDescription && { errorDescription }),
-        ...(response.error_uri && { errorUri: response.error_uri }),
-        ...(providerId && { providerId }),
-      },
+      details: sanitizeDetails(rawDetails),
     };
   }
 
@@ -458,6 +461,9 @@ function sanitizeDetails(details: Record<string, unknown>): Record<string, unkno
     // Recursively sanitize nested objects
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
       result[key] = sanitizeDetails(value as Record<string, unknown>);
+    } else if (Array.isArray(value)) {
+      // Recursively sanitize arrays
+      result[key] = sanitizeArray(value);
     } else if (typeof value === 'string') {
       // Redact sensitive patterns in string values
       result[key] = redactSensitiveData(value);
@@ -467,6 +473,25 @@ function sanitizeDetails(details: Record<string, unknown>): Record<string, unkno
   }
 
   return result;
+}
+
+/**
+ * Sanitize an array to remove sensitive data.
+ *
+ * @param arr - The array to sanitize
+ * @returns A sanitized copy of the array
+ */
+function sanitizeArray(arr: unknown[]): unknown[] {
+  return arr.map((item) => {
+    if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+      return sanitizeDetails(item as Record<string, unknown>);
+    } else if (Array.isArray(item)) {
+      return sanitizeArray(item);
+    } else if (typeof item === 'string') {
+      return redactSensitiveData(item);
+    }
+    return item;
+  });
 }
 
 /**

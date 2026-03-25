@@ -33,7 +33,9 @@
 
 import { TerminalAuthFlow } from '../flows/terminal-auth-flow.js';
 import { CredentialStore } from '../storage/credential-store.js';
+import { CLIENT_CREDENTIALS_MARKER } from '../auth-manager.js';
 import type { AuthProviderId } from '../types.js';
+import { isValidProviderId, VALID_PROVIDER_IDS } from '../types.js';
 
 /**
  * Options for the setup command.
@@ -63,6 +65,13 @@ export async function runSetupCommand(options: SetupCommandOptions = {}): Promis
   const output = options.output ?? process.stderr;
 
   try {
+    // Validate provider ID if specified
+    if (options.providerId !== undefined && !isValidProviderId(options.providerId)) {
+      output.write(`\nError: Invalid provider '${options.providerId}'.\n`);
+      output.write(`Supported providers: ${VALID_PROVIDER_IDS.join(', ')}\n\n`);
+      return 1;
+    }
+
     // Create credential store
     const credentialStore = new CredentialStore();
 
@@ -75,8 +84,9 @@ export async function runSetupCommand(options: SetupCommandOptions = {}): Promis
           return { valid: false, error: 'Client ID is required' };
         }
         // For terminal auth, we accept the credentials as valid
-        // The actual validation happens when the credentials are used
-        return { valid: true, accessToken: '' };
+        // Return the marker token to indicate client credentials are configured
+        // The actual OAuth token will be obtained when the credentials are used
+        return { valid: true, accessToken: CLIENT_CREDENTIALS_MARKER };
       },
       input: options.input,
       output,

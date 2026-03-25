@@ -247,6 +247,22 @@ const agentIdArb = fc.string({ minLength: 1, maxLength: 50 })
   .filter(s => s.length > 0 && !s.includes('\n') && !s.includes('\r'));
 
 /**
+ * Generate an agent ID that maps to a specific provider.
+ * This is needed because AuthManager.getProviderForAgent() uses keyword matching.
+ */
+function agentIdForProvider(providerId: AuthProviderId): string {
+  const prefixes: Record<AuthProviderId, string> = {
+    openai: 'openai-agent',
+    anthropic: 'claude-agent',
+    github: 'github-copilot',
+    google: 'gemini-agent',
+    azure: 'azure-agent',
+    cognito: 'cognito-agent',
+  };
+  return prefixes[providerId] || `${providerId}-agent`;
+}
+
+/**
  * Arbitrary generator for API keys.
  * Avoids special regex replacement characters ($) to prevent issues with format replacement.
  */
@@ -324,15 +340,17 @@ describe('Auth Manager Property Tests', () => {
     test('OAuth credentials from any provider are preferred over legacy keys', async () => {
       await fc.assert(
         fc.asyncProperty(
-          agentIdArb,
           providerIdArb,
           tokenStringArb,
           apiKeyArb,
-          async (agentId, providerId, oauthToken, legacyApiKey) => {
+          async (providerId, oauthToken, legacyApiKey) => {
             fc.pre(oauthToken !== legacyApiKey);
 
             credentialStore.reset();
             tokenManager.reset();
+
+            // Use agent ID that maps to the provider for proper provider detection
+            const agentId = agentIdForProvider(providerId);
 
             // Set up OAuth token (without specifying provider in request)
             tokenManager.setToken(providerId, oauthToken);
@@ -355,9 +373,10 @@ describe('Auth Manager Property Tests', () => {
             });
 
             // Request token without specifying provider
+            // Agent ID maps to provider, so OAuth token should be found
             const result = await authManager.getTokenForAgent(agentId);
 
-            // OAuth token should be returned (found from any configured provider)
+            // OAuth token should be returned (found via agent-to-provider mapping)
             expect(result).toBe(oauthToken);
           }
         ),
@@ -653,15 +672,17 @@ describe('Auth Manager Property Tests', () => {
     test('token is injected into header according to provider config', async () => {
       await fc.assert(
         fc.asyncProperty(
-          agentIdArb,
           providerIdArb,
           tokenStringArb,
           fc.constantFrom('Authorization', 'X-API-Key', 'X-Auth-Token'),
           fc.option(fc.constantFrom('Bearer {token}', '{token}', 'Token {token}')),
-          async (agentId, providerId, token, headerKey, formatOption) => {
+          async (providerId, token, headerKey, formatOption) => {
             credentialStore.reset();
             tokenManager.reset();
             mockProviders.clear();
+
+            // Use agent ID that maps to the provider
+            const agentId = agentIdForProvider(providerId);
 
             const format = formatOption ?? undefined;
             const injectionMethod: TokenInjectionMethod = {
@@ -711,14 +732,16 @@ describe('Auth Manager Property Tests', () => {
     test('token is injected into query according to provider config', async () => {
       await fc.assert(
         fc.asyncProperty(
-          agentIdArb,
           providerIdArb,
           tokenStringArb,
           fc.constantFrom('access_token', 'token', 'api_key'),
-          async (agentId, providerId, token, queryKey) => {
+          async (providerId, token, queryKey) => {
             credentialStore.reset();
             tokenManager.reset();
             mockProviders.clear();
+
+            // Use agent ID that maps to the provider
+            const agentId = agentIdForProvider(providerId);
 
             const injectionMethod: TokenInjectionMethod = {
               type: 'query',
@@ -759,14 +782,16 @@ describe('Auth Manager Property Tests', () => {
     test('token is injected into body according to provider config', async () => {
       await fc.assert(
         fc.asyncProperty(
-          agentIdArb,
           providerIdArb,
           tokenStringArb,
           fc.constantFrom('access_token', 'token', 'api_key'),
-          async (agentId, providerId, token, bodyKey) => {
+          async (providerId, token, bodyKey) => {
             credentialStore.reset();
             tokenManager.reset();
             mockProviders.clear();
+
+            // Use agent ID that maps to the provider
+            const agentId = agentIdForProvider(providerId);
 
             const injectionMethod: TokenInjectionMethod = {
               type: 'body',
@@ -842,17 +867,19 @@ describe('Auth Manager Property Tests', () => {
     test('existing headers are preserved when injecting token', async () => {
       await fc.assert(
         fc.asyncProperty(
-          agentIdArb,
           providerIdArb,
           tokenStringArb,
           fc.record({
             'Content-Type': fc.constantFrom('application/json', 'text/plain'),
             'Accept': fc.constantFrom('application/json', '*/*'),
           }),
-          async (agentId, providerId, token, existingHeaders) => {
+          async (providerId, token, existingHeaders) => {
             credentialStore.reset();
             tokenManager.reset();
             mockProviders.clear();
+
+            // Use agent ID that maps to the provider
+            const agentId = agentIdForProvider(providerId);
 
             const injectionMethod: TokenInjectionMethod = {
               type: 'header',

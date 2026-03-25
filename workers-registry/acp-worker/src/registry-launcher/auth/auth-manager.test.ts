@@ -328,7 +328,8 @@ describe('Auth Manager Unit Tests', () => {
         legacyApiKeys: {},
       });
 
-      const result = await authManager.getTokenForAgent('test-agent');
+      // Use agent ID that maps to github provider
+      const result = await authManager.getTokenForAgent('github-agent');
 
       expect(result).toBe('github-oauth-token');
     });
@@ -360,7 +361,8 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       const request = { method: 'POST', url: 'https://api.openai.com' };
-      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+      // Use agent ID that maps to openai provider
+      const result = await authManager.injectAuth('openai-agent', request) as Record<string, unknown>;
 
       expect(result.headers).toBeDefined();
       const headers = result.headers as Record<string, string>;
@@ -390,7 +392,8 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       const request = { method: 'GET', url: 'https://api.github.com' };
-      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+      // Use agent ID that maps to github provider
+      const result = await authManager.injectAuth('github-agent', request) as Record<string, unknown>;
 
       expect(result.query).toBeDefined();
       const query = result.query as Record<string, string>;
@@ -420,7 +423,8 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       const request = { method: 'POST', url: 'https://api.google.com' };
-      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+      // Use agent ID that maps to google provider
+      const result = await authManager.injectAuth('google-agent', request) as Record<string, unknown>;
 
       expect(result.body).toBeDefined();
       const body = result.body as Record<string, string>;
@@ -456,7 +460,8 @@ describe('Auth Manager Unit Tests', () => {
         headers: { 'Content-Type': 'application/json' },
         body: { data: 'test' },
       };
-      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+      // Use agent ID that maps to openai provider
+      const result = await authManager.injectAuth('openai-agent', request) as Record<string, unknown>;
 
       expect(result.method).toBe('POST');
       expect(result.url).toBe('https://api.openai.com');
@@ -890,6 +895,152 @@ describe('Auth Manager Unit Tests', () => {
       const token = await authManager.getTokenForAgent('any-agent');
 
       expect(token).toBeNull();
+    });
+  });
+
+
+  describe('Security - Marker Token Filtering', () => {
+    it('should filter out marker tokens in getTokenForAgent', async () => {
+      // Set up a marker token (simulating terminal auth flow)
+      tokenManager.setToken('openai', '__CLIENT_CREDENTIALS_CONFIGURED__');
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      // Should return null because marker token is not a real token
+      const result = await authManager.getTokenForAgent('openai-agent', 'openai');
+
+      expect(result).toBeNull();
+    });
+
+    it('should filter out marker tokens in injectAuth', async () => {
+      // Set up a marker token
+      tokenManager.setToken('openai', '__CLIENT_CREDENTIALS_CONFIGURED__');
+
+      const provider = new MockAuthProvider('openai', 'OpenAI', {
+        type: 'header',
+        key: 'Authorization',
+        format: 'Bearer {token}',
+      });
+      mockProviders.set('openai', provider);
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+        providerResolver: (id) => mockProviders.get(id)!,
+      });
+
+      const request = { method: 'POST', url: 'https://api.openai.com' };
+      const result = await authManager.injectAuth('openai-agent', request);
+
+      // Request should be unchanged (no auth injected)
+      expect(result).toEqual(request);
+      expect((result as Record<string, unknown>).headers).toBeUndefined();
+    });
+
+    it('should fall back to legacy key when marker token is present', async () => {
+      // Set up a marker token
+      tokenManager.setToken('openai', '__CLIENT_CREDENTIALS_CONFIGURED__');
+
+      const legacyApiKeys: Record<string, AgentApiKeys> = {
+        'openai-agent': { apiKey: 'sk-legacy-key', env: {} },
+      };
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys,
+      });
+
+      // Should fall back to legacy key
+      const result = await authManager.getTokenForAgent('openai-agent', 'openai');
+
+      expect(result).toBe('sk-legacy-key');
+    });
+  });
+
+
+  describe('Security - Control Character Rejection', () => {
+    it('should reject tokens with control characters in injectAuth', async () => {
+      // Set up a token with control characters
+      tokenManager.setToken('openai', 'token-with\r\ncontrol-chars');
+
+      const provider = new MockAuthProvider('openai', 'OpenAI', {
+        type: 'header',
+        key: 'Authorization',
+        format: 'Bearer {token}',
+      });
+      mockProviders.set('openai', provider);
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+        providerResolver: (id) => mockProviders.get(id)!,
+      });
+
+      const request = { method: 'POST', url: 'https://api.openai.com' };
+      const result = await authManager.injectAuth('openai-agent', request);
+
+      // Request should be unchanged (no auth injected due to control chars)
+      expect(result).toEqual(request);
+      expect((result as Record<string, unknown>).headers).toBeUndefined();
+    });
+
+    it('should reject legacy keys with control characters', async () => {
+      const legacyApiKeys: Record<string, AgentApiKeys> = {
+        'test-agent': { apiKey: 'key-with\x00null-char', env: {} },
+      };
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys,
+      });
+
+      const request = { method: 'POST', url: 'https://api.example.com' };
+      const result = await authManager.injectAuth('test-agent', request);
+
+      // Request should be unchanged (no auth injected due to control chars)
+      expect(result).toEqual(request);
+      expect((result as Record<string, unknown>).headers).toBeUndefined();
+    });
+  });
+
+
+  describe('Security - Logout Validation', () => {
+    it('should throw error for invalid provider ID in logout', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      await expect(authManager.logout('invalid-provider' as AuthProviderId))
+        .rejects.toThrow('Invalid provider ID for logout: invalid-provider');
+    });
+
+    it('should not throw for valid provider ID in logout', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'test-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('openai', 'test-token');
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      // Should not throw
+      await expect(authManager.logout('openai')).resolves.toBeUndefined();
     });
   });
 });

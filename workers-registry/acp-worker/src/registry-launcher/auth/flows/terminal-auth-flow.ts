@@ -235,10 +235,22 @@ export class TerminalAuthFlow {
       };
     }
 
+    // Enforce invariant: valid credentials must have a non-empty access token
+    if (!validationResult.accessToken || validationResult.accessToken.trim() === '') {
+      return {
+        success: false,
+        providerId: selectedProvider,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Credential validation succeeded but no access token was returned.',
+        },
+      };
+    }
+
     // Step 5: Store credentials securely (Requirement 4.5)
     const storedCredentials: StoredCredentials = {
       providerId: selectedProvider,
-      accessToken: validationResult.accessToken || '',
+      accessToken: validationResult.accessToken,
       clientId: credentials.clientId,
       clientSecret: credentials.clientSecret,
       customEndpoints: credentials.customEndpoints,
@@ -308,6 +320,7 @@ export class TerminalAuthFlow {
 
   /**
    * Collect custom endpoints for providers that require them (Cognito/Azure).
+   * Validates all endpoints to ensure HTTPS and no embedded credentials.
    */
   private async collectCustomEndpoints(providerInfo: ProviderInfo): Promise<ProviderEndpoints> {
     this.writeLine(`\n${providerInfo.name} requires custom endpoint configuration:\n`);
@@ -318,9 +331,9 @@ export class TerminalAuthFlow {
       return this.collectAzureEndpoints();
     }
 
-    // Generic custom endpoints
-    const authEndpoint = await this.promptRequired('Authorization Endpoint URL: ');
-    const tokenEndpoint = await this.promptRequired('Token Endpoint URL: ');
+    // Generic custom endpoints with HTTPS validation
+    const authEndpoint = await this.promptValidatedUrl('Authorization Endpoint URL: ');
+    const tokenEndpoint = await this.promptValidatedUrl('Token Endpoint URL: ');
 
     return {
       authorizationEndpoint: authEndpoint,
@@ -329,13 +342,54 @@ export class TerminalAuthFlow {
   }
 
   /**
+   * Prompt for a validated HTTPS URL.
+   * Ensures the URL is valid, uses HTTPS, and has no embedded credentials.
+   */
+  private async promptValidatedUrl(message: string): Promise<string> {
+    while (true) {
+      const input = await this.promptRequired(message);
+      const error = this.validateHttpsUrl(input);
+      if (error === null) {
+        return input;
+      }
+      this.writeLine(`Error: ${error}`);
+    }
+  }
+
+  /**
+   * Validate that a URL is a valid HTTPS URL without embedded credentials.
+   */
+  private validateHttpsUrl(value: string): string | null {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return 'Invalid URL format.';
+    }
+    if (url.protocol !== 'https:') {
+      return 'URL must use HTTPS protocol for security.';
+    }
+    if (url.username || url.password) {
+      return 'URL must not contain embedded credentials.';
+    }
+    return null;
+  }
+
+  /**
    * Collect Cognito-specific endpoint configuration.
+   * Validates input to prevent URL injection attacks.
    */
   private async collectCognitoEndpoints(): Promise<ProviderEndpoints> {
     this.writeLine('Enter your Cognito User Pool details:\n');
 
-    const userPoolDomain = await this.promptRequired('User Pool Domain (e.g., my-app): ');
-    const region = await this.promptRequired('AWS Region (e.g., us-east-1): ');
+    const userPoolDomain = await this.promptValidated(
+      'User Pool Domain (e.g., my-app): ',
+      this.validateCognitoDomain.bind(this)
+    );
+    const region = await this.promptValidated(
+      'AWS Region (e.g., us-east-1): ',
+      this.validateAwsRegion.bind(this)
+    );
 
     const baseUrl = `https://${userPoolDomain}.auth.${region}.amazoncognito.com`;
 
@@ -347,11 +401,15 @@ export class TerminalAuthFlow {
 
   /**
    * Collect Azure AD-specific endpoint configuration.
+   * Validates input to prevent URL injection attacks.
    */
   private async collectAzureEndpoints(): Promise<ProviderEndpoints> {
     this.writeLine('Enter your Azure AD details:\n');
 
-    const tenantId = await this.promptRequired('Tenant ID (or "common" for multi-tenant): ');
+    const tenantId = await this.promptValidated(
+      'Tenant ID (or "common" for multi-tenant): ',
+      this.validateAzureTenantId.bind(this)
+    );
 
     const baseUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0`;
 
@@ -359,6 +417,74 @@ export class TerminalAuthFlow {
       authorizationEndpoint: `${baseUrl}/authorize`,
       tokenEndpoint: `${baseUrl}/token`,
     };
+  }
+
+  /**
+   * Validate Cognito user pool domain.
+   * Must be alphanumeric with hyphens, no URL injection characters.
+   */
+  private validateCognitoDomain(value: string): string | null {
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i.test(value)) {
+      return 'Invalid domain format. Must be alphanumeric with hyphens, no leading/trailing hyphens.';
+    }
+    if (value.length > 63) {
+      return 'Domain must be 63 characters or less.';
+    }
+    if (/[/:?#@\s]/.test(value)) {
+      return 'Domain contains invalid characters (/, :, ?, #, @, or whitespace).';
+    }
+    return null;
+  }
+
+  /**
+   * Validate AWS region format.
+   * Must match pattern like us-east-1, eu-west-2.
+   */
+  private validateAwsRegion(value: string): string | null {
+    if (!/^[a-z]{2}-[a-z]+-\d+$/.test(value)) {
+      return 'Invalid AWS region format. Expected format: us-east-1, eu-west-2, etc.';
+    }
+    return null;
+  }
+
+  /**
+   * Validate Azure tenant ID.
+   * Must be 'common', 'organizations', 'consumers', a valid GUID, or a domain name.
+   */
+  private validateAzureTenantId(value: string): string | null {
+    const wellKnown = ['common', 'organizations', 'consumers'];
+    if (wellKnown.includes(value.toLowerCase())) {
+      return null;
+    }
+    // GUID pattern
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      return null;
+    }
+    // Domain pattern (no URL injection chars)
+    if (/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test(value)) {
+      return null;
+    }
+    if (/[/:?#@\s]/.test(value)) {
+      return 'Tenant ID contains invalid characters (/, :, ?, #, @, or whitespace).';
+    }
+    return "Invalid tenant ID. Must be 'common', 'organizations', 'consumers', a valid GUID, or a domain name.";
+  }
+
+  /**
+   * Prompt for input with validation.
+   */
+  private async promptValidated(
+    message: string,
+    validator: (value: string) => string | null
+  ): Promise<string> {
+    while (true) {
+      const input = await this.promptRequired(message);
+      const error = validator(input);
+      if (error === null) {
+        return input;
+      }
+      this.writeLine(`Error: ${error}`);
+    }
   }
 
 

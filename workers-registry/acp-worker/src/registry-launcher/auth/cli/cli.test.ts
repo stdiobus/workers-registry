@@ -125,6 +125,22 @@ describe('CLI Commands Unit Tests', () => {
       expect(output).toContain('OpenAI');
       mockOutput.stream.end();
     });
+
+    it('should return exit code 1 for invalid provider', async () => {
+      const mockOutput = createMockOutput();
+      const mockInput = createMockInput([]);
+
+      const exitCode = await runSetupCommand({
+        providerId: 'invalid-provider' as AuthProviderId,
+        output: mockOutput.stream,
+        input: mockInput,
+      });
+
+      expect(exitCode).toBe(1);
+      const output = mockOutput.getOutput();
+      expect(output).toContain('Invalid provider');
+      mockOutput.stream.end();
+    });
   });
 
 

@@ -75,6 +75,10 @@ interface PendingRequest {
   id: string | number;
   agentId: string;
   timestamp: number;
+  /** The JSON-RPC method name (for response correlation) */
+  method?: string;
+  /** Client session ID for session mapping */
+  clientSessionId?: string;
 }
 
 /**
@@ -440,13 +444,15 @@ export class MessageRouter {
     if (id !== null) {
       const msg = message as Record<string, unknown>;
       const clientSessionId = typeof msg.sessionId === 'string' ? msg.sessionId : undefined;
+      const method = typeof msg.method === 'string' ? msg.method : undefined;
 
       this.pendingRequests.set(id, {
         id,
         agentId,
         timestamp: Date.now(),
+        method,
         clientSessionId,
-      } as any);
+      });
     }
 
     // Transform message (remove agentId) and forward to agent
@@ -457,6 +463,10 @@ export class MessageRouter {
     if (msg.method === 'session/new') {
       transformedMessage = this.injectMcpServers(transformedMessage, agentId);
     }
+
+    // Inject authentication into the message (Requirement 11.4)
+    // This adds OAuth tokens or legacy API keys to the request
+    transformedMessage = await this.injectAuthentication(agentId, transformedMessage);
 
     const success = runtime.write(transformedMessage);
 
@@ -507,8 +517,9 @@ export class MessageRouter {
         const result = msg.result as Record<string, unknown> | undefined;
 
         // Check if this is an initialize response - inject our authMethods (Requirement 11.1)
-        // We detect initialize responses by checking for typical initialize response fields
-        if (result && (result.protocolVersion !== undefined || result.agentInfo !== undefined)) {
+        // Use tracked method from pending request for reliable detection
+        const isInitializeResponse = pending.method === 'initialize' && result !== undefined;
+        if (isInitializeResponse) {
           const ourAuthMethods = this.getSupportedAuthMethods();
           const existingAuthMethods = Array.isArray(result.authMethods) ? result.authMethods : [];
 
@@ -533,7 +544,8 @@ export class MessageRouter {
         }
 
         // Check if this is an initialize response with authMethods (from agent)
-        if (result && Array.isArray(result.authMethods) && result.authMethods.length > 0) {
+        // Only trigger auto-auth on initialize responses to reduce attack surface
+        if (isInitializeResponse && result && Array.isArray(result.authMethods) && result.authMethods.length > 0) {
           logInfo(`Agent ${agentId} requires authentication, attempting auto-auth`);
           this.authState.set(agentId, 'pending');
           void this.attemptAuthentication(agentId, result.authMethods as Array<{ id: string }>);
@@ -543,7 +555,7 @@ export class MessageRouter {
         // session/new responses have sessionId in result, not in params
         if (result && typeof result.sessionId === 'string') {
           const agentSessionId = result.sessionId;
-          const clientSessionId = (pending as any).clientSessionId;
+          const clientSessionId = pending.clientSessionId;
           if (clientSessionId) {
             this.sessionIdMap.set(agentSessionId, clientSessionId);
             logInfo(`Mapped agent sessionId ${agentSessionId} to client sessionId ${clientSessionId}`);
@@ -729,6 +741,8 @@ export class MessageRouter {
    * Attempt automatic authentication for an agent.
    *
    * Selects the best authentication method and sends authenticate request.
+   * Only uses allowlisted method IDs for API key authentication to prevent
+   * sending credentials to arbitrary agent-controlled methods.
    *
    * @param agentId - The agent to authenticate
    * @param authMethods - Available authentication methods from initialize response
@@ -746,13 +760,26 @@ export class MessageRouter {
       return;
     }
 
-    // Select authentication method (prefer openai-api-key, then any api-key method)
-    let selectedMethod = authMethods.find(m => m.id === 'openai-api-key');
+    // Allowlist of safe method IDs for API key authentication
+    // Only send API keys to methods we explicitly trust
+    const SAFE_API_KEY_METHODS = [
+      'api-key',
+      'openai-api-key',
+      'anthropic-api-key',
+      'github-api-key',
+      'google-api-key',
+      'azure-api-key',
+      'cognito-api-key',
+    ];
+
+    // Select authentication method from allowlist only (security: don't send API key to arbitrary methods)
+    let selectedMethod = authMethods.find(m => SAFE_API_KEY_METHODS.includes(m.id));
+
     if (!selectedMethod) {
-      selectedMethod = authMethods.find(m => m.id.includes('api-key') || m.id.includes('apikey'));
-    }
-    if (!selectedMethod) {
-      selectedMethod = authMethods[0];
+      // No safe API key method available - do not fall back to arbitrary methods
+      logError(`No safe API key method available for agent ${agentId}, skipping auto-auth`);
+      this.authState.set(agentId, 'none');
+      return;
     }
 
     logInfo(`Authenticating agent ${agentId} with method: ${selectedMethod.id}`);
