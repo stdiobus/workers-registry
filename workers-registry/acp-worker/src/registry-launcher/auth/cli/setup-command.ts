@@ -26,15 +26,18 @@
  *
  * Starts the interactive authentication Setup_Wizard.
  *
- * Requirements: 9.1
+ * Requirements: 9.1, 3.1
  *
  * @module cli/setup-command
  */
 
 import { TerminalAuthFlow } from '../flows/terminal-auth-flow.js';
+import { AgentAuthFlow } from '../flows/agent-auth-flow.js';
 import { CredentialStore } from '../storage/credential-store.js';
+import { TokenManager } from '../token-manager.js';
+import { getProvider } from '../providers/index.js';
 import { CLIENT_CREDENTIALS_MARKER } from '../auth-manager.js';
-import type { AuthProviderId } from '../types.js';
+import type { AuthProviderId, TokenResponse } from '../types.js';
 import { isValidProviderId, VALID_PROVIDER_IDS } from '../types.js';
 
 /**
@@ -100,8 +103,40 @@ export async function runSetupCommand(options: SetupCommandOptions = {}): Promis
     });
 
     // Execute the setup wizard
-    const result = await terminalAuthFlow.execute(options.providerId);
+    const flowResult = await terminalAuthFlow.execute(options.providerId);
 
+    // Check if user selected browser OAuth flow
+    if (flowResult.useBrowserOAuth) {
+      output.write('\nLaunching browser for OAuth authentication...\n');
+      output.write('Please complete the authentication in your browser.\n\n');
+
+      // Create token manager for storing tokens
+      const tokenManager = new TokenManager({
+        credentialStore,
+        providerResolver: getProvider,
+      });
+
+      // Create and execute browser OAuth flow
+      const agentAuthFlow = new AgentAuthFlow({
+        getProvider,
+        storeTokens: async (providerId: AuthProviderId, tokens: TokenResponse) => {
+          await tokenManager.storeTokens(providerId, tokens);
+        },
+      });
+
+      const browserResult = await agentAuthFlow.execute(flowResult.providerId);
+
+      if (browserResult.success) {
+        output.write(`\n${flowResult.providerId} authentication completed successfully!\n\n`);
+        return 0;
+      } else {
+        output.write(`\nBrowser authentication failed: ${browserResult.error?.message}\n`);
+        return 1;
+      }
+    }
+
+    // Manual credential flow completed
+    const result = flowResult.authResult;
     if (result.success) {
       return 0;
     } else {

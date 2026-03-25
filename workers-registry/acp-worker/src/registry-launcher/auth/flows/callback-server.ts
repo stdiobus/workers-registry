@@ -62,6 +62,27 @@ const DEFAULT_CALLBACK_PATH = '/callback';
 const LOOPBACK_HOST_IPV4 = '127.0.0.1';
 
 /**
+ * Maximum URL length to prevent memory abuse (8KB).
+ */
+const MAX_URL_LENGTH = 8192;
+
+/**
+ * Maximum header size to prevent memory abuse (8KB).
+ */
+const MAX_HEADER_SIZE = 8192;
+
+/**
+ * Security response headers for browser-facing responses.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  'Cache-Control': 'no-store',
+  'Pragma': 'no-cache',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+};
+
+/**
  * Check if an address is a loopback address.
  * Supports both IPv4 (127.x.x.x) and IPv6 (::1) loopback addresses.
  *
@@ -89,6 +110,40 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   }
 
   return false;
+}
+
+/**
+ * Validate the Host header against allowed loopback hosts.
+ * Prevents DNS rebinding and host confusion attacks.
+ *
+ * @param hostHeader - The Host header value from the request
+ * @param expectedPort - The expected port number
+ * @returns True if the Host header is valid
+ */
+export function isValidHostHeader(hostHeader: string | undefined, expectedPort: number): boolean {
+  if (!hostHeader) {
+    return false;
+  }
+
+  // Allowed host patterns for loopback
+  const allowedHosts = [
+    `127.0.0.1:${expectedPort}`,
+    `localhost:${expectedPort}`,
+    `[::1]:${expectedPort}`,
+  ];
+
+  return allowedHosts.includes(hostHeader.toLowerCase());
+}
+
+/**
+ * Check if a query parameter appears multiple times (potential injection).
+ *
+ * @param url - The parsed URL object
+ * @param paramName - The parameter name to check
+ * @returns True if the parameter appears more than once
+ */
+function hasDuplicateParam(url: URL, paramName: string): boolean {
+  return url.searchParams.getAll(paramName).length > 1;
 }
 
 
@@ -255,29 +310,73 @@ export class CallbackServer implements ICallbackServer {
    * Rejects connections from non-loopback addresses for security.
    */
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
-    // Security: Reject connections from non-loopback addresses (Requirement 8.2)
-    const remoteAddress = req.socket.remoteAddress;
-    if (!isLoopbackAddress(remoteAddress)) {
-      res.writeHead(403, { 'Content-Type': 'text/plain' });
-      res.end('Forbidden: Only loopback connections are allowed');
+    // Security: Only accept GET requests (Requirement 8.2)
+    if (req.method !== 'GET') {
+      this.sendErrorResponse(res, 405, 'Method Not Allowed', 'Only GET requests are accepted');
       return;
     }
 
-    const url = new URL(req.url || '/', `http://${LOOPBACK_HOST_IPV4}:${this.port}`);
+    // Security: Reject connections from non-loopback addresses (Requirement 8.2)
+    const remoteAddress = req.socket.remoteAddress;
+    if (!isLoopbackAddress(remoteAddress)) {
+      this.sendErrorResponse(res, 403, 'Forbidden', 'Only loopback connections are allowed');
+      return;
+    }
+
+    // Security: Validate Host header to prevent DNS rebinding attacks (Requirement 8.2)
+    const hostHeader = req.headers.host;
+    if (!isValidHostHeader(hostHeader, this.port)) {
+      this.sendErrorResponse(res, 400, 'Bad Request', 'Invalid Host header');
+      return;
+    }
+
+    // Security: Enforce max URL length to prevent memory abuse
+    const rawUrl = req.url || '/';
+    if (rawUrl.length > MAX_URL_LENGTH) {
+      this.sendErrorResponse(res, 414, 'URI Too Long', 'Request URL exceeds maximum length');
+      return;
+    }
+
+    // Security: Check total header size
+    const headerSize = Object.entries(req.headers).reduce(
+      (sum, [key, value]) => sum + key.length + (Array.isArray(value) ? value.join('').length : (value?.length || 0)),
+      0
+    );
+    if (headerSize > MAX_HEADER_SIZE) {
+      this.sendErrorResponse(res, 431, 'Request Header Fields Too Large', 'Headers exceed maximum size');
+      return;
+    }
+
+    let url: URL;
+    try {
+      url = new URL(rawUrl, `http://${LOOPBACK_HOST_IPV4}:${this.port}`);
+    } catch {
+      this.sendErrorResponse(res, 400, 'Bad Request', 'Invalid URL format');
+      return;
+    }
 
     // Only handle requests to the callback path
     if (url.pathname !== this.callbackPath) {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not Found');
+      this.sendErrorResponse(res, 404, 'Not Found', 'Invalid callback path');
       return;
     }
 
     // One-shot guard: reject duplicate callbacks (Requirement 8.3)
     if (this.callbackHandled) {
-      res.writeHead(409, { 'Content-Type': 'text/plain' });
-      res.end('Conflict: Callback already processed');
+      this.sendErrorResponse(res, 409, 'Conflict', 'Callback already processed');
       return;
     }
+
+    // Security: Reject duplicate query parameters (potential injection)
+    const sensitiveParams = ['code', 'state', 'error', 'error_description'];
+    for (const param of sensitiveParams) {
+      if (hasDuplicateParam(url, param)) {
+        this.sendErrorResponse(res, 400, 'Bad Request', `Duplicate parameter: ${param}`);
+        return;
+      }
+    }
+
+    // Mark callback as handled atomically before any processing
     this.callbackHandled = true;
 
     // Parse query parameters
@@ -289,45 +388,67 @@ export class CallbackServer implements ICallbackServer {
     // Build callback result based on whether it's success or error
     let result: CallbackResult;
 
-    // Send response to browser
-    if (error) {
-      // OAuth error response
-      result = {
-        success: false,
-        error: error,
-        errorDescription: errorDescription || undefined,
-        state: state || undefined,
-      };
-      res.writeHead(400, { 'Content-Type': 'text/html' });
-      res.end(this.buildErrorPage(error, errorDescription));
-    } else if (code && state) {
-      // Successful authorization
-      result = {
-        success: true,
-        code: code,
-        state: state,
-      };
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(this.buildSuccessPage());
-    } else {
-      // Missing required parameters
-      result = {
-        success: false,
-        error: 'missing_params',
-        errorDescription: 'Missing code or state parameter',
-        state: state || undefined,
-      };
-      res.writeHead(400, { 'Content-Type': 'text/html' });
-      res.end(this.buildErrorPage('missing_params', 'Missing code or state parameter'));
-    }
+    try {
+      // Send response to browser
+      if (error) {
+        // OAuth error response - state is optional in error responses
+        result = {
+          success: false,
+          error: error,
+          errorDescription: errorDescription || undefined,
+          state: state || undefined,
+        };
+        this.sendHtmlResponse(res, 400, this.buildErrorPage(error, errorDescription));
+      } else if (code && state) {
+        // Successful authorization - both code and state are required
+        result = {
+          success: true,
+          code: code,
+          state: state,
+        };
+        this.sendHtmlResponse(res, 200, this.buildSuccessPage());
+      } else {
+        // Missing required parameters
+        result = {
+          success: false,
+          error: 'missing_params',
+          errorDescription: 'Missing code or state parameter',
+          state: state || undefined,
+        };
+        this.sendHtmlResponse(res, 400, this.buildErrorPage('missing_params', 'Missing code or state parameter'));
+      }
 
-    // Resolve the callback promise and stop accepting new connections (Requirement 8.3)
-    if (this.callbackResolve) {
-      this.callbackResolve(result);
+      // Resolve the callback promise and stop accepting new connections (Requirement 8.3)
+      if (this.callbackResolve) {
+        this.callbackResolve(result);
+      }
+    } finally {
+      // Always cleanup and stop accepting connections, even on exceptions
       this.cleanup();
-      // Immediately stop accepting new connections after processing the single expected request
       this.stopAcceptingConnections();
     }
+  }
+
+  /**
+   * Send an error response with security headers.
+   */
+  private sendErrorResponse(res: http.ServerResponse, statusCode: number, _statusMessage: string, body: string): void {
+    res.writeHead(statusCode, {
+      'Content-Type': 'text/plain',
+      ...SECURITY_HEADERS,
+    });
+    res.end(body);
+  }
+
+  /**
+   * Send an HTML response with security headers.
+   */
+  private sendHtmlResponse(res: http.ServerResponse, statusCode: number, html: string): void {
+    res.writeHead(statusCode, {
+      'Content-Type': 'text/html; charset=utf-8',
+      ...SECURITY_HEADERS,
+    });
+    res.end(html);
   }
 
   /**

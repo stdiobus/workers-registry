@@ -1342,4 +1342,383 @@ describe('Auth Manager Unit Tests', () => {
       });
     });
   });
+
+
+  /**
+   * Concurrency Control Tests (Requirements 3.1, 6.5)
+   *
+   * Tests for single-flight pattern: concurrent auth requests for the same
+   * provider share the same Promise and receive the same result.
+   */
+  describe('Concurrency Control (Requirements 3.1, 6.5)', () => {
+    // Import provider registry functions for test setup
+    const { registerProvider, unregisterProvider } = require('./providers/index');
+
+    beforeEach(() => {
+      // Register mock providers for concurrency tests
+      const providers: AuthProviderId[] = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+      for (const id of providers) {
+        const mockProvider = new MockAuthProvider(id);
+        registerProvider(id, () => mockProvider);
+      }
+    });
+
+    afterEach(() => {
+      // Unregister mock providers after each test
+      const providers: AuthProviderId[] = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+      for (const id of providers) {
+        unregisterProvider(id);
+      }
+    });
+
+    describe('Single-flight pattern for same provider', () => {
+      it('should run executeAuthFlow only once for two parallel calls to same provider', async () => {
+        let resolveGate: () => void;
+        const gate = new Promise<void>(resolve => { resolveGate = resolve; });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        // Spy on the private executeAuthFlow method
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async () => {
+            await gate;
+            return { success: true, providerId: 'openai' };
+          });
+
+        // Start two parallel calls for the same provider
+        const promise1 = authManager.authenticateAgent('openai');
+        const promise2 = authManager.authenticateAgent('openai');
+
+        // Before resolving gate, verify executeAuthFlow was called exactly once
+        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(1);
+
+        // Resolve gate and await both calls
+        resolveGate!();
+        await Promise.all([promise1, promise2]);
+
+        // Still should have been called only once
+        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(1);
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+
+      it('should return same success result to both callers', async () => {
+        let resolveGate: () => void;
+        const gate = new Promise<void>(resolve => { resolveGate = resolve; });
+
+        const expectedResult = {
+          success: true,
+          providerId: 'openai' as AuthProviderId,
+        };
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async () => {
+            await gate;
+            return expectedResult;
+          });
+
+        // Start two parallel calls
+        const promise1 = authManager.authenticateAgent('openai');
+        const promise2 = authManager.authenticateAgent('openai');
+
+        // Resolve gate
+        resolveGate!();
+
+        const [result1, result2] = await Promise.all([promise1, promise2]);
+
+        // Both callers should receive the same result
+        expect(result1).toEqual(expectedResult);
+        expect(result2).toEqual(expectedResult);
+        expect(result1).toEqual(result2);
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+
+      it('should return same error result to both callers', async () => {
+        let resolveGate: () => void;
+        const gate = new Promise<void>(resolve => { resolveGate = resolve; });
+
+        const expectedResult = {
+          success: false,
+          providerId: 'openai' as AuthProviderId,
+          error: {
+            code: 'PROVIDER_ERROR' as const,
+            message: 'Authentication failed: User cancelled',
+          },
+        };
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async () => {
+            await gate;
+            return expectedResult;
+          });
+
+        // Start two parallel calls
+        const promise1 = authManager.authenticateAgent('openai');
+        const promise2 = authManager.authenticateAgent('openai');
+
+        // Resolve gate
+        resolveGate!();
+
+        const [result1, result2] = await Promise.all([promise1, promise2]);
+
+        // Both callers should receive the same error result
+        expect(result1.success).toBe(false);
+        expect(result2.success).toBe(false);
+        expect(result1).toEqual(result2);
+        if (!result1.success) {
+          expect(result1.error).toEqual(expectedResult.error);
+        }
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+    });
+
+
+    describe('Mutex release behavior', () => {
+      it('should release mutex after successful completion, allowing new flow', async () => {
+        let callCount = 0;
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async () => {
+            callCount++;
+            return { success: true, providerId: 'openai' };
+          });
+
+        // First flow
+        await authManager.authenticateAgent('openai');
+        expect(callCount).toBe(1);
+
+        // After completion, new call should start fresh flow
+        await authManager.authenticateAgent('openai');
+        expect(callCount).toBe(2);
+
+        // Total calls should be 2
+        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(2);
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+
+      it('should release mutex after failure, allowing new flow', async () => {
+        let callCount = 0;
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async () => {
+            callCount++;
+            return {
+              success: false,
+              providerId: 'openai',
+              error: { code: 'TIMEOUT', message: 'Flow timed out' },
+            };
+          });
+
+        // First flow (fails)
+        const result1 = await authManager.authenticateAgent('openai');
+        expect(result1.success).toBe(false);
+        expect(callCount).toBe(1);
+
+        // After failure, new call should start fresh flow
+        const result2 = await authManager.authenticateAgent('openai');
+        expect(result2.success).toBe(false);
+        expect(callCount).toBe(2);
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+
+      it('should release mutex even when executeAuthFlow throws exception', async () => {
+        let callCount = 0;
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async () => {
+            callCount++;
+            if (callCount === 1) {
+              throw new Error('Unexpected error');
+            }
+            return { success: true, providerId: 'openai' };
+          });
+
+        // First flow throws - exception propagates to caller
+        await expect(authManager.authenticateAgent('openai')).rejects.toThrow('Unexpected error');
+        expect(callCount).toBe(1);
+
+        // After exception, mutex should be released, allowing new flow
+        const result2 = await authManager.authenticateAgent('openai');
+        expect(result2.success).toBe(true);
+        expect(callCount).toBe(2);
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+    });
+
+
+    describe('Different providers work independently', () => {
+      it('should allow parallel flows for different providers', async () => {
+        let openaiGateResolve: () => void;
+        let githubGateResolve: () => void;
+        const openaiGate = new Promise<void>(resolve => { openaiGateResolve = resolve; });
+        const githubGate = new Promise<void>(resolve => { githubGateResolve = resolve; });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async (...args: unknown[]) => {
+            const providerId = args[0] as string;
+            if (providerId === 'openai') {
+              await openaiGate;
+              return { success: true, providerId: 'openai' };
+            } else if (providerId === 'github') {
+              await githubGate;
+              return { success: true, providerId: 'github' };
+            }
+            return { success: false, providerId };
+          });
+
+        // Start parallel calls for different providers
+        const openaiPromise = authManager.authenticateAgent('openai');
+        const githubPromise = authManager.authenticateAgent('github');
+
+        // Both flows should have started (one call per provider)
+        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(2);
+        expect(mockExecuteAuthFlow).toHaveBeenCalledWith('openai', undefined);
+        expect(mockExecuteAuthFlow).toHaveBeenCalledWith('github', undefined);
+
+        // Resolve both gates
+        openaiGateResolve!();
+        githubGateResolve!();
+
+        const [openaiResult, githubResult] = await Promise.all([openaiPromise, githubPromise]);
+
+        // Both should succeed with their respective provider IDs
+        expect(openaiResult.success).toBe(true);
+        expect(openaiResult.providerId).toBe('openai');
+        expect(githubResult.success).toBe(true);
+        expect(githubResult.providerId).toBe('github');
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+
+      it('should not block one provider when another is in progress', async () => {
+        let openaiGateResolve: () => void;
+        const openaiGate = new Promise<void>(resolve => { openaiGateResolve = resolve; });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async (...args: unknown[]) => {
+            const providerId = args[0] as string;
+            if (providerId === 'openai') {
+              await openaiGate;
+              return { success: true, providerId: 'openai' };
+            }
+            // GitHub completes immediately
+            return { success: true, providerId: 'github' };
+          });
+
+        // Start openai flow (will be blocked)
+        const openaiPromise = authManager.authenticateAgent('openai');
+
+        // Start github flow (should complete immediately)
+        const githubResult = await authManager.authenticateAgent('github');
+
+        // GitHub should complete even though openai is still pending
+        expect(githubResult.success).toBe(true);
+        expect(githubResult.providerId).toBe('github');
+
+        // Now resolve openai
+        openaiGateResolve!();
+        const openaiResult = await openaiPromise;
+
+        expect(openaiResult.success).toBe(true);
+        expect(openaiResult.providerId).toBe('openai');
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+    });
+
+
+    describe('Multiple concurrent callers', () => {
+      it('should handle many concurrent callers for same provider', async () => {
+        let resolveGate: () => void;
+        const gate = new Promise<void>(resolve => { resolveGate = resolve; });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async () => {
+            await gate;
+            return { success: true, providerId: 'openai' };
+          });
+
+        // Start 10 parallel calls
+        const promises = Array.from({ length: 10 }, () =>
+          authManager.authenticateAgent('openai')
+        );
+
+        // Should still only call executeAuthFlow once
+        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(1);
+
+        // Resolve gate
+        resolveGate!();
+
+        const results = await Promise.all(promises);
+
+        // All 10 callers should receive the same result
+        for (const result of results) {
+          expect(result.success).toBe(true);
+          expect(result.providerId).toBe('openai');
+        }
+
+        // Still only one call
+        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(1);
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+    });
+  });
 });

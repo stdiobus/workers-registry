@@ -68,7 +68,8 @@ export type AuthErrorCode =
   | 'PROVIDER_ERROR'
   | 'UNSUPPORTED_PROVIDER'
   | 'CALLBACK_ERROR'
-  | 'TOKEN_REFRESH_FAILED';
+  | 'TOKEN_REFRESH_FAILED'
+  | 'HEADLESS_ENVIRONMENT';
 
 // =============================================================================
 // Token and Credential Types
@@ -386,6 +387,7 @@ export const VALID_ERROR_CODES: readonly AuthErrorCode[] = [
   'UNSUPPORTED_PROVIDER',
   'CALLBACK_ERROR',
   'TOKEN_REFRESH_FAILED',
+  'HEADLESS_ENVIRONMENT',
 ] as const;
 
 /**

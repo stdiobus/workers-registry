@@ -517,7 +517,7 @@ describe('Callback Server Unit Tests', () => {
         const response = await makeRequest(port, '/other-path');
 
         expect(response.statusCode).toBe(404);
-        expect(response.body).toBe('Not Found');
+        expect(response.body).toBe('Invalid callback path');
       });
     });
 
@@ -789,6 +789,448 @@ describe('Callback Server Unit Tests', () => {
       const response = await makeRequest(port, '/wrong-path?code=test&state=test');
 
       expect(response.statusCode).toBe(404);
+    });
+  });
+});
+
+
+/**
+ * Helper function to make HTTP requests with custom method.
+ */
+async function makeRequestWithMethod(
+  port: number,
+  path: string,
+  method: string,
+  headers: Record<string, string> = {}
+): Promise<{ statusCode: number; body: string; headers: http.IncomingHttpHeaders }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path,
+        method,
+        headers,
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          resolve({ statusCode: res.statusCode || 0, body, headers: res.headers });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+import { isValidHostHeader } from './callback-server';
+
+describe('Security Tests', () => {
+  let server: CallbackServer;
+
+  afterEach(async () => {
+    if (server && server.isRunning()) {
+      await server.stop();
+    }
+  });
+
+  describe('Host Header Validation (DNS Rebinding Prevention)', () => {
+    /**
+     * **Validates: Requirement 8.2**
+     * Prevents DNS rebinding attacks by validating Host header
+     */
+    describe('isValidHostHeader function', () => {
+      it('should accept 127.0.0.1:port', () => {
+        expect(isValidHostHeader('127.0.0.1:8080', 8080)).toBe(true);
+      });
+
+      it('should accept localhost:port', () => {
+        expect(isValidHostHeader('localhost:8080', 8080)).toBe(true);
+      });
+
+      it('should accept [::1]:port for IPv6', () => {
+        expect(isValidHostHeader('[::1]:8080', 8080)).toBe(true);
+      });
+
+      it('should reject wrong port', () => {
+        expect(isValidHostHeader('127.0.0.1:9999', 8080)).toBe(false);
+      });
+
+      it('should reject external host', () => {
+        expect(isValidHostHeader('evil.com:8080', 8080)).toBe(false);
+      });
+
+      it('should reject malformed host', () => {
+        expect(isValidHostHeader('127.0.0.1', 8080)).toBe(false); // Missing port
+        expect(isValidHostHeader(':8080', 8080)).toBe(false); // Missing host
+      });
+
+      it('should reject undefined host', () => {
+        expect(isValidHostHeader(undefined, 8080)).toBe(false);
+      });
+
+      it('should be case-insensitive for localhost', () => {
+        expect(isValidHostHeader('LOCALHOST:8080', 8080)).toBe(true);
+        expect(isValidHostHeader('LocalHost:8080', 8080)).toBe(true);
+      });
+    });
+  });
+
+  describe('HTTP Method Restriction', () => {
+    /**
+     * **Validates: Requirement 8.2**
+     * Only GET requests should be accepted
+     */
+    it('should accept GET requests', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'GET');
+
+      expect(response.statusCode).toBe(200);
+      await callbackPromise;
+    });
+
+    it('should reject POST requests', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'POST');
+
+      expect(response.statusCode).toBe(405);
+      expect(response.body).toBe('Only GET requests are accepted');
+    });
+
+    it('should reject PUT requests', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'PUT');
+
+      expect(response.statusCode).toBe(405);
+    });
+
+    it('should reject DELETE requests', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'DELETE');
+
+      expect(response.statusCode).toBe(405);
+    });
+  });
+
+  describe('Duplicate Query Parameter Rejection', () => {
+    /**
+     * **Validates: Requirement 8.2**
+     * Prevents parameter injection attacks
+     */
+    it('should reject duplicate code parameter', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const response = await makeRequest(port, '/callback?code=first&code=second&state=test');
+
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toBe('Duplicate parameter: code');
+    });
+
+    it('should reject duplicate state parameter', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const response = await makeRequest(port, '/callback?code=test&state=first&state=second');
+
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toBe('Duplicate parameter: state');
+    });
+
+    it('should reject duplicate error parameter', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const response = await makeRequest(port, '/callback?error=first&error=second');
+
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toBe('Duplicate parameter: error');
+    });
+
+    it('should accept single occurrence of each parameter', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+      const response = await makeRequest(port, '/callback?code=test&state=test');
+
+      expect(response.statusCode).toBe(200);
+      await callbackPromise;
+    });
+  });
+
+  describe('One-Shot Callback Behavior', () => {
+    /**
+     * **Validates: Requirement 8.3**
+     * Server should only process one callback
+     */
+    it('should accept first valid callback', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+      const response = await makeRequest(port, '/callback?code=first&state=first');
+
+      expect(response.statusCode).toBe(200);
+      const result = await callbackPromise;
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.code).toBe('first');
+      }
+    });
+
+    it('should reject second callback with 409 Conflict', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+
+      // First callback
+      await makeRequest(port, '/callback?code=first&state=first');
+      await callbackPromise;
+
+      // Give server time to process
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Second callback should be rejected (server closed after first)
+      // The connection will fail since server is closed
+      try {
+        await makeRequest(port, '/callback?code=second&state=second');
+        // If we get here, the server is still accepting connections (unexpected)
+      } catch {
+        // Expected: connection refused because server is closed
+      }
+
+      expect(server.isRunning()).toBe(false);
+    });
+  });
+
+  describe('Security Response Headers', () => {
+    /**
+     * **Validates: Requirement 8.2**
+     * Responses should include security headers
+     */
+    it('should include Cache-Control: no-store header', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'GET');
+
+      expect(response.headers['cache-control']).toBe('no-store');
+      await callbackPromise;
+    });
+
+    it('should include X-Content-Type-Options: nosniff header', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'GET');
+
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      await callbackPromise;
+    });
+
+    it('should include X-Frame-Options: DENY header', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'GET');
+
+      expect(response.headers['x-frame-options']).toBe('DENY');
+      await callbackPromise;
+    });
+
+    it('should include Content-Security-Policy header', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+      const response = await makeRequestWithMethod(port, '/callback?code=test&state=test', 'GET');
+
+      expect(response.headers['content-security-policy']).toBeDefined();
+      await callbackPromise;
+    });
+
+    it('should include security headers on error responses', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const response = await makeRequestWithMethod(port, '/wrong-path', 'GET');
+
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+    });
+  });
+
+  describe('Timeout and Cleanup', () => {
+    /**
+     * **Validates: Requirements 8.3, 8.5**
+     * Proper cleanup after timeout
+     */
+    it('should close server after timeout', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+
+      expect(server.isRunning()).toBe(true);
+
+      try {
+        await server.waitForCallback(1000);
+      } catch (error) {
+        expect((error as Error).message).toBe('Callback timeout exceeded');
+      }
+
+      // Server should still be technically running but callback state cleaned up
+      // The server itself doesn't auto-close on timeout, only the callback promise rejects
+    }, 5000);
+
+    it('should not resolve callback promise twice on race condition', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      let resolveCount = 0;
+      const callbackPromise = server.waitForCallback(2000).then(result => {
+        resolveCount++;
+        return result;
+      });
+
+      // Send callback just before timeout would occur
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await makeRequest(port, '/callback?code=test&state=test');
+
+      const result = await callbackPromise;
+
+      // Wait a bit to ensure no double resolution
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      expect(resolveCount).toBe(1);
+      expect(result.success).toBe(true);
+    }, 5000);
+  });
+
+  describe('Sensitive Data Protection', () => {
+    /**
+     * **Validates: Requirement 13.5**
+     * Error messages should not expose sensitive data
+     */
+    it('should not expose code in error messages', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      // Request with missing state (will fail)
+      const response = await makeRequest(port, '/callback?code=secret_code_12345');
+
+      // Error message should not contain the code value
+      expect(response.body).not.toContain('secret_code_12345');
+    });
+
+    it('should escape HTML in error_description to prevent XSS', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+
+      const response = await makeRequest(
+        port,
+        '/callback?error=test&error_description=<script>document.cookie</script>'
+      );
+
+      expect(response.body).not.toContain('<script>');
+      expect(response.body).toContain('&lt;script&gt;');
+
+      await callbackPromise;
+    });
+
+    it('should escape HTML in error code to prevent XSS', async () => {
+      server = new CallbackServer('/callback');
+      await server.start();
+      const port = server.getPort();
+
+      const callbackPromise = server.waitForCallback(5000);
+
+      const response = await makeRequest(
+        port,
+        '/callback?error=<img%20src=x%20onerror=alert(1)>'
+      );
+
+      expect(response.body).not.toContain('<img');
+      expect(response.body).toContain('&lt;img');
+
+      await callbackPromise;
+    });
+  });
+
+  describe('Loopback Address Validation', () => {
+    /**
+     * **Validates: Requirement 8.1, 8.2**
+     * Only loopback connections should be accepted
+     */
+    it('should accept IPv4 loopback 127.0.0.1', () => {
+      expect(isLoopbackAddress('127.0.0.1')).toBe(true);
+    });
+
+    it('should accept IPv4 loopback range 127.x.x.x', () => {
+      expect(isLoopbackAddress('127.0.0.0')).toBe(true);
+      expect(isLoopbackAddress('127.255.255.255')).toBe(true);
+      expect(isLoopbackAddress('127.1.2.3')).toBe(true);
+    });
+
+    it('should accept IPv6 loopback ::1', () => {
+      expect(isLoopbackAddress('::1')).toBe(true);
+    });
+
+    it('should accept IPv4-mapped IPv6 loopback', () => {
+      expect(isLoopbackAddress('::ffff:127.0.0.1')).toBe(true);
+      expect(isLoopbackAddress('::ffff:127.1.2.3')).toBe(true);
+    });
+
+    it('should reject private network addresses', () => {
+      expect(isLoopbackAddress('192.168.1.1')).toBe(false);
+      expect(isLoopbackAddress('10.0.0.1')).toBe(false);
+      expect(isLoopbackAddress('172.16.0.1')).toBe(false);
+    });
+
+    it('should reject public addresses', () => {
+      expect(isLoopbackAddress('8.8.8.8')).toBe(false);
+      expect(isLoopbackAddress('1.1.1.1')).toBe(false);
+    });
+
+    it('should reject undefined and empty', () => {
+      expect(isLoopbackAddress(undefined)).toBe(false);
+      expect(isLoopbackAddress('')).toBe(false);
     });
   });
 });

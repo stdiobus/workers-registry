@@ -293,6 +293,7 @@ describe('isValidErrorCode', () => {
         'UNSUPPORTED_PROVIDER',
         'CALLBACK_ERROR',
         'TOKEN_REFRESH_FAILED',
+        'HEADLESS_ENVIRONMENT',
       ];
       expectedCodes.forEach((code) => {
         expect(isValidErrorCode(code)).toBe(true);
@@ -386,6 +387,9 @@ describe('isValidErrorCode', () => {
           case 'TOKEN_REFRESH_FAILED':
             message = 'Token refresh failed';
             break;
+          case 'HEADLESS_ENVIRONMENT':
+            message = 'Headless environment detected';
+            break;
           default: {
             // Exhaustiveness check: if all cases are handled, this should never be reached
             // TypeScript will error if a case is missing
@@ -419,6 +423,8 @@ describe('isValidErrorCode', () => {
             return 'Callback error';
           case 'TOKEN_REFRESH_FAILED':
             return 'Token refresh failed';
+          case 'HEADLESS_ENVIRONMENT':
+            return 'Headless environment detected';
           default: {
             const _exhaustiveCheck: never = code;
             throw new Error(`Unhandled error code: ${_exhaustiveCheck}`);
@@ -490,13 +496,14 @@ describe('constant arrays', () => {
   });
 
   describe('VALID_ERROR_CODES', () => {
-    it('should contain exactly 9 error codes', () => {
-      expect(VALID_ERROR_CODES).toHaveLength(9);
+    it('should contain exactly 10 error codes', () => {
+      expect(VALID_ERROR_CODES).toHaveLength(10);
     });
 
     it('should contain the exact expected error codes', () => {
       expect([...VALID_ERROR_CODES].sort()).toEqual([
         'CALLBACK_ERROR',
+        'HEADLESS_ENVIRONMENT',
         'INVALID_CREDENTIALS',
         'INVALID_STATE',
         'NETWORK_ERROR',

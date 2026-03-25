@@ -144,6 +144,15 @@ export class AuthManager {
   private readonly methodPrecedenceConfig: AuthMethodPrecedenceConfig;
 
   /**
+   * Tracks in-flight authentication flows per provider.
+   * Used to implement single-flight pattern: concurrent auth requests for the same
+   * provider share the same Promise and receive the same result.
+   *
+   * Requirements: 3.1, 6.5
+   */
+  private readonly inFlightAuthFlows: Map<AuthProviderId, Promise<AuthResult>> = new Map();
+
+  /**
    * Create a new AuthManager.
    *
    * @param options - Configuration options
@@ -206,7 +215,12 @@ export class AuthManager {
    * Initiates the OAuth 2.1 Authorization Code flow with PKCE.
    * Opens the system browser for user authentication.
    *
+   * Implements single-flight pattern: if an auth flow is already in progress
+   * for the same provider, subsequent callers wait for and share the same result.
+   * This prevents multiple simultaneous browser flows for the same provider.
+   *
    * Requirement 3.1: Initiate OAuth 2.1 Authorization Code flow with PKCE
+   * Requirement 6.5: Concurrent auth requests share the same flow
    *
    * @param providerId - The provider to authenticate with
    * @param options - Optional flow configuration
@@ -216,7 +230,7 @@ export class AuthManager {
     providerId: AuthProviderId,
     options?: AgentAuthOptions
   ): Promise<AuthResult> {
-    // Validate provider ID
+    // Validate provider ID (fast-fail before checking in-flight flows)
     if (!isValidProviderId(providerId)) {
       return {
         success: false,
@@ -229,7 +243,7 @@ export class AuthManager {
       };
     }
 
-    // Check if provider is registered
+    // Check if provider is registered (fast-fail before checking in-flight flows)
     if (!hasProvider(providerId)) {
       return {
         success: false,
@@ -242,6 +256,41 @@ export class AuthManager {
       };
     }
 
+    // Check for existing in-flight flow for this provider (single-flight pattern)
+    const existingFlow = this.inFlightAuthFlows.get(providerId);
+    if (existingFlow) {
+      console.error(`[AuthManager] Auth flow already in progress for ${providerId}, waiting for result...`);
+      return existingFlow;
+    }
+
+    // Create and track new flow
+    const flowPromise = this.executeAuthFlow(providerId, options);
+    this.inFlightAuthFlows.set(providerId, flowPromise);
+
+    try {
+      return await flowPromise;
+    } finally {
+      // Only delete if this is still our promise (race protection)
+      if (this.inFlightAuthFlows.get(providerId) === flowPromise) {
+        this.inFlightAuthFlows.delete(providerId);
+      }
+    }
+  }
+
+  /**
+   * Execute the actual OAuth authentication flow.
+   *
+   * This is the internal implementation that performs the browser-based
+   * OAuth 2.1 Authorization Code flow with PKCE.
+   *
+   * @param providerId - The provider to authenticate with
+   * @param options - Optional flow configuration
+   * @returns Authentication result indicating success or failure
+   */
+  private async executeAuthFlow(
+    providerId: AuthProviderId,
+    options?: AgentAuthOptions
+  ): Promise<AuthResult> {
     try {
       // Create the agent auth flow
       const agentAuthFlow = new AgentAuthFlow({
@@ -313,8 +362,16 @@ export class AuthManager {
 
       // Execute the flow
       console.error(`[AuthManager] Starting terminal setup for ${providerId}`);
-      const result = await terminalAuthFlow.execute(providerId);
+      const flowResult = await terminalAuthFlow.execute(providerId);
 
+      // Check if user selected browser OAuth flow
+      if (flowResult.useBrowserOAuth) {
+        console.error(`[AuthManager] User selected browser OAuth for ${providerId}, launching browser flow`);
+        return this.authenticateAgent(flowResult.providerId);
+      }
+
+      // Manual credential flow completed
+      const result = flowResult.authResult;
       if (result.success) {
         console.error(`[AuthManager] Terminal setup completed successfully for ${providerId}`);
       } else {

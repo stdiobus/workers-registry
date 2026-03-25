@@ -33,10 +33,22 @@
 
 import type { AuthProviderId, TokenResponse, AuthorizationParams } from '../types.js';
 import type { IAuthProvider } from '../providers/types.js';
+
+// Import the module with mocked isHeadlessEnvironment
+// We need to mock process.stdout.isTTY and process.stderr.isTTY to simulate non-headless environment
+const originalStdoutIsTTY = process.stdout.isTTY;
+const originalStderrIsTTY = process.stderr.isTTY;
+
+// Set TTY to true before importing the module to ensure isHeadlessEnvironment returns false
+Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+
 import {
   AgentAuthFlow,
   createAgentAuthFlow,
   openSystemBrowser,
+  redactUrlForLogging,
+  isHeadlessEnvironment,
   DEFAULT_AUTH_TIMEOUT_MS,
 } from './agent-auth-flow.js';
 
@@ -81,17 +93,23 @@ function createMockProvider(overrides: Partial<IAuthProvider> = {}): IAuthProvid
 }
 
 describe('Agent Auth Flow Unit Tests', () => {
-  // Store original env
+  // Store original env and TTY state
   const originalEnv = process.env;
 
   beforeEach(() => {
     // Reset env for each test
     process.env = { ...originalEnv };
+    // Ensure TTY is set to true to simulate non-headless environment
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+    Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
     jest.clearAllMocks();
   });
 
   afterEach(() => {
     process.env = originalEnv;
+    // Restore original TTY state
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutIsTTY, writable: true });
+    Object.defineProperty(process.stderr, 'isTTY', { value: originalStderrIsTTY, writable: true });
   });
 
   describe('AgentAuthFlow class', () => {
@@ -539,11 +557,816 @@ describe('Agent Auth Flow Unit Tests', () => {
   });
 
   describe('openSystemBrowser', () => {
+    /**
+     * **Validates: Requirements 3.6, 8.1**
+     * Browser launch command validation and URL security
+     */
     it('should be a function', () => {
       expect(typeof openSystemBrowser).toBe('function');
     });
 
+    it('should reject non-HTTPS URLs', async () => {
+      await expect(openSystemBrowser('http://auth.example.com/authorize'))
+        .rejects.toThrow('OAuth authorization URL must use HTTPS');
+    });
+
+    it('should reject URLs with userinfo (username)', async () => {
+      await expect(openSystemBrowser('https://user@auth.example.com/authorize'))
+        .rejects.toThrow('URL must not contain credentials');
+    });
+
+    it('should reject URLs with userinfo (username and password)', async () => {
+      await expect(openSystemBrowser('https://user:pass@auth.example.com/authorize'))
+        .rejects.toThrow('URL must not contain credentials');
+    });
+
+    it('should reject invalid URL format', async () => {
+      await expect(openSystemBrowser('not-a-valid-url'))
+        .rejects.toThrow('Invalid URL format');
+    });
+
+    it('should reject URLs with control characters', async () => {
+      // URL with bell character (control character 0x07) - checked before URL parsing
+      const urlWithControl = 'https://auth.example.com/authorize?param=value\x07';
+      await expect(openSystemBrowser(urlWithControl))
+        .rejects.toThrow('URL contains invalid control characters');
+    });
+
+    it('should reject URLs with null byte control character', async () => {
+      // URL with null byte (control character 0x00)
+      const urlWithNull = 'https://auth.example.com/authorize?param=\x00value';
+      await expect(openSystemBrowser(urlWithNull))
+        .rejects.toThrow('URL contains invalid control characters');
+    });
+
+    it('should reject file:// protocol URLs', async () => {
+      await expect(openSystemBrowser('file:///etc/passwd'))
+        .rejects.toThrow('OAuth authorization URL must use HTTPS');
+    });
+
+    it('should reject javascript: protocol URLs', async () => {
+      await expect(openSystemBrowser('javascript:alert(1)'))
+        .rejects.toThrow('OAuth authorization URL must use HTTPS');
+    });
+
+    it('should reject data: protocol URLs', async () => {
+      await expect(openSystemBrowser('data:text/html,<script>alert(1)</script>'))
+        .rejects.toThrow('OAuth authorization URL must use HTTPS');
+    });
+
     // Note: We don't actually test browser launching as it would open a real browser
     // In a real test environment, we'd mock child_process.exec
+  });
+
+  describe('redactUrlForLogging', () => {
+    /**
+     * **Validates: Requirements 3.6, 8.1**
+     * URL redaction for secure logging
+     */
+    it('should redact state parameter', () => {
+      const url = 'https://auth.example.com/authorize?client_id=xxx&state=secret123';
+      const redacted = redactUrlForLogging(url);
+      expect(redacted).toContain('state=%5BREDACTED%5D');
+      expect(redacted).not.toContain('secret123');
+    });
+
+    it('should redact code_challenge parameter', () => {
+      const url = 'https://auth.example.com/authorize?client_id=xxx&code_challenge=abc123';
+      const redacted = redactUrlForLogging(url);
+      expect(redacted).toContain('code_challenge=%5BREDACTED%5D');
+      expect(redacted).not.toContain('abc123');
+    });
+
+    it('should redact multiple sensitive parameters', () => {
+      const url = 'https://auth.example.com/authorize?client_id=xxx&state=mysecretstate&code_challenge=mychallengeval&code=myauthcode';
+      const redacted = redactUrlForLogging(url);
+      expect(redacted).toContain('state=%5BREDACTED%5D');
+      expect(redacted).toContain('code_challenge=%5BREDACTED%5D');
+      expect(redacted).toContain('code=%5BREDACTED%5D');
+      expect(redacted).not.toContain('mysecretstate');
+      expect(redacted).not.toContain('mychallengeval');
+      expect(redacted).not.toContain('myauthcode');
+    });
+
+    it('should preserve non-sensitive parameters', () => {
+      const url = 'https://auth.example.com/authorize?client_id=my-client&redirect_uri=http://localhost:8080&state=secret';
+      const redacted = redactUrlForLogging(url);
+      expect(redacted).toContain('client_id=my-client');
+      expect(redacted).toContain('redirect_uri=');
+      expect(redacted).toContain('state=%5BREDACTED%5D');
+    });
+
+    it('should handle URLs without sensitive parameters', () => {
+      const url = 'https://auth.example.com/authorize?client_id=xxx&scope=openid';
+      const redacted = redactUrlForLogging(url);
+      expect(redacted).toBe(url);
+    });
+
+    it('should handle invalid URLs gracefully', () => {
+      const redacted = redactUrlForLogging('not-a-valid-url');
+      expect(redacted).toBe('[INVALID URL - REDACTED]');
+    });
+
+    it('should redact access_token parameter', () => {
+      const url = 'https://api.example.com/callback?access_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
+      const redacted = redactUrlForLogging(url);
+      expect(redacted).toContain('access_token=%5BREDACTED%5D');
+      expect(redacted).not.toContain('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');
+    });
+
+    it('should redact refresh_token parameter', () => {
+      const url = 'https://api.example.com/callback?refresh_token=refresh123';
+      const redacted = redactUrlForLogging(url);
+      expect(redacted).toContain('refresh_token=%5BREDACTED%5D');
+      expect(redacted).not.toContain('refresh123');
+    });
+  });
+
+  describe('isHeadlessEnvironment', () => {
+    /**
+     * **Validates: Requirements 3.1, 13.2**
+     * Headless environment detection and fallback behavior
+     */
+    it('should return HEADLESS_ENVIRONMENT error when in headless mode', async () => {
+      // Simulate headless environment by setting TTY to false
+      Object.defineProperty(process.stdout, 'isTTY', { value: false, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: false, writable: true });
+
+      const mockProvider = createMockProvider();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+        expect(result.error.message).toBe('Browser OAuth not available in headless environment');
+        expect(result.error.details).toBeDefined();
+        expect(result.error.details?.suggestion).toBe('Use --setup for manual credential configuration');
+      }
+
+      // Verify that browser was NOT launched
+      expect(mockProvider.buildAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
+    it('should detect CI environment variable', async () => {
+      // Set CI environment variable
+      process.env.CI = 'true';
+      // Ensure TTY is true so only CI detection triggers headless
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+
+      const mockProvider = createMockProvider();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+
+      // Clean up
+      delete process.env.CI;
+    });
+
+    it('should detect HEADLESS environment variable', async () => {
+      // Set HEADLESS environment variable
+      process.env.HEADLESS = '1';
+      // Ensure TTY is true so only HEADLESS detection triggers headless
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+
+      const mockProvider = createMockProvider();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+
+      // Clean up
+      delete process.env.HEADLESS;
+    });
+
+    it('should detect SSH_TTY environment variable', async () => {
+      // Set SSH_TTY environment variable
+      process.env.SSH_TTY = '/dev/pts/0';
+      // Ensure TTY is true so only SSH_TTY detection triggers headless
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+
+      const mockProvider = createMockProvider();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+
+      // Clean up
+      delete process.env.SSH_TTY;
+    });
+
+    it('should not trigger headless when CI=false', async () => {
+      // Set CI to false (should not trigger headless)
+      process.env.CI = 'false';
+      // Ensure TTY is true
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+
+      const mockProvider = createMockProvider();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+
+      // Should proceed past headless check (will timeout, but that's expected)
+      const result = await flow.execute('openai', { timeoutMs: 100 });
+
+      // Should NOT be HEADLESS_ENVIRONMENT error
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).not.toBe('HEADLESS_ENVIRONMENT');
+      }
+
+      // Clean up
+      delete process.env.CI;
+    });
+  });
+
+  /**
+   * Comprehensive unit tests for isHeadlessEnvironment() function.
+   *
+   * **Validates: Requirements 3.1, 13.2**
+   *
+   * Tests cover:
+   * - Direct function testing for each CI environment variable
+   * - Edge cases (empty string, "0", "false" should NOT trigger headless)
+   * - TTY detection
+   * - SSH_TTY detection
+   * - HEADLESS environment variable
+   */
+  describe('isHeadlessEnvironment() direct unit tests', () => {
+    // Store original env and TTY state
+    const originalEnv = process.env;
+    const originalStdoutIsTTY = process.stdout.isTTY;
+    const originalStderrIsTTY = process.stderr.isTTY;
+
+    beforeEach(() => {
+      // Reset env for each test - create a clean environment
+      process.env = {};
+      // Ensure TTY is set to true by default (non-headless baseline)
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutIsTTY, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: originalStderrIsTTY, writable: true });
+    });
+
+    describe('CI environment variable detection (parameterized)', () => {
+      /**
+       * All CI environment variables that should trigger headless detection.
+       * **Validates: Requirements 3.1, 13.2**
+       */
+      const CI_ENVIRONMENT_VARIABLES = [
+        'CI',
+        'CONTINUOUS_INTEGRATION',
+        'GITHUB_ACTIONS',
+        'GITLAB_CI',
+        'JENKINS',
+        'JENKINS_URL',
+        'TRAVIS',
+        'CIRCLECI',
+        'BUILDKITE',
+        'DRONE',
+        'TEAMCITY_VERSION',
+        'TF_BUILD',
+        'CODEBUILD_BUILD_ID',
+        'BITBUCKET_BUILD_NUMBER',
+        'HEROKU_TEST_RUN_ID',
+        'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI',
+      ];
+
+      describe.each(CI_ENVIRONMENT_VARIABLES)('when %s is set', (envVar) => {
+        it(`should detect headless when ${envVar}="true"`, () => {
+          process.env[envVar] = 'true';
+          expect(isHeadlessEnvironment()).toBe(true);
+        });
+
+        it(`should detect headless when ${envVar}="1"`, () => {
+          process.env[envVar] = '1';
+          expect(isHeadlessEnvironment()).toBe(true);
+        });
+
+        it(`should detect headless when ${envVar}="yes"`, () => {
+          process.env[envVar] = 'yes';
+          expect(isHeadlessEnvironment()).toBe(true);
+        });
+
+        it(`should detect headless when ${envVar}="any-value"`, () => {
+          process.env[envVar] = 'any-value';
+          expect(isHeadlessEnvironment()).toBe(true);
+        });
+
+        it(`should NOT detect headless when ${envVar}=""`, () => {
+          process.env[envVar] = '';
+          expect(isHeadlessEnvironment()).toBe(false);
+        });
+
+        it(`should NOT detect headless when ${envVar}="0"`, () => {
+          process.env[envVar] = '0';
+          expect(isHeadlessEnvironment()).toBe(false);
+        });
+
+        it(`should NOT detect headless when ${envVar}="false"`, () => {
+          process.env[envVar] = 'false';
+          expect(isHeadlessEnvironment()).toBe(false);
+        });
+
+        it(`should NOT detect headless when ${envVar}="FALSE"`, () => {
+          process.env[envVar] = 'FALSE';
+          expect(isHeadlessEnvironment()).toBe(false);
+        });
+
+        it(`should NOT detect headless when ${envVar}="False"`, () => {
+          process.env[envVar] = 'False';
+          expect(isHeadlessEnvironment()).toBe(false);
+        });
+      });
+    });
+
+    describe('HEADLESS environment variable', () => {
+      it('should detect headless when HEADLESS="true"', () => {
+        process.env.HEADLESS = 'true';
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should detect headless when HEADLESS="1"', () => {
+        process.env.HEADLESS = '1';
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should detect headless when HEADLESS="yes"', () => {
+        process.env.HEADLESS = 'yes';
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should NOT detect headless when HEADLESS=""', () => {
+        process.env.HEADLESS = '';
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+
+      it('should NOT detect headless when HEADLESS="0"', () => {
+        process.env.HEADLESS = '0';
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+
+      it('should NOT detect headless when HEADLESS="false"', () => {
+        process.env.HEADLESS = 'false';
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+
+      it('should NOT detect headless when HEADLESS="FALSE"', () => {
+        process.env.HEADLESS = 'FALSE';
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+    });
+
+    describe('SSH_TTY detection', () => {
+      it('should detect headless when SSH_TTY is set to a path', () => {
+        process.env.SSH_TTY = '/dev/pts/0';
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should detect headless when SSH_TTY is set to any non-empty value', () => {
+        process.env.SSH_TTY = '/dev/tty1';
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should NOT detect headless when SSH_TTY=""', () => {
+        process.env.SSH_TTY = '';
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+
+      it('should NOT detect headless when SSH_TTY is undefined', () => {
+        delete process.env.SSH_TTY;
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+    });
+
+    describe('TTY detection', () => {
+      it('should detect headless when stdout is not TTY', () => {
+        Object.defineProperty(process.stdout, 'isTTY', { value: false, writable: true });
+        Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should detect headless when stderr is not TTY', () => {
+        Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+        Object.defineProperty(process.stderr, 'isTTY', { value: false, writable: true });
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should detect headless when both stdout and stderr are not TTY', () => {
+        Object.defineProperty(process.stdout, 'isTTY', { value: false, writable: true });
+        Object.defineProperty(process.stderr, 'isTTY', { value: false, writable: true });
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should NOT detect headless when both stdout and stderr are TTY', () => {
+        Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+        Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+
+      it('should detect headless when stdout.isTTY is undefined', () => {
+        Object.defineProperty(process.stdout, 'isTTY', { value: undefined, writable: true });
+        Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+
+      it('should detect headless when stderr.isTTY is undefined', () => {
+        Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+        Object.defineProperty(process.stderr, 'isTTY', { value: undefined, writable: true });
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+    });
+
+    describe('Edge cases - values that should NOT trigger headless', () => {
+      /**
+       * Edge case tests ensuring empty strings, "0", and "false" do NOT trigger headless.
+       * **Validates: Requirements 3.1, 13.2**
+       */
+      it.each([
+        ['CI', ''],
+        ['CI', '0'],
+        ['CI', 'false'],
+        ['CI', 'FALSE'],
+        ['CI', 'False'],
+        ['GITHUB_ACTIONS', ''],
+        ['GITHUB_ACTIONS', '0'],
+        ['GITHUB_ACTIONS', 'false'],
+        ['GITLAB_CI', ''],
+        ['GITLAB_CI', '0'],
+        ['GITLAB_CI', 'false'],
+        ['HEADLESS', ''],
+        ['HEADLESS', '0'],
+        ['HEADLESS', 'false'],
+        ['SSH_TTY', ''],
+      ])('should NOT detect headless when %s="%s"', (envVar, value) => {
+        process.env[envVar] = value;
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+    });
+
+    describe('Edge cases - values that SHOULD trigger headless', () => {
+      /**
+       * Edge case tests ensuring truthy values DO trigger headless.
+       * **Validates: Requirements 3.1, 13.2**
+       */
+      it.each([
+        ['CI', 'true'],
+        ['CI', 'TRUE'],
+        ['CI', 'True'],
+        ['CI', '1'],
+        ['CI', 'yes'],
+        ['CI', 'YES'],
+        ['CI', 'on'],
+        ['CI', 'enabled'],
+        ['CI', 'any-random-string'],
+        ['GITHUB_ACTIONS', 'true'],
+        ['GITHUB_ACTIONS', '1'],
+        ['GITLAB_CI', 'true'],
+        ['GITLAB_CI', '1'],
+        ['HEADLESS', 'true'],
+        ['HEADLESS', '1'],
+        ['HEADLESS', 'yes'],
+        ['SSH_TTY', '/dev/pts/0'],
+        ['SSH_TTY', '/dev/tty1'],
+        ['SSH_TTY', 'any-value'],
+      ])('should detect headless when %s="%s"', (envVar, value) => {
+        process.env[envVar] = value;
+        expect(isHeadlessEnvironment()).toBe(true);
+      });
+    });
+
+    describe('Normal flow when TTY available', () => {
+      it('should return false when no CI variables set and TTY available', () => {
+        // Clean environment with TTY available
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+
+      it('should return false when only unrelated env vars are set', () => {
+        process.env.PATH = '/usr/bin';
+        process.env.HOME = '/home/user';
+        process.env.USER = 'testuser';
+        expect(isHeadlessEnvironment()).toBe(false);
+      });
+    });
+  });
+
+  describe('Browser not called verification in headless mode', () => {
+    /**
+     * Critical tests verifying that launchBrowser is NEVER called when headless is detected.
+     * **Validates: Requirements 3.1, 13.2**
+     */
+    const originalEnv = process.env;
+    const originalStdoutIsTTY = process.stdout.isTTY;
+    const originalStderrIsTTY = process.stderr.isTTY;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+      jest.clearAllMocks();
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutIsTTY, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: originalStderrIsTTY, writable: true });
+    });
+
+    /**
+     * Parameterized tests for all CI environment variables ensuring browser is never called.
+     */
+    const CI_VARS_FOR_BROWSER_TEST = [
+      'CI',
+      'GITHUB_ACTIONS',
+      'GITLAB_CI',
+      'JENKINS',
+      'JENKINS_URL',
+      'TRAVIS',
+      'CIRCLECI',
+      'BUILDKITE',
+      'DRONE',
+      'TEAMCITY_VERSION',
+      'TF_BUILD',
+      'CODEBUILD_BUILD_ID',
+      'BITBUCKET_BUILD_NUMBER',
+      'HEROKU_TEST_RUN_ID',
+      'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI',
+    ];
+
+    describe.each(CI_VARS_FOR_BROWSER_TEST)('when %s is set', (envVar) => {
+      it(`should NOT call launchBrowser when ${envVar}="true"`, async () => {
+        process.env[envVar] = 'true';
+
+        const mockProvider = createMockProvider();
+        const launchBrowserMock = jest.fn();
+
+        const flow = new AgentAuthFlow({
+          getProvider: () => mockProvider,
+          storeTokens: async () => { },
+          launchBrowser: launchBrowserMock,
+        });
+
+        const result = await flow.execute('openai');
+
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+        }
+        expect(launchBrowserMock).not.toHaveBeenCalled();
+        expect(mockProvider.buildAuthorizationUrl).not.toHaveBeenCalled();
+      });
+    });
+
+    it('should NOT call launchBrowser when HEADLESS="true"', async () => {
+      process.env.HEADLESS = 'true';
+
+      const mockProvider = createMockProvider();
+      const launchBrowserMock = jest.fn();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: launchBrowserMock,
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+      expect(launchBrowserMock).not.toHaveBeenCalled();
+      expect(mockProvider.buildAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call launchBrowser when SSH_TTY is set', async () => {
+      process.env.SSH_TTY = '/dev/pts/0';
+
+      const mockProvider = createMockProvider();
+      const launchBrowserMock = jest.fn();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: launchBrowserMock,
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+      expect(launchBrowserMock).not.toHaveBeenCalled();
+      expect(mockProvider.buildAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call launchBrowser when stdout is not TTY', async () => {
+      Object.defineProperty(process.stdout, 'isTTY', { value: false, writable: true });
+
+      const mockProvider = createMockProvider();
+      const launchBrowserMock = jest.fn();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: launchBrowserMock,
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+      expect(launchBrowserMock).not.toHaveBeenCalled();
+      expect(mockProvider.buildAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call launchBrowser when stderr is not TTY', async () => {
+      Object.defineProperty(process.stderr, 'isTTY', { value: false, writable: true });
+
+      const mockProvider = createMockProvider();
+      const launchBrowserMock = jest.fn();
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: launchBrowserMock,
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+      expect(launchBrowserMock).not.toHaveBeenCalled();
+      expect(mockProvider.buildAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
+    it('should call launchBrowser when NOT in headless mode', async () => {
+      // Ensure non-headless environment
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+
+      const mockProvider = createMockProvider();
+      const launchBrowserMock = jest.fn().mockResolvedValue(undefined);
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => mockProvider,
+        storeTokens: async () => { },
+        launchBrowser: launchBrowserMock,
+      });
+
+      process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+
+      // Will timeout, but browser should be called
+      const result = await flow.execute('openai', { timeoutMs: 100 });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        // Should NOT be HEADLESS_ENVIRONMENT error
+        expect(result.error.code).not.toBe('HEADLESS_ENVIRONMENT');
+      }
+      // Browser SHOULD have been called
+      expect(launchBrowserMock).toHaveBeenCalled();
+      expect(mockProvider.buildAuthorizationUrl).toHaveBeenCalled();
+    });
+  });
+
+  describe('Error message content in headless mode', () => {
+    /**
+     * Tests verifying the error message content when headless is detected.
+     * **Validates: Requirements 3.1, 13.2**
+     */
+    const originalEnv = process.env;
+    const originalStdoutIsTTY = process.stdout.isTTY;
+    const originalStderrIsTTY = process.stderr.isTTY;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: true, writable: true });
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutIsTTY, writable: true });
+      Object.defineProperty(process.stderr, 'isTTY', { value: originalStderrIsTTY, writable: true });
+    });
+
+    it('should return correct error code HEADLESS_ENVIRONMENT', async () => {
+      process.env.CI = 'true';
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => createMockProvider(),
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('HEADLESS_ENVIRONMENT');
+      }
+    });
+
+    it('should return correct error message', async () => {
+      process.env.CI = 'true';
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => createMockProvider(),
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toBe('Browser OAuth not available in headless environment');
+      }
+    });
+
+    it('should include suggestion in error details', async () => {
+      process.env.CI = 'true';
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => createMockProvider(),
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('openai');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.details).toBeDefined();
+        expect(result.error.details?.suggestion).toBe('Use --setup for manual credential configuration');
+      }
+    });
+
+    it('should include correct providerId in result', async () => {
+      process.env.CI = 'true';
+
+      const flow = new AgentAuthFlow({
+        getProvider: () => createMockProvider(),
+        storeTokens: async () => { },
+        launchBrowser: async () => { },
+      });
+
+      const result = await flow.execute('github');
+
+      expect(result.providerId).toBe('github');
+    });
   });
 });

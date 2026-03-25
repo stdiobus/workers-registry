@@ -506,6 +506,13 @@ export class MessageRouter {
   private readonly sessionIdMap: Map<string, string> = new Map();
 
   /**
+   * Whether to automatically trigger OAuth browser flow when agent requires it.
+   * When false, returns AUTH_REQUIRED error instead of opening browser.
+   * Controlled by AUTH_AUTO_OAUTH environment variable (default: false for safety).
+   */
+  private readonly autoOAuth: boolean;
+
+  /**
    * Create a new MessageRouter.
    *
    * @param registry - Registry index for agent lookup
@@ -513,6 +520,7 @@ export class MessageRouter {
    * @param writeCallback - Callback for writing responses to stdout
    * @param apiKeys - API keys for agent authentication (optional)
    * @param authManager - AuthManager for OAuth authentication (optional, Requirements 11.2, 11.4)
+   * @param autoOAuth - Whether to auto-trigger OAuth browser flow (default: from AUTH_AUTO_OAUTH env, or false)
    */
   constructor(
     registry: IRegistryIndex,
@@ -520,12 +528,25 @@ export class MessageRouter {
     writeCallback: WriteCallback,
     apiKeys: Record<string, any> = {},
     authManager?: AuthManager,
+    autoOAuth?: boolean,
   ) {
     this.registry = registry;
     this.runtimeManager = runtimeManager;
     this.writeCallback = writeCallback;
     this.apiKeys = apiKeys;
     this.authManager = authManager;
+    // Default to false for safety - existing deployments won't suddenly open browsers
+    // Can be enabled via AUTH_AUTO_OAUTH=true environment variable
+    this.autoOAuth = autoOAuth ?? this.getAutoOAuthFromEnv();
+  }
+
+  /**
+   * Get auto-OAuth setting from environment variable.
+   * AUTH_AUTO_OAUTH=true enables auto-OAuth, any other value or unset disables it.
+   */
+  private getAutoOAuthFromEnv(): boolean {
+    const envValue = process.env.AUTH_AUTO_OAUTH;
+    return envValue === 'true' || envValue === '1' || envValue === 'yes';
   }
 
   /**
@@ -1172,9 +1193,17 @@ export class MessageRouter {
               logInfo(`Agent ${agentId} requires OAuth authentication with provider: ${requiredProviderId}`);
             }
 
-            logInfo(`Agent ${agentId} requires authentication, attempting auto-auth with ${parsedMethods.length} valid methods`);
-            this.setAuthState(agentId, 'pending');
-            void this.attemptAuthentication(agentId, parsedMethods);
+            // Task 33.2: Only auto-trigger OAuth if AUTH_AUTO_OAUTH is enabled
+            // Default is false for backward compatibility - existing deployments won't suddenly open browsers
+            if (this.autoOAuth) {
+              logInfo(`Agent ${agentId} requires authentication, attempting auto-auth with ${parsedMethods.length} valid methods`);
+              this.setAuthState(agentId, 'pending');
+              void this.attemptAuthentication(agentId, parsedMethods);
+            } else {
+              logInfo(`Agent ${agentId} requires authentication but AUTH_AUTO_OAUTH is disabled. Use --login to authenticate.`);
+              // Don't set auth state to pending - let requests fail with AUTH_REQUIRED
+              // This allows users to explicitly authenticate via --login command
+            }
           } else {
             logError(`Agent ${agentId} has authMethods but none are valid after parsing`);
             this.setAuthState(agentId, 'none');

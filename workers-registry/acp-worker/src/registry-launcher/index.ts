@@ -42,8 +42,13 @@ import { NDJSONHandler } from './stream/ndjson-handler.js';
 import { AgentRuntimeManager } from './runtime/manager.js';
 import { MessageRouter } from './router/message-router.js';
 import { logError, logExit, logInfo, logWarn } from './log.js';
-import { runSetupCommand, runStatusCommand, runLogoutCommand } from './auth/cli/index.js';
+import { runSetupCommand, runStatusCommand, runLogoutCommand, runLoginCommand } from './auth/cli/index.js';
 import type { AuthProviderId } from './auth/types.js';
+import { isValidProviderId, VALID_PROVIDER_IDS } from './auth/types.js';
+import { AuthManager } from './auth/auth-manager.js';
+import { TokenManager } from './auth/token-manager.js';
+import { CredentialStore } from './auth/storage/credential-store.js';
+import { getProvider } from './auth/providers/index.js';
 
 /**
  * Exit codes for the Registry Launcher.
@@ -76,12 +81,16 @@ interface ParsedArgs {
   logout?: boolean;
   /** Provider ID for --logout (optional) */
   logoutProvider?: AuthProviderId;
+  /** Run the --login command */
+  login?: boolean;
+  /** Provider ID for --login (required) */
+  loginProvider?: string;
 }
 
 /**
  * Parse command-line arguments.
  *
- * Usage: node index.js [config-path] [--custom-agents <path>] [--setup] [--auth-status] [--logout [provider]]
+ * Usage: node index.js [config-path] [--custom-agents <path>] [--setup] [--auth-status] [--logout [provider]] [--login <provider>]
  *
  * @returns Parsed arguments
  */
@@ -126,6 +135,20 @@ function parseArgs(): ParsedArgs {
       const nextArg = args[i + 1];
       if (nextArg && !nextArg.startsWith('-')) {
         result.logoutProvider = nextArg as AuthProviderId;
+        i += 2;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+
+    // --login [provider] flag (Requirement 3.1, 9.1)
+    if (arg === '--login') {
+      result.login = true;
+      // Check if next arg is a provider ID (not a flag)
+      const nextArg = args[i + 1];
+      if (nextArg && !nextArg.startsWith('-')) {
+        result.loginProvider = nextArg;
         i += 2;
         continue;
       }
@@ -330,6 +353,29 @@ async function main(): Promise<void> {
     process.exit(exitCode);
   }
 
+  // Handle --login command (Requirement 3.1, 9.1)
+  if (parsedArgs.login) {
+    logInfo('Running --login command');
+
+    // Validate that provider is specified
+    if (!parsedArgs.loginProvider) {
+      logError('Error: --login requires a provider argument.');
+      logError(`Usage: --login <provider>`);
+      logError(`Supported providers: ${VALID_PROVIDER_IDS.join(', ')}`);
+      process.exit(ExitCodes.FATAL_ERROR);
+    }
+
+    // Validate provider ID
+    if (!isValidProviderId(parsedArgs.loginProvider)) {
+      logError(`Error: Invalid provider '${parsedArgs.loginProvider}'.`);
+      logError(`Supported providers: ${VALID_PROVIDER_IDS.join(', ')}`);
+      process.exit(ExitCodes.FATAL_ERROR);
+    }
+
+    const exitCode = await runLoginCommand(parsedArgs.loginProvider);
+    process.exit(exitCode);
+  }
+
   if (parsedArgs.configPath) {
     logInfo(`Loading configuration from: ${parsedArgs.configPath}`);
   }
@@ -392,12 +438,26 @@ async function main(): Promise<void> {
   // Create NDJSON handler for stdin/stdout
   const ndjsonHandler = new NDJSONHandler(process.stdout);
 
-  // Create message router
+  // Create OAuth authentication components (Requirement 3.1, 10.3)
+  const credentialStore = new CredentialStore();
+  const tokenManager = new TokenManager({
+    credentialStore,
+    providerResolver: getProvider,
+  });
+  const authManager = new AuthManager({
+    credentialStore,
+    tokenManager,
+    legacyApiKeys: apiKeys,
+  });
+  logInfo('OAuth authentication manager initialized');
+
+  // Create message router with AuthManager for OAuth support
   const router = new MessageRouter(
     registry,
     runtimeManager,
     (message: object) => ndjsonHandler.write(message),
     apiKeys,
+    authManager,
   );
 
   // Set up signal handlers for graceful shutdown

@@ -33,6 +33,7 @@ export {
   AgentAuthFlow,
   createAgentAuthFlow,
   openSystemBrowser,
+  isHeadlessEnvironment,
   DEFAULT_AUTH_TIMEOUT_MS,
 } from './agent-auth-flow.js';
 export type { AgentAuthFlowDependencies } from './agent-auth-flow.js';

@@ -30,3 +30,4 @@
 export { runSetupCommand } from './setup-command.js';
 export { runStatusCommand } from './status-command.js';
 export { runLogoutCommand } from './logout-command.js';
+export { runLoginCommand } from './login-command.js';

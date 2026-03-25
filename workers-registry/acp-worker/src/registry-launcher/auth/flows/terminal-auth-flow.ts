@@ -43,6 +43,38 @@ import { VALID_PROVIDER_IDS } from '../types.js';
 import type { ICredentialStore } from '../storage/types.js';
 
 /**
+ * Authentication mode selected by the user.
+ * Requirements: 3.1, 4.2
+ */
+export type AuthenticationMode = 'browser-oauth' | 'manual-api-key';
+
+/**
+ * Result indicating browser OAuth flow should be used.
+ * This is returned when the user selects "Browser OAuth" mode.
+ */
+export interface BrowserOAuthResult {
+  /** Indicates browser OAuth flow should be used */
+  useBrowserOAuth: true;
+  /** The selected provider ID */
+  providerId: AuthProviderId;
+}
+
+/**
+ * Result indicating manual credential flow completed.
+ */
+export interface ManualCredentialResult {
+  /** Indicates manual credential flow was used */
+  useBrowserOAuth: false;
+  /** The authentication result from manual flow */
+  authResult: AuthResult;
+}
+
+/**
+ * Combined result type for terminal auth flow execution.
+ */
+export type TerminalAuthFlowResult = BrowserOAuthResult | ManualCredentialResult;
+
+/**
  * Provider display information for the selection menu.
  */
 interface ProviderInfo {
@@ -52,6 +84,8 @@ interface ProviderInfo {
   requiresCustomEndpoints: boolean;
   /** Whether this provider supports simple API key authentication */
   supportsApiKey: boolean;
+  /** Whether this provider supports browser-based OAuth flow */
+  supportsOAuth: boolean;
   /** Label for the API key (e.g., "API Key", "Personal Access Token") */
   apiKeyLabel?: string;
   /** Environment variable name for the API key */
@@ -62,14 +96,15 @@ interface ProviderInfo {
  * Provider information for display and configuration.
  * Per ACP Registry spec: OpenAI, Anthropic support API key alternative,
  * GitHub supports Personal Access Token alternative.
+ * All providers support browser-based OAuth flow.
  */
 const PROVIDER_INFO: readonly ProviderInfo[] = [
-  { id: 'openai', name: 'OpenAI', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'OPENAI_API_KEY' },
-  { id: 'github', name: 'GitHub', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: true, apiKeyLabel: 'Personal Access Token', apiKeyEnvVar: 'GITHUB_TOKEN' },
-  { id: 'google', name: 'Google', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: false },
-  { id: 'cognito', name: 'AWS Cognito', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false },
-  { id: 'azure', name: 'Azure AD', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false },
-  { id: 'anthropic', name: 'Anthropic', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'ANTHROPIC_API_KEY' },
+  { id: 'openai', name: 'OpenAI', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, supportsOAuth: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'OPENAI_API_KEY' },
+  { id: 'github', name: 'GitHub', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: true, supportsOAuth: true, apiKeyLabel: 'Personal Access Token', apiKeyEnvVar: 'GITHUB_TOKEN' },
+  { id: 'google', name: 'Google', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: false, supportsOAuth: true },
+  { id: 'cognito', name: 'AWS Cognito', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
+  { id: 'azure', name: 'Azure AD', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
+  { id: 'anthropic', name: 'Anthropic', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, supportsOAuth: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'ANTHROPIC_API_KEY' },
 ] as const;
 
 
@@ -132,11 +167,15 @@ export class TerminalAuthFlow {
    * Execute the terminal auth flow.
    *
    * Runs the interactive setup wizard to configure OAuth credentials.
+   * For providers supporting OAuth, offers a choice between browser OAuth
+   * and manual API key entry.
+   *
+   * Requirements: 3.1, 4.2
    *
    * @param providerId - Optional pre-selected provider (skips provider selection)
-   * @returns Authentication result
+   * @returns Terminal auth flow result indicating mode selection and outcome
    */
-  async execute(providerId?: AuthProviderId): Promise<AuthResult> {
+  async execute(providerId?: AuthProviderId): Promise<TerminalAuthFlowResult> {
     this.rl = readline.createInterface({
       input: this.input,
       output: this.output,
@@ -151,31 +190,55 @@ export class TerminalAuthFlow {
 
       if (!providerInfo) {
         return {
-          success: false,
-          providerId: selectedProvider,
-          error: {
-            code: 'UNSUPPORTED_PROVIDER',
-            message: `Provider '${selectedProvider}' is not supported.`,
-            details: { supportedProviders: VALID_PROVIDER_IDS },
+          useBrowserOAuth: false,
+          authResult: {
+            success: false,
+            providerId: selectedProvider,
+            error: {
+              code: 'UNSUPPORTED_PROVIDER',
+              message: `Provider '${selectedProvider}' is not supported.`,
+              details: { supportedProviders: VALID_PROVIDER_IDS },
+            },
           },
         };
       }
 
       this.writeLine(`\nConfiguring ${providerInfo.name}...\n`);
 
-      // Step 2-4: Collect and validate credentials with retry loop
+      // Step 2: Select authentication mode (Requirement 3.1, 4.2)
+      // For providers supporting OAuth, offer choice between browser OAuth and manual
+      if (providerInfo.supportsOAuth) {
+        const authMode = await this.selectAuthenticationMode(providerInfo);
+
+        if (authMode === 'browser-oauth') {
+          // Return indicator that browser OAuth flow should be used
+          this.writeLine('\nBrowser OAuth selected. Launching browser authentication flow...\n');
+          return {
+            useBrowserOAuth: true,
+            providerId: selectedProvider,
+          };
+        }
+      }
+
+      // Step 3-5: Collect and validate credentials with retry loop (manual flow)
       const result = await this.collectAndValidateWithRetry(selectedProvider, providerInfo);
-      return result;
+      return {
+        useBrowserOAuth: false,
+        authResult: result,
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[TerminalAuthFlow] Error: ${errorMessage}`);
 
       return {
-        success: false,
-        providerId: providerId || 'openai',
-        error: {
-          code: 'PROVIDER_ERROR',
-          message: `Terminal auth flow failed: ${errorMessage}`,
+        useBrowserOAuth: false,
+        authResult: {
+          success: false,
+          providerId: providerId || 'openai',
+          error: {
+            code: 'PROVIDER_ERROR',
+            message: `Terminal auth flow failed: ${errorMessage}`,
+          },
         },
       };
     } finally {
@@ -183,10 +246,35 @@ export class TerminalAuthFlow {
     }
   }
 
+  /**
+   * Select authentication mode for providers supporting OAuth.
+   * Offers choice between browser OAuth (recommended) and manual API key.
+   *
+   * Requirements: 3.1, 4.2
+   *
+   * @param providerInfo - Provider information
+   * @returns Selected authentication mode
+   */
+  private async selectAuthenticationMode(providerInfo: ProviderInfo): Promise<AuthenticationMode> {
+    this.writeLine(`${providerInfo.name} supports multiple authentication methods:\n`);
+    this.writeLine('  1. Browser OAuth (recommended) - Opens browser for secure authentication');
+    this.writeLine('  2. Manual API Key - Enter credentials directly in terminal\n');
+
+    const selection = await this.promptSelection('Select authentication method (1-2) [default: 1]: ', 1, 2, 1);
+
+    return selection === 1 ? 'browser-oauth' : 'manual-api-key';
+  }
+
 
   /**
    * Collect and validate credentials with retry loop.
    * Requirements: 4.3, 4.4, 4.5, 4.6
+   *
+   * Note: When this method is called, the user has already selected "Manual API Key"
+   * in the authentication mode selection. For providers that support simple API key
+   * authentication (OpenAI, Anthropic, GitHub), we collect the API key directly.
+   * For providers that don't support simple API key (Google, Cognito, Azure),
+   * we collect OAuth client credentials.
    */
   private async collectAndValidateWithRetry(
     selectedProvider: AuthProviderId,
@@ -197,17 +285,9 @@ export class TerminalAuthFlow {
     let attempts = 0;
     const maxAttempts = 3;
 
-    // For providers that support API key, ask which auth method to use
-    let useApiKey = false;
-    if (providerInfo.supportsApiKey) {
-      this.writeLine(`${providerInfo.name} supports two authentication methods:\n`);
-      this.writeLine(`  1. ${providerInfo.apiKeyLabel || 'API Key'} (simple, recommended)`);
-      this.writeLine(`  2. OAuth Client Credentials (advanced)\n`);
-
-      const selection = await this.promptSelection('Select authentication method (1-2): ', 1, 2);
-      useApiKey = selection === 1;
-      this.writeLine('');
-    }
+    // For providers that support simple API key, use API key mode directly
+    // (user already selected "Manual API Key" in auth mode selection)
+    const useApiKey = providerInfo.supportsApiKey;
 
     while (attempts < maxAttempts) {
       attempts++;
@@ -293,11 +373,25 @@ export class TerminalAuthFlow {
 
   /**
    * Prompt for a numeric selection within a range.
+   * Supports an optional default value that is used when user presses Enter without input.
+   *
+   * @param message - The prompt message
+   * @param min - Minimum valid selection
+   * @param max - Maximum valid selection
+   * @param defaultValue - Optional default value used when input is empty
+   * @returns The selected number
    */
-  private async promptSelection(message: string, min: number, max: number): Promise<number> {
+  private async promptSelection(message: string, min: number, max: number, defaultValue?: number): Promise<number> {
     while (true) {
       const input = await this.prompt(message);
-      const selection = parseInt(input.trim(), 10);
+      const trimmed = input.trim();
+
+      // If input is empty and we have a default, use it
+      if (trimmed === '' && defaultValue !== undefined) {
+        return defaultValue;
+      }
+
+      const selection = parseInt(trimmed, 10);
 
       if (selection >= min && selection <= max) {
         return selection;
