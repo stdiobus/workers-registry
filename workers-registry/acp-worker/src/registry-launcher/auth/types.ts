@@ -239,6 +239,75 @@ export interface ProviderConfig {
 }
 
 /**
+ * Authentication method types.
+ * Used for method precedence selection.
+ */
+export type AuthMethodType = 'oauth2' | 'api-key';
+
+/**
+ * Valid authentication method types for runtime validation.
+ */
+export const VALID_AUTH_METHOD_TYPES: readonly AuthMethodType[] = [
+  'oauth2',
+  'api-key',
+] as const;
+
+/**
+ * Type guard to check if a value is a valid AuthMethodType.
+ * @param value - The value to check
+ * @returns True if the value is a valid AuthMethodType
+ */
+export function isValidAuthMethodType(value: unknown): value is AuthMethodType {
+  return typeof value === 'string' && VALID_AUTH_METHOD_TYPES.includes(value as AuthMethodType);
+}
+
+/**
+ * Configuration for authentication method precedence.
+ *
+ * Defines the order in which authentication methods are attempted.
+ * Default precedence: oauth2 > api-key (OAuth preferred when available)
+ *
+ * Requirements: 3.1, 10.3
+ */
+export interface AuthMethodPrecedenceConfig {
+  /**
+   * Ordered list of authentication methods by preference.
+   * First method in the list has highest priority.
+   * Default: ['oauth2', 'api-key']
+   */
+  methodPrecedence: AuthMethodType[];
+
+  /**
+   * Whether to fail fast when an unsupported method is encountered.
+   * If true, throws an error immediately.
+   * If false, skips the unsupported method and tries the next one.
+   * Default: true
+   */
+  failFastOnUnsupported: boolean;
+
+  /**
+   * Whether to fail fast when provider ID is ambiguous.
+   * Ambiguity occurs when multiple providers could match an agent.
+   * If true, throws an error immediately.
+   * If false, uses the first matching provider.
+   * Default: true
+   */
+  failFastOnAmbiguous: boolean;
+}
+
+/**
+ * Default authentication method precedence configuration.
+ *
+ * OAuth2 is preferred over API keys when both are available.
+ * This aligns with Requirement 10.3: prefer OAuth credentials.
+ */
+export const DEFAULT_AUTH_METHOD_PRECEDENCE: AuthMethodPrecedenceConfig = {
+  methodPrecedence: ['oauth2', 'api-key'],
+  failFastOnUnsupported: true,
+  failFastOnAmbiguous: true,
+};
+
+/**
  * Extended launcher config with auth settings.
  */
 export interface AuthConfig {
@@ -248,6 +317,12 @@ export interface AuthConfig {
   tokenRefreshThresholdSec: number;
   /** Preferred storage backend */
   preferredStorageBackend?: StorageBackendType;
+  /**
+   * Authentication method precedence configuration.
+   * Controls which auth method is preferred when multiple are available.
+   * Default: oauth2 > api-key
+   */
+  methodPrecedence?: Partial<AuthMethodPrecedenceConfig>;
 }
 
 // =============================================================================
@@ -347,4 +422,137 @@ export function isValidTokenStatus(value: unknown): value is TokenStatus {
  */
 export function isValidErrorCode(value: unknown): value is AuthErrorCode {
   return typeof value === 'string' && VALID_ERROR_CODES.includes(value as AuthErrorCode);
+}
+
+// =============================================================================
+// AuthMethod ID to Provider ID Mapping
+// =============================================================================
+
+/**
+ * Explicit mapping from authMethod.id to AuthProviderId.
+ *
+ * This mapping table provides a secure, explicit translation from
+ * ACP authMethod identifiers to internal provider IDs.
+ *
+ * SECURITY: No substring or heuristic matching is used.
+ * Only exact matches in this table are accepted.
+ *
+ * Requirements: 7.1, 13.4
+ */
+export const AUTH_METHOD_ID_TO_PROVIDER_ID: Readonly<Record<string, AuthProviderId>> = {
+  // OAuth2 method IDs
+  'oauth2-openai': 'openai',
+  'oauth2-github': 'github',
+  'oauth2-google': 'google',
+  'oauth2-cognito': 'cognito',
+  'oauth2-azure': 'azure',
+  'oauth2-anthropic': 'anthropic',
+
+  // Direct provider IDs (for backward compatibility)
+  'openai': 'openai',
+  'github': 'github',
+  'google': 'google',
+  'cognito': 'cognito',
+  'azure': 'azure',
+  'anthropic': 'anthropic',
+} as const;
+
+/**
+ * Valid authMethod.id values for runtime validation.
+ */
+export const VALID_AUTH_METHOD_IDS: readonly string[] = Object.keys(AUTH_METHOD_ID_TO_PROVIDER_ID);
+
+/**
+ * Error thrown when an unknown authMethod.id is encountered.
+ *
+ * Requirements: 13.4
+ */
+export class UnknownAuthMethodIdError extends Error {
+  public readonly code = 'UNSUPPORTED_PROVIDER' as const;
+  public readonly unknownMethodId: string;
+  public readonly supportedMethodIds: readonly string[];
+  public readonly supportedProviders: readonly AuthProviderId[];
+
+  constructor(unknownMethodId: string) {
+    const supportedMethodIds = VALID_AUTH_METHOD_IDS;
+    const supportedProviders = VALID_PROVIDER_IDS;
+
+    super(
+      `Unknown authMethod.id: "${unknownMethodId}". ` +
+      `Supported method IDs: ${supportedMethodIds.join(', ')}. ` +
+      `Supported providers: ${supportedProviders.join(', ')}.`
+    );
+
+    this.name = 'UnknownAuthMethodIdError';
+    this.unknownMethodId = unknownMethodId;
+    this.supportedMethodIds = supportedMethodIds;
+    this.supportedProviders = supportedProviders;
+
+    // Maintains proper stack trace for where error was thrown (V8 engines)
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, UnknownAuthMethodIdError);
+    }
+  }
+}
+
+/**
+ * Type guard to check if a value is a valid authMethod.id.
+ *
+ * @param value - The value to check
+ * @returns True if the value is a valid authMethod.id
+ */
+export function isValidAuthMethodId(value: unknown): value is string {
+  return typeof value === 'string' && value in AUTH_METHOD_ID_TO_PROVIDER_ID;
+}
+
+/**
+ * Resolves an authMethod.id to its corresponding AuthProviderId.
+ *
+ * This function uses explicit mapping only - no substring matching,
+ * no heuristics, no fuzzy matching. This is a security requirement
+ * to prevent provider confusion attacks.
+ *
+ * @param authMethodId - The authMethod.id to resolve
+ * @returns The corresponding AuthProviderId
+ * @throws UnknownAuthMethodIdError if the authMethod.id is not recognized
+ *
+ * Requirements: 7.1, 13.4
+ *
+ * @example
+ * ```typescript
+ * // Valid mappings
+ * resolveAuthMethodIdToProviderId('oauth2-openai'); // returns 'openai'
+ * resolveAuthMethodIdToProviderId('oauth2-github'); // returns 'github'
+ * resolveAuthMethodIdToProviderId('github');        // returns 'github' (direct)
+ *
+ * // Invalid - throws UnknownAuthMethodIdError
+ * resolveAuthMethodIdToProviderId('oauth2-unknown');
+ * resolveAuthMethodIdToProviderId('openai-oauth2'); // wrong format
+ * resolveAuthMethodIdToProviderId('OPENAI');        // case sensitive
+ * ```
+ */
+export function resolveAuthMethodIdToProviderId(authMethodId: string): AuthProviderId {
+  const providerId = AUTH_METHOD_ID_TO_PROVIDER_ID[authMethodId];
+
+  if (providerId === undefined) {
+    throw new UnknownAuthMethodIdError(authMethodId);
+  }
+
+  return providerId;
+}
+
+/**
+ * Safely resolves an authMethod.id to its corresponding AuthProviderId.
+ *
+ * Unlike `resolveAuthMethodIdToProviderId`, this function returns null
+ * instead of throwing an error for unknown method IDs.
+ *
+ * @param authMethodId - The authMethod.id to resolve
+ * @returns The corresponding AuthProviderId, or null if not recognized
+ *
+ * Requirements: 7.1, 13.4
+ */
+export function tryResolveAuthMethodIdToProviderId(authMethodId: string): AuthProviderId | null {
+  const providerId = AUTH_METHOD_ID_TO_PROVIDER_ID[authMethodId];
+  return providerId ?? null;
 }

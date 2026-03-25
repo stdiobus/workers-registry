@@ -112,6 +112,19 @@ export interface McpServerConfig {
 }
 
 /**
+ * Authentication method configuration for an agent.
+ * Specifies how the agent requires authentication.
+ */
+export interface AgentAuthMethod {
+  /** Authentication method identifier (e.g., 'oauth2-openai', 'api-key') */
+  id: string;
+  /** Authentication type: 'oauth2' for OAuth 2.1, 'api-key' for API key */
+  type: 'oauth2' | 'api-key';
+  /** OAuth provider identifier (required for oauth2 type) */
+  providerId?: string;
+}
+
+/**
  * Agent entry in the ACP Registry.
  */
 export interface RegistryAgent {
@@ -135,6 +148,18 @@ export interface RegistryAgent {
   distribution: Distribution;
   /** MCP servers to connect when creating a session */
   mcpServers?: McpServerConfig[];
+  /**
+   * Whether authentication is required for this agent.
+   * If true, the agent requires authentication before use.
+   * Requirements: 11.2, 11.3
+   */
+  authRequired?: boolean;
+  /**
+   * Authentication methods supported/required by this agent.
+   * Specifies OAuth providers or API key requirements.
+   * Requirements: 11.2, 11.3
+   */
+  authMethods?: AgentAuthMethod[];
 }
 
 /**

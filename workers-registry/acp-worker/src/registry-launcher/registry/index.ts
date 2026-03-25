@@ -30,7 +30,7 @@
  * @module registry/index
  */
 
-import { Distribution, McpServerConfig, Registry, RegistryAgent, SpawnCommand } from './types.js';
+import { AgentAuthMethod, Distribution, McpServerConfig, Registry, RegistryAgent, SpawnCommand } from './types.js';
 import { resolve as resolveDistribution } from './resolver.js';
 import { readFileSync } from 'node:fs';
 
@@ -46,6 +46,7 @@ export type {
   Registry,
   SpawnCommand,
   McpServerConfig,
+  AgentAuthMethod,
 } from './types.js';
 
 // Re-export resolver functions and errors for external use
@@ -105,6 +106,20 @@ function logInfo(message: string): void {
 }
 
 /**
+ * Cached auth requirements for an agent.
+ *
+ * Requirements: 11.2, 11.3
+ */
+export interface AgentAuthRequirements {
+  /** Whether authentication is required */
+  authRequired: boolean;
+  /** Authentication methods supported/required by the agent */
+  authMethods: AgentAuthMethod[];
+  /** Primary OAuth provider ID (first oauth2 method's providerId) */
+  primaryOAuthProviderId?: string;
+}
+
+/**
  * Interface for the RegistryIndex.
  */
 export interface IRegistryIndex {
@@ -127,6 +142,19 @@ export interface IRegistryIndex {
    * @throws PlatformNotSupportedError if binary distribution doesn't support current platform
    */
   resolve(agentId: string): SpawnCommand;
+
+  /**
+   * Get auth requirements for an agent.
+   *
+   * Checks the agent definition in the registry for `authRequired` or `authMethods` fields.
+   * Results are cached per agent for efficient repeated lookups.
+   *
+   * Requirements: 11.2, 11.3
+   *
+   * @param agentId - Agent ID to query
+   * @returns Auth requirements or undefined if agent not found
+   */
+  getAuthRequirements(agentId: string): AgentAuthRequirements | undefined;
 }
 
 /**
@@ -247,6 +275,76 @@ function logWarning(message: string): void {
 }
 
 /**
+ * Valid auth method types for validation.
+ */
+const VALID_AUTH_METHOD_TYPES: readonly string[] = ['oauth2', 'api-key'];
+
+/**
+ * Validate and parse a single auth method configuration.
+ *
+ * Requirements: 11.2, 11.3
+ *
+ * @param value - Raw auth method object
+ * @param agentIndex - Index of the agent in the registry (for error messages)
+ * @param methodIndex - Index of the auth method in the array (for error messages)
+ * @returns Parsed AgentAuthMethod or null if invalid
+ */
+function parseAuthMethod(value: unknown, agentIndex: number, methodIndex: number): AgentAuthMethod | null {
+  if (value === null || typeof value !== 'object') {
+    logWarning(`Agent at index ${agentIndex}: authMethods[${methodIndex}] is not an object, skipping`);
+    return null;
+  }
+
+  const raw = value as Record<string, unknown>;
+
+  // Validate required 'id' field
+  if (!isNonEmptyString(raw.id)) {
+    logWarning(`Agent at index ${agentIndex}: authMethods[${methodIndex}] has invalid or missing "id" field, skipping`);
+    return null;
+  }
+
+  // Validate required 'type' field
+  if (!isNonEmptyString(raw.type) || !VALID_AUTH_METHOD_TYPES.includes(raw.type)) {
+    logWarning(`Agent at index ${agentIndex}: authMethods[${methodIndex}] has invalid or missing "type" field (must be 'oauth2' or 'api-key'), skipping`);
+    return null;
+  }
+
+  const method: AgentAuthMethod = {
+    id: raw.id,
+    type: raw.type as 'oauth2' | 'api-key',
+  };
+
+  // Optional providerId field
+  if (isNonEmptyString(raw.providerId)) {
+    method.providerId = raw.providerId;
+  }
+
+  return method;
+}
+
+/**
+ * Parse and validate authMethods array for an agent.
+ *
+ * Requirements: 11.2, 11.3
+ *
+ * @param methods - Raw auth methods array
+ * @param agentIndex - Index of the agent in the registry (for error messages)
+ * @returns Array of validated AgentAuthMethod entries
+ */
+function parseAuthMethods(methods: unknown[], agentIndex: number): AgentAuthMethod[] {
+  const result: AgentAuthMethod[] = [];
+
+  for (let i = 0; i < methods.length; i++) {
+    const method = parseAuthMethod(methods[i], agentIndex, i);
+    if (method !== null) {
+      result.push(method);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Validate and parse a registry agent entry.
  */
 function parseAgent(value: unknown, index: number): RegistryAgent {
@@ -308,6 +406,19 @@ function parseAgent(value: unknown, index: number): RegistryAgent {
     }
   }
 
+  // Parse authRequired if present (Requirements: 11.2, 11.3)
+  if (typeof raw.authRequired === 'boolean') {
+    agent.authRequired = raw.authRequired;
+  }
+
+  // Parse authMethods if present (Requirements: 11.2, 11.3)
+  if (Array.isArray(raw.authMethods)) {
+    const authMethods = parseAuthMethods(raw.authMethods, index);
+    if (authMethods.length > 0) {
+      agent.authMethods = authMethods;
+    }
+  }
+
   return agent;
 }
 
@@ -361,6 +472,13 @@ export class RegistryIndex implements IRegistryIndex {
 
   /** Map of agent ID to agent entry for fast lookup */
   private agentMap: Map<string, RegistryAgent> = new Map();
+
+  /**
+   * Cache of auth requirements per agent.
+   *
+   * Requirements: 11.2, 11.3
+   */
+  private authRequirementsCache: Map<string, AgentAuthRequirements> = new Map();
 
   /**
    * Create a new RegistryIndex.
@@ -429,6 +547,7 @@ export class RegistryIndex implements IRegistryIndex {
 
     // Build the agent lookup map
     this.agentMap.clear();
+    this.authRequirementsCache.clear();
     for (const agent of this.registry.agents) {
       this.agentMap.set(agent.id, agent);
     }
@@ -472,6 +591,79 @@ export class RegistryIndex implements IRegistryIndex {
   }
 
   /**
+   * Get auth requirements for an agent.
+   *
+   * Checks the agent definition in the registry for `authRequired` or `authMethods` fields.
+   * Results are cached per agent for efficient repeated lookups.
+   *
+   * Requirements: 11.2, 11.3
+   *
+   * @param agentId - Agent ID to query
+   * @returns Auth requirements or undefined if agent not found
+   */
+  getAuthRequirements(agentId: string): AgentAuthRequirements | undefined {
+    // Check cache first
+    const cached = this.authRequirementsCache.get(agentId);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    // Look up agent
+    const agent = this.lookup(agentId);
+    if (!agent) {
+      return undefined;
+    }
+
+    // Build auth requirements from agent definition
+    const authMethods = agent.authMethods ?? [];
+
+    // Determine if auth is required:
+    // - Explicitly set via authRequired field
+    // - Implicitly required if authMethods contains oauth2 methods
+    const hasOAuthMethods = authMethods.some(m => m.type === 'oauth2');
+    const authRequired = agent.authRequired ?? hasOAuthMethods;
+
+    // Find primary OAuth provider ID (first oauth2 method with providerId)
+    let primaryOAuthProviderId: string | undefined;
+    for (const method of authMethods) {
+      if (method.type === 'oauth2' && method.providerId) {
+        primaryOAuthProviderId = method.providerId;
+        break;
+      }
+    }
+
+    const requirements: AgentAuthRequirements = {
+      authRequired,
+      authMethods,
+      primaryOAuthProviderId,
+    };
+
+    // Cache the result
+    this.authRequirementsCache.set(agentId, requirements);
+
+    if (authRequired) {
+      logInfo(`Agent "${agentId}" requires authentication${primaryOAuthProviderId ? ` (OAuth provider: ${primaryOAuthProviderId})` : ''}`);
+    }
+
+    return requirements;
+  }
+
+  /**
+   * Clear the auth requirements cache for a specific agent or all agents.
+   *
+   * @param agentId - Optional agent ID to clear. If not provided, clears all cached requirements.
+   */
+  clearAuthRequirementsCache(agentId?: string): void {
+    if (agentId) {
+      this.authRequirementsCache.delete(agentId);
+      logInfo(`Cleared auth requirements cache for agent "${agentId}"`);
+    } else {
+      this.authRequirementsCache.clear();
+      logInfo('Cleared all auth requirements cache');
+    }
+  }
+
+  /**
    * Merge custom agents into the registry.
    *
    * Custom agents take precedence over remote registry agents with the same ID.
@@ -502,6 +694,9 @@ export class RegistryIndex implements IRegistryIndex {
       }
 
       this.agentMap.set(agent.id, agent);
+
+      // Clear cached auth requirements for this agent (may have changed)
+      this.authRequirementsCache.delete(agent.id);
     }
 
     logInfo(`Registry now contains ${this.registry.agents.length} agents (${agents.length} custom)`);

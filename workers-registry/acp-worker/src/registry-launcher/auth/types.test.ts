@@ -35,10 +35,16 @@ import {
   isValidStorageBackend,
   isValidTokenStatus,
   isValidErrorCode,
+  isValidAuthMethodId,
+  resolveAuthMethodIdToProviderId,
+  tryResolveAuthMethodIdToProviderId,
+  UnknownAuthMethodIdError,
   VALID_PROVIDER_IDS,
   VALID_STORAGE_BACKENDS,
   VALID_TOKEN_STATUSES,
   VALID_ERROR_CODES,
+  VALID_AUTH_METHOD_IDS,
+  AUTH_METHOD_ID_TO_PROVIDER_ID,
   type AuthProviderId,
   type StorageBackendType,
   type TokenStatus,
@@ -501,5 +507,378 @@ describe('constant arrays', () => {
         'UNSUPPORTED_PROVIDER',
       ]);
     });
+  });
+});
+
+
+// =============================================================================
+// AuthMethod ID to Provider ID Mapping Tests
+// =============================================================================
+
+describe('AUTH_METHOD_ID_TO_PROVIDER_ID', () => {
+  /**
+   * Validates: Requirements 7.1, 13.4
+   * Tests the explicit mapping table from authMethod.id to providerId.
+   */
+  describe('mapping table structure', () => {
+    it('should contain oauth2-prefixed mappings for all providers', () => {
+      const oauth2Mappings = [
+        'oauth2-openai',
+        'oauth2-github',
+        'oauth2-google',
+        'oauth2-cognito',
+        'oauth2-azure',
+        'oauth2-anthropic',
+      ];
+
+      oauth2Mappings.forEach((methodId) => {
+        expect(AUTH_METHOD_ID_TO_PROVIDER_ID[methodId]).toBeDefined();
+      });
+    });
+
+    it('should contain direct provider ID mappings for backward compatibility', () => {
+      VALID_PROVIDER_IDS.forEach((providerId) => {
+        expect(AUTH_METHOD_ID_TO_PROVIDER_ID[providerId]).toBe(providerId);
+      });
+    });
+
+    it('should map oauth2-prefixed IDs to correct providers', () => {
+      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-openai']).toBe('openai');
+      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-github']).toBe('github');
+      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-google']).toBe('google');
+      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-cognito']).toBe('cognito');
+      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-azure']).toBe('azure');
+      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-anthropic']).toBe('anthropic');
+    });
+
+    it('should have exactly 12 mappings (6 oauth2 + 6 direct)', () => {
+      expect(Object.keys(AUTH_METHOD_ID_TO_PROVIDER_ID)).toHaveLength(12);
+    });
+  });
+});
+
+describe('VALID_AUTH_METHOD_IDS', () => {
+  /**
+   * Validates: Requirements 7.1
+   * Tests the list of valid authMethod.id values.
+   */
+  it('should contain all oauth2-prefixed method IDs', () => {
+    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-openai');
+    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-github');
+    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-google');
+    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-cognito');
+    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-azure');
+    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-anthropic');
+  });
+
+  it('should contain all direct provider IDs', () => {
+    VALID_PROVIDER_IDS.forEach((providerId) => {
+      expect(VALID_AUTH_METHOD_IDS).toContain(providerId);
+    });
+  });
+
+  it('should have exactly 12 valid method IDs', () => {
+    expect(VALID_AUTH_METHOD_IDS).toHaveLength(12);
+  });
+});
+
+describe('isValidAuthMethodId', () => {
+  /**
+   * Validates: Requirements 7.1
+   * Tests the type guard for authMethod.id validation.
+   */
+  describe('valid authMethod IDs', () => {
+    it.each(VALID_AUTH_METHOD_IDS)('should return true for valid method ID: %s', (methodId) => {
+      expect(isValidAuthMethodId(methodId)).toBe(true);
+    });
+  });
+
+  describe('invalid authMethod IDs', () => {
+    it('should return false for unknown method ID', () => {
+      expect(isValidAuthMethodId('oauth2-unknown')).toBe(false);
+    });
+
+    it('should return false for empty string', () => {
+      expect(isValidAuthMethodId('')).toBe(false);
+    });
+
+    it('should return false for null', () => {
+      expect(isValidAuthMethodId(null)).toBe(false);
+    });
+
+    it('should return false for undefined', () => {
+      expect(isValidAuthMethodId(undefined)).toBe(false);
+    });
+
+    it('should return false for number', () => {
+      expect(isValidAuthMethodId(123)).toBe(false);
+    });
+
+    it('should return false for object', () => {
+      expect(isValidAuthMethodId({ id: 'oauth2-openai' })).toBe(false);
+    });
+
+    it('should return false for case-sensitive mismatch', () => {
+      expect(isValidAuthMethodId('OAuth2-OpenAI')).toBe(false);
+      expect(isValidAuthMethodId('OAUTH2-GITHUB')).toBe(false);
+      expect(isValidAuthMethodId('OpenAI')).toBe(false);
+    });
+
+    it('should return false for wrong format (no substring matching)', () => {
+      expect(isValidAuthMethodId('openai-oauth2')).toBe(false);
+      expect(isValidAuthMethodId('oauth-openai')).toBe(false);
+      expect(isValidAuthMethodId('oauth2openai')).toBe(false);
+    });
+
+    it('should return false for partial matches (security requirement)', () => {
+      expect(isValidAuthMethodId('oauth2')).toBe(false);
+      expect(isValidAuthMethodId('oauth2-')).toBe(false);
+      expect(isValidAuthMethodId('-openai')).toBe(false);
+    });
+  });
+});
+
+describe('resolveAuthMethodIdToProviderId', () => {
+  /**
+   * Validates: Requirements 7.1, 13.4
+   * Tests the explicit mapping resolution function.
+   */
+  describe('valid mappings', () => {
+    it('should resolve oauth2-openai to openai', () => {
+      expect(resolveAuthMethodIdToProviderId('oauth2-openai')).toBe('openai');
+    });
+
+    it('should resolve oauth2-github to github', () => {
+      expect(resolveAuthMethodIdToProviderId('oauth2-github')).toBe('github');
+    });
+
+    it('should resolve oauth2-google to google', () => {
+      expect(resolveAuthMethodIdToProviderId('oauth2-google')).toBe('google');
+    });
+
+    it('should resolve oauth2-cognito to cognito', () => {
+      expect(resolveAuthMethodIdToProviderId('oauth2-cognito')).toBe('cognito');
+    });
+
+    it('should resolve oauth2-azure to azure', () => {
+      expect(resolveAuthMethodIdToProviderId('oauth2-azure')).toBe('azure');
+    });
+
+    it('should resolve oauth2-anthropic to anthropic', () => {
+      expect(resolveAuthMethodIdToProviderId('oauth2-anthropic')).toBe('anthropic');
+    });
+
+    it('should resolve direct provider IDs for backward compatibility', () => {
+      expect(resolveAuthMethodIdToProviderId('openai')).toBe('openai');
+      expect(resolveAuthMethodIdToProviderId('github')).toBe('github');
+      expect(resolveAuthMethodIdToProviderId('google')).toBe('google');
+      expect(resolveAuthMethodIdToProviderId('cognito')).toBe('cognito');
+      expect(resolveAuthMethodIdToProviderId('azure')).toBe('azure');
+      expect(resolveAuthMethodIdToProviderId('anthropic')).toBe('anthropic');
+    });
+  });
+
+  describe('invalid mappings - throws UnknownAuthMethodIdError', () => {
+    it('should throw for unknown method ID', () => {
+      expect(() => resolveAuthMethodIdToProviderId('oauth2-unknown')).toThrow(
+        UnknownAuthMethodIdError
+      );
+    });
+
+    it('should throw for wrong format', () => {
+      expect(() => resolveAuthMethodIdToProviderId('openai-oauth2')).toThrow(
+        UnknownAuthMethodIdError
+      );
+    });
+
+    it('should throw for case mismatch (no heuristic matching)', () => {
+      expect(() => resolveAuthMethodIdToProviderId('OPENAI')).toThrow(
+        UnknownAuthMethodIdError
+      );
+      expect(() => resolveAuthMethodIdToProviderId('OAuth2-OpenAI')).toThrow(
+        UnknownAuthMethodIdError
+      );
+    });
+
+    it('should throw for partial matches (security requirement)', () => {
+      expect(() => resolveAuthMethodIdToProviderId('oauth2')).toThrow(
+        UnknownAuthMethodIdError
+      );
+      expect(() => resolveAuthMethodIdToProviderId('oauth2-')).toThrow(
+        UnknownAuthMethodIdError
+      );
+    });
+
+    it('should throw for empty string', () => {
+      expect(() => resolveAuthMethodIdToProviderId('')).toThrow(
+        UnknownAuthMethodIdError
+      );
+    });
+  });
+});
+
+describe('tryResolveAuthMethodIdToProviderId', () => {
+  /**
+   * Validates: Requirements 7.1, 13.4
+   * Tests the safe (non-throwing) mapping resolution function.
+   */
+  describe('valid mappings', () => {
+    it('should return providerId for valid oauth2-prefixed method IDs', () => {
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-openai')).toBe('openai');
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-github')).toBe('github');
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-google')).toBe('google');
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-cognito')).toBe('cognito');
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-azure')).toBe('azure');
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-anthropic')).toBe('anthropic');
+    });
+
+    it('should return providerId for direct provider IDs', () => {
+      VALID_PROVIDER_IDS.forEach((providerId) => {
+        expect(tryResolveAuthMethodIdToProviderId(providerId)).toBe(providerId);
+      });
+    });
+  });
+
+  describe('invalid mappings - returns null', () => {
+    it('should return null for unknown method ID', () => {
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-unknown')).toBeNull();
+    });
+
+    it('should return null for wrong format', () => {
+      expect(tryResolveAuthMethodIdToProviderId('openai-oauth2')).toBeNull();
+    });
+
+    it('should return null for case mismatch', () => {
+      expect(tryResolveAuthMethodIdToProviderId('OPENAI')).toBeNull();
+      expect(tryResolveAuthMethodIdToProviderId('OAuth2-OpenAI')).toBeNull();
+    });
+
+    it('should return null for empty string', () => {
+      expect(tryResolveAuthMethodIdToProviderId('')).toBeNull();
+    });
+
+    it('should return null for partial matches', () => {
+      expect(tryResolveAuthMethodIdToProviderId('oauth2')).toBeNull();
+      expect(tryResolveAuthMethodIdToProviderId('oauth2-')).toBeNull();
+    });
+  });
+});
+
+describe('UnknownAuthMethodIdError', () => {
+  /**
+   * Validates: Requirements 13.4
+   * Tests the error class for unknown authMethod.id values.
+   */
+  describe('error properties', () => {
+    it('should have correct error code', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.code).toBe('UNSUPPORTED_PROVIDER');
+    });
+
+    it('should have correct error name', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.name).toBe('UnknownAuthMethodIdError');
+    });
+
+    it('should store the unknown method ID', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.unknownMethodId).toBe('oauth2-unknown');
+    });
+
+    it('should include supported method IDs', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.supportedMethodIds).toEqual(VALID_AUTH_METHOD_IDS);
+    });
+
+    it('should include supported providers', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.supportedProviders).toEqual(VALID_PROVIDER_IDS);
+    });
+  });
+
+  describe('error message', () => {
+    it('should include the unknown method ID in the message', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.message).toContain('oauth2-unknown');
+    });
+
+    it('should list supported method IDs in the message', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.message).toContain('oauth2-openai');
+      expect(error.message).toContain('oauth2-github');
+    });
+
+    it('should list supported providers in the message', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.message).toContain('openai');
+      expect(error.message).toContain('github');
+      expect(error.message).toContain('google');
+      expect(error.message).toContain('cognito');
+      expect(error.message).toContain('azure');
+      expect(error.message).toContain('anthropic');
+    });
+  });
+
+  describe('error inheritance', () => {
+    it('should be an instance of Error', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error).toBeInstanceOf(Error);
+    });
+
+    it('should be an instance of UnknownAuthMethodIdError', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error).toBeInstanceOf(UnknownAuthMethodIdError);
+    });
+
+    it('should have a stack trace', () => {
+      const error = new UnknownAuthMethodIdError('oauth2-unknown');
+      expect(error.stack).toBeDefined();
+    });
+  });
+});
+
+describe('security: no substring/heuristic matching', () => {
+  /**
+   * Validates: Requirements 7.1, 13.4
+   * Security tests to ensure no substring or heuristic matching is used.
+   */
+  it('should not match substrings of valid method IDs', () => {
+    // These should all fail - no partial matching
+    expect(isValidAuthMethodId('oauth2-open')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-git')).toBe(false);
+    expect(isValidAuthMethodId('auth2-openai')).toBe(false);
+    expect(isValidAuthMethodId('2-openai')).toBe(false);
+  });
+
+  it('should not match method IDs with extra characters', () => {
+    expect(isValidAuthMethodId('oauth2-openai-extra')).toBe(false);
+    expect(isValidAuthMethodId('prefix-oauth2-openai')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-openai ')).toBe(false);
+    expect(isValidAuthMethodId(' oauth2-openai')).toBe(false);
+  });
+
+  it('should not match similar-looking method IDs', () => {
+    // Typos and variations should not match
+    expect(isValidAuthMethodId('oauth2-opanai')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-githab')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-gogle')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-cognitio')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-azur')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-antropic')).toBe(false);
+  });
+
+  it('should be case-sensitive (no case-insensitive matching)', () => {
+    // All case variations should fail
+    expect(isValidAuthMethodId('OAuth2-OpenAI')).toBe(false);
+    expect(isValidAuthMethodId('OAUTH2-OPENAI')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-OPENAI')).toBe(false);
+    expect(isValidAuthMethodId('OAuth2-openai')).toBe(false);
+  });
+
+  it('should not use regex or pattern matching', () => {
+    // Regex-like patterns should not work
+    expect(isValidAuthMethodId('oauth2-.*')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-.+')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-[a-z]+')).toBe(false);
   });
 });

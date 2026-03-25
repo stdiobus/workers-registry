@@ -1043,4 +1043,303 @@ describe('Auth Manager Unit Tests', () => {
       await expect(authManager.logout('openai')).resolves.toBeUndefined();
     });
   });
+
+
+  describe('Method Precedence Strategy (Requirements 3.1, 10.3)', () => {
+    describe('Default Precedence: oauth2 > api-key', () => {
+      it('should select oauth2 when both OAuth and API key are available', async () => {
+        // Set up OAuth token
+        tokenManager.setToken('openai', 'oauth-token');
+
+        // Set up legacy API key
+        const legacyApiKeys: Record<string, AgentApiKeys> = {
+          'openai-agent': { apiKey: 'legacy-api-key', env: {} },
+        };
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys,
+        });
+
+        const result = await authManager.selectAuthMethod('openai-agent');
+
+        expect(result.methodType).toBe('oauth2');
+        expect(result.providerId).toBe('openai');
+        expect(result.hasCredential).toBe(true);
+      });
+
+      it('should fall back to api-key when OAuth is not available', async () => {
+        // No OAuth token set up
+
+        // Set up legacy API key
+        const legacyApiKeys: Record<string, AgentApiKeys> = {
+          'test-agent': { apiKey: 'legacy-api-key', env: {} },
+        };
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys,
+        });
+
+        const result = await authManager.selectAuthMethod('test-agent');
+
+        expect(result.methodType).toBe('api-key');
+        expect(result.hasCredential).toBe(true);
+      });
+
+      it('should return no credentials when neither OAuth nor API key available', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const result = await authManager.selectAuthMethod('unknown-agent');
+
+        expect(result.hasCredential).toBe(false);
+        expect(result.error).toContain('No credentials available');
+      });
+    });
+
+
+    describe('Configuration Override via AuthConfig', () => {
+      it('should respect custom method precedence (api-key > oauth2)', async () => {
+        // Set up OAuth token
+        tokenManager.setToken('openai', 'oauth-token');
+
+        // Set up legacy API key
+        const legacyApiKeys: Record<string, AgentApiKeys> = {
+          'openai-agent': { apiKey: 'legacy-api-key', env: {} },
+        };
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys,
+          methodPrecedence: {
+            methodPrecedence: ['api-key', 'oauth2'], // Reversed precedence
+          },
+        });
+
+        const result = await authManager.selectAuthMethod('openai-agent');
+
+        // Should select api-key first due to custom precedence
+        expect(result.methodType).toBe('api-key');
+        expect(result.hasCredential).toBe(true);
+      });
+
+      it('should use default precedence when not configured', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const config = authManager.getMethodPrecedenceConfig();
+
+        expect(config.methodPrecedence).toEqual(['oauth2', 'api-key']);
+        expect(config.failFastOnUnsupported).toBe(true);
+        expect(config.failFastOnAmbiguous).toBe(true);
+      });
+
+      it('should merge partial config with defaults', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          methodPrecedence: {
+            failFastOnAmbiguous: false, // Only override this
+          },
+        });
+
+        const config = authManager.getMethodPrecedenceConfig();
+
+        expect(config.methodPrecedence).toEqual(['oauth2', 'api-key']); // Default
+        expect(config.failFastOnUnsupported).toBe(true); // Default
+        expect(config.failFastOnAmbiguous).toBe(false); // Overridden
+      });
+    });
+
+
+    describe('Fail-Fast on Unsupported Provider', () => {
+      it('should throw error for invalid provider ID when failFastOnUnsupported is true', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          methodPrecedence: {
+            failFastOnUnsupported: true,
+          },
+        });
+
+        await expect(
+          authManager.selectAuthMethod('test-agent', undefined, 'invalid-provider' as AuthProviderId)
+        ).rejects.toThrow("Provider 'invalid-provider' is not supported");
+      });
+
+      it('should return error result for invalid provider when failFastOnUnsupported is false', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          methodPrecedence: {
+            failFastOnUnsupported: false,
+          },
+        });
+
+        const result = await authManager.selectAuthMethod(
+          'test-agent',
+          undefined,
+          'invalid-provider' as AuthProviderId
+        );
+
+        expect(result.hasCredential).toBe(false);
+        expect(result.error).toContain('not supported');
+      });
+    });
+
+
+    describe('Fail-Fast on Ambiguous Provider', () => {
+      it('should throw error for ambiguous agent ID when failFastOnAmbiguous is true', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          methodPrecedence: {
+            failFastOnAmbiguous: true,
+          },
+        });
+
+        // Agent ID that matches multiple providers (azure and openai)
+        await expect(
+          authManager.selectAuthMethod('azure-openai-agent')
+        ).rejects.toThrow('Ambiguous provider mapping');
+      });
+
+      it('should not throw for ambiguous agent ID when failFastOnAmbiguous is false', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          methodPrecedence: {
+            failFastOnAmbiguous: false,
+          },
+        });
+
+        // Should not throw, will use first matching provider
+        const result = await authManager.selectAuthMethod('azure-openai-agent');
+
+        // Result will indicate no credentials (since none are set up)
+        expect(result.hasCredential).toBe(false);
+      });
+
+      it('should not throw for unambiguous agent ID', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          methodPrecedence: {
+            failFastOnAmbiguous: true,
+          },
+        });
+
+        // Agent ID that matches only one provider
+        const result = await authManager.selectAuthMethod('github-agent');
+
+        // Should not throw, just indicate no credentials
+        // Note: providerId is only set when OAuth method is tried, even if no token available
+        expect(result.hasCredential).toBe(false);
+        // The method tried oauth2 first, found github provider but no token
+        expect(result.error).toContain('No credentials available');
+      });
+
+      it('should not check ambiguity when explicit providerId is specified', async () => {
+        tokenManager.setToken('openai', 'oauth-token');
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          methodPrecedence: {
+            failFastOnAmbiguous: true,
+          },
+        });
+
+        // Even with ambiguous agent ID, explicit providerId should work
+        const result = await authManager.selectAuthMethod(
+          'azure-openai-agent',
+          undefined,
+          'openai'
+        );
+
+        expect(result.methodType).toBe('oauth2');
+        expect(result.providerId).toBe('openai');
+        expect(result.hasCredential).toBe(true);
+      });
+    });
+
+
+    describe('Available Methods Filtering', () => {
+      it('should only consider methods in availableMethods list', async () => {
+        // Set up OAuth token
+        tokenManager.setToken('openai', 'oauth-token');
+
+        // Set up legacy API key
+        const legacyApiKeys: Record<string, AgentApiKeys> = {
+          'openai-agent': { apiKey: 'legacy-api-key', env: {} },
+        };
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys,
+        });
+
+        // Only allow api-key method
+        const result = await authManager.selectAuthMethod('openai-agent', ['api-key']);
+
+        // Should select api-key even though OAuth is available
+        expect(result.methodType).toBe('api-key');
+        expect(result.hasCredential).toBe(true);
+      });
+
+      it('should return no credentials when availableMethods excludes all configured methods', async () => {
+        // Set up legacy API key only
+        const legacyApiKeys: Record<string, AgentApiKeys> = {
+          'test-agent': { apiKey: 'legacy-api-key', env: {} },
+        };
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys,
+        });
+
+        // Only allow oauth2 method, but no OAuth is configured
+        const result = await authManager.selectAuthMethod('test-agent', ['oauth2']);
+
+        expect(result.hasCredential).toBe(false);
+      });
+    });
+
+
+    describe('getMethodPrecedenceConfig', () => {
+      it('should return a copy of the configuration', () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const config1 = authManager.getMethodPrecedenceConfig();
+        const config2 = authManager.getMethodPrecedenceConfig();
+
+        // Should be equal but not the same object
+        expect(config1).toEqual(config2);
+        expect(config1).not.toBe(config2);
+      });
+    });
+  });
 });

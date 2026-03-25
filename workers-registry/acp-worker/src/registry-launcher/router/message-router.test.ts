@@ -8,7 +8,17 @@
  * Unit tests for MessageRouter mcpServers injection.
  */
 
-import { MessageRouter, createErrorResponse, extractAgentId, extractId, transformMessage } from './message-router.js';
+import {
+  MessageRouter,
+  createErrorResponse,
+  extractAgentId,
+  extractId,
+  transformMessage,
+  parseAuthMethods,
+  getOAuthMethods,
+  getApiKeyMethods,
+  AUTH_METHOD_ID_TO_PROVIDER,
+} from './message-router.js';
 import type { IRegistryIndex } from '../registry/index.js';
 import type { RegistryAgent, SpawnCommand } from '../registry/types.js';
 import type { AgentRuntimeManager } from '../runtime/manager.js';
@@ -27,6 +37,17 @@ function createMockRegistry(agents: Map<string, RegistryAgent> = new Map()): IRe
         throw new Error(`Agent not found: ${agentId}`);
       }
       return { command: 'node', args: ['agent.js'] };
+    }),
+    getAuthRequirements: jest.fn((agentId: string) => {
+      const agent = agents.get(agentId);
+      if (!agent) {
+        return undefined;
+      }
+      // Return default auth requirements (no auth required by default)
+      return {
+        authRequired: false,
+        authMethods: [],
+      };
     }),
   };
 }
@@ -347,6 +368,1737 @@ describe('Helper functions', () => {
         id: 1,
         error: { code: -32600, message: 'Test error', data: { extra: 'data' } },
       });
+    });
+  });
+});
+
+
+// =============================================================================
+// Task 21.1: Auth Method Parsing Tests
+// =============================================================================
+
+describe('parseAuthMethods (Task 21.1)', () => {
+  describe('basic parsing', () => {
+    it('should parse valid oauth2 auth methods', () => {
+      const raw = [
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'oauth2-openai', providerId: 'openai' });
+      expect(result[1]).toEqual({ kind: 'oauth2', id: 'oauth2-github', providerId: 'github' });
+    });
+
+    it('should parse valid api-key auth methods', () => {
+      const raw = [
+        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+        { id: 'api-key', type: 'api-key' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({ kind: 'api-key', id: 'openai-api-key', providerId: 'openai' });
+      expect(result[1]).toEqual({ kind: 'api-key', id: 'api-key', providerId: undefined });
+    });
+
+    it('should normalize "agent" type to "oauth2"', () => {
+      const raw = [
+        { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'agent-openai', providerId: 'openai' });
+    });
+  });
+
+  describe('explicit id-to-provider mapping', () => {
+    it('should resolve providerId from explicit mapping when not provided', () => {
+      const raw = [
+        { id: 'oauth2-openai', type: 'oauth2' },  // No providerId, should map from id
+        { id: 'oauth2-github', type: 'oauth2' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].providerId).toBe('openai');
+      expect(result[1].providerId).toBe('github');
+    });
+
+    it('should use explicit providerId when it matches mapping', () => {
+      const raw = [
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].providerId).toBe('openai');
+    });
+
+    it('should reject methods with conflicting providerId and mapping', () => {
+      const raw = [
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'github' },  // Conflict!
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(0);  // Rejected due to conflict
+    });
+
+    it('should support all mapped provider IDs', () => {
+      // Test all entries in AUTH_METHOD_ID_TO_PROVIDER
+      const mappedIds = Object.keys(AUTH_METHOD_ID_TO_PROVIDER);
+
+      for (const id of mappedIds) {
+        const type = id.startsWith('oauth2-') || id.startsWith('agent-') ? 'oauth2' : 'api-key';
+        const raw = [{ id, type }];
+        const result = parseAuthMethods(raw);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].providerId).toBe(AUTH_METHOD_ID_TO_PROVIDER[id]);
+      }
+    });
+  });
+
+  describe('validation and security', () => {
+    it('should return empty array for non-array input', () => {
+      expect(parseAuthMethods(null)).toEqual([]);
+      expect(parseAuthMethods(undefined)).toEqual([]);
+      expect(parseAuthMethods('string')).toEqual([]);
+      expect(parseAuthMethods(123)).toEqual([]);
+      expect(parseAuthMethods({})).toEqual([]);
+    });
+
+    it('should skip methods with invalid type', () => {
+      const raw = [
+        { id: 'valid', type: 'oauth2', providerId: 'openai' },
+        { id: 'invalid-type', type: 'unknown' },
+        { id: 'another-valid', type: 'api-key' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(2);
+      expect(result.map(m => m.id)).toEqual(['valid', 'another-valid']);
+    });
+
+    it('should skip methods with missing or invalid id', () => {
+      const raw = [
+        { type: 'oauth2', providerId: 'openai' },  // Missing id
+        { id: '', type: 'oauth2', providerId: 'openai' },  // Empty id
+        { id: 123, type: 'oauth2', providerId: 'openai' },  // Non-string id
+        { id: 'valid', type: 'oauth2', providerId: 'openai' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('valid');
+    });
+
+    it('should skip oauth2 methods without valid providerId', () => {
+      const raw = [
+        { id: 'unknown-oauth', type: 'oauth2' },  // No providerId and no mapping
+        { id: 'oauth2-openai', type: 'oauth2' },  // Has mapping
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('oauth2-openai');
+    });
+
+    it('should skip methods with invalid providerId', () => {
+      const raw = [
+        { id: 'test', type: 'oauth2', providerId: 'invalid-provider' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should deduplicate methods by id', () => {
+      const raw = [
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },  // Duplicate
+        { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(2);
+      expect(result.map(m => m.id)).toEqual(['oauth2-openai', 'oauth2-github']);
+    });
+
+    it('should limit number of methods processed (DoS protection)', () => {
+      // Create more than MAX_AUTH_METHODS (50) methods
+      const raw = Array.from({ length: 100 }, (_, i) => ({
+        id: `api-key-${i}`,
+        type: 'api-key',
+      }));
+
+      const result = parseAuthMethods(raw);
+
+      // Should be capped at 50
+      expect(result.length).toBeLessThanOrEqual(50);
+    });
+
+    it('should handle null and non-object methods gracefully', () => {
+      const raw = [
+        null,
+        undefined,
+        'string',
+        123,
+        { id: 'valid', type: 'api-key' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('valid');
+    });
+  });
+});
+
+describe('getOAuthMethods', () => {
+  it('should filter only oauth2 methods', () => {
+    const methods = parseAuthMethods([
+      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'api-key', type: 'api-key' },
+      { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+    ]);
+
+    const oauthMethods = getOAuthMethods(methods);
+
+    expect(oauthMethods).toHaveLength(2);
+    expect(oauthMethods.every(m => m.kind === 'oauth2')).toBe(true);
+    expect(oauthMethods.map(m => m.providerId)).toEqual(['openai', 'github']);
+  });
+
+  it('should return empty array when no oauth2 methods', () => {
+    const methods = parseAuthMethods([
+      { id: 'api-key', type: 'api-key' },
+    ]);
+
+    const oauthMethods = getOAuthMethods(methods);
+
+    expect(oauthMethods).toHaveLength(0);
+  });
+});
+
+describe('getApiKeyMethods', () => {
+  it('should filter only api-key methods', () => {
+    const methods = parseAuthMethods([
+      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+      { id: 'api-key', type: 'api-key' },
+    ]);
+
+    const apiKeyMethods = getApiKeyMethods(methods);
+
+    expect(apiKeyMethods).toHaveLength(2);
+    expect(apiKeyMethods.every(m => m.kind === 'api-key')).toBe(true);
+    expect(apiKeyMethods.map(m => m.id)).toEqual(['openai-api-key', 'api-key']);
+  });
+
+  it('should return empty array when no api-key methods', () => {
+    const methods = parseAuthMethods([
+      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+    ]);
+
+    const apiKeyMethods = getApiKeyMethods(methods);
+
+    expect(apiKeyMethods).toHaveLength(0);
+  });
+});
+
+describe('AUTH_METHOD_ID_TO_PROVIDER mapping', () => {
+  it('should have all oauth2 provider mappings', () => {
+    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-openai']).toBe('openai');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-github']).toBe('github');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-google']).toBe('google');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-cognito']).toBe('cognito');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-azure']).toBe('azure');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-anthropic']).toBe('anthropic');
+  });
+
+  it('should have all agent provider mappings (legacy)', () => {
+    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-openai']).toBe('openai');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-github']).toBe('github');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-google']).toBe('google');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-cognito']).toBe('cognito');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-azure']).toBe('azure');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-anthropic']).toBe('anthropic');
+  });
+
+  it('should have all api-key provider mappings', () => {
+    expect(AUTH_METHOD_ID_TO_PROVIDER['openai-api-key']).toBe('openai');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['anthropic-api-key']).toBe('anthropic');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['github-api-key']).toBe('github');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['google-api-key']).toBe('google');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['azure-api-key']).toBe('azure');
+    expect(AUTH_METHOD_ID_TO_PROVIDER['cognito-api-key']).toBe('cognito');
+  });
+});
+
+
+// =============================================================================
+// Task 21.3: Auth State Machine Tests
+// =============================================================================
+
+describe('Auth State Machine (Task 21.3)', () => {
+  describe('getAuthState', () => {
+    it('should return "none" for unknown agents', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      expect(router.getAuthState('unknown-agent')).toBe('none');
+    });
+  });
+
+  describe('setAuthState', () => {
+    it('should update auth state for an agent', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      router.setAuthState('test-agent', 'pending');
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      router.setAuthState('test-agent', 'authenticated');
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+
+      router.setAuthState('test-agent', 'failed');
+      expect(router.getAuthState('test-agent')).toBe('failed');
+
+      router.setAuthState('test-agent', 'none');
+      expect(router.getAuthState('test-agent')).toBe('none');
+    });
+
+    it('should not trigger side effects when state does not change', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set to pending
+      router.setAuthState('test-agent', 'pending');
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // Set to pending again (no change)
+      router.setAuthState('test-agent', 'pending');
+      expect(router.getAuthState('test-agent')).toBe('pending');
+    });
+  });
+
+  describe('request queueing', () => {
+    it('should queue requests when auth state is pending', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set auth state to pending
+      router.setAuthState('test-agent', 'pending');
+
+      // Start routing a request (should be queued)
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Check that request is queued
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+      expect(router.getTotalQueuedRequestCount()).toBe(1);
+
+      // Transition to authenticated - should process queued requests
+      router.setAuthState('test-agent', 'authenticated');
+
+      // Wait for the route promise to resolve
+      const result = await routePromise;
+
+      // Request should have been processed successfully
+      expect(result).toBeUndefined();
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+
+    it('should reject queued requests when auth fails', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set auth state to pending
+      router.setAuthState('test-agent', 'pending');
+
+      // Start routing a request (should be queued)
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Check that request is queued
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Transition to failed - should reject queued requests
+      router.setAuthState('test-agent', 'failed');
+
+      // Wait for the route promise to resolve
+      const result = await routePromise;
+
+      // Request should have been rejected with AUTH_REQUIRED error
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004); // AUTH_REQUIRED
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+
+    it('should return AUTH_REQUIRED for requests when auth state is failed', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set auth state to failed
+      router.setAuthState('test-agent', 'failed');
+
+      // Route a request - should immediately return AUTH_REQUIRED
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004); // AUTH_REQUIRED
+      expect(result?.error.message).toBe('Authentication required');
+    });
+
+    it('should route requests normally when auth state is none', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Auth state is 'none' by default
+      expect(router.getAuthState('test-agent')).toBe('none');
+
+      // Route a request - should proceed normally
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should route requests normally when auth state is authenticated', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set auth state to authenticated
+      router.setAuthState('test-agent', 'authenticated');
+
+      // Route a request - should proceed normally
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(result).toBeUndefined();
+    });
+
+    it('should queue multiple requests while auth is pending', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set auth state to pending
+      router.setAuthState('test-agent', 'pending');
+
+      // Queue multiple requests
+      const promises = [
+        router.route({ jsonrpc: '2.0', id: 1, method: 'session/new', agentId: 'test-agent', params: {} }),
+        router.route({ jsonrpc: '2.0', id: 2, method: 'session/prompt', agentId: 'test-agent', params: {} }),
+        router.route({ jsonrpc: '2.0', id: 3, method: 'session/end', agentId: 'test-agent', params: {} }),
+      ];
+
+      // Check that all requests are queued
+      expect(router.getQueuedRequestCount('test-agent')).toBe(3);
+      expect(router.getTotalQueuedRequestCount()).toBe(3);
+
+      // Transition to authenticated
+      router.setAuthState('test-agent', 'authenticated');
+
+      // Wait for all promises to resolve
+      const results = await Promise.all(promises);
+
+      // All requests should have been processed successfully
+      expect(results.every(r => r === undefined)).toBe(true);
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+  });
+
+  describe('clearQueues', () => {
+    it('should clear all queued requests and auth state', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set auth state to pending and queue a request
+      router.setAuthState('test-agent', 'pending');
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Clear queues
+      router.clearQueues();
+
+      // Wait for the route promise to resolve
+      const result = await routePromise;
+
+      // Request should have been rejected with shutdown error
+      expect(result).toBeDefined();
+      expect(result?.error.message).toBe('Router shutdown');
+
+      // Auth state should be cleared
+      expect(router.getAuthState('test-agent')).toBe('none');
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+  });
+
+  describe('resetAuthState', () => {
+    it('should reset auth state to none', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set auth state to authenticated
+      router.setAuthState('test-agent', 'authenticated');
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+
+      // Reset auth state
+      router.resetAuthState('test-agent');
+      expect(router.getAuthState('test-agent')).toBe('none');
+    });
+  });
+});
+
+
+// =============================================================================
+// Task 21.4: OAuth Negotiation Unit Tests
+// =============================================================================
+
+describe('OAuth Negotiation (Task 21.4)', () => {
+  /**
+   * Validates: Requirements 3.1, 11.2
+   * Test authMethods parsing with various type/providerId combinations
+   */
+  describe('authMethods parsing with type/providerId combinations', () => {
+    it('should parse oauth2 type with explicit providerId', () => {
+      const raw = [
+        { id: 'custom-oauth', type: 'oauth2', providerId: 'openai' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'custom-oauth', providerId: 'openai' });
+    });
+
+    it('should parse agent type (legacy) with explicit providerId', () => {
+      const raw = [
+        { id: 'custom-agent', type: 'agent', providerId: 'github' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'custom-agent', providerId: 'github' });
+    });
+
+    it('should parse api-key type with explicit providerId', () => {
+      const raw = [
+        { id: 'custom-api-key', type: 'api-key', providerId: 'anthropic' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ kind: 'api-key', id: 'custom-api-key', providerId: 'anthropic' });
+    });
+
+    it('should parse api-key type without providerId', () => {
+      const raw = [
+        { id: 'generic-api-key', type: 'api-key' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ kind: 'api-key', id: 'generic-api-key', providerId: undefined });
+    });
+
+    it('should parse mixed auth methods correctly', () => {
+      const raw = [
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'agent-github', type: 'agent', providerId: 'github' },
+        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+        { id: 'generic-key', type: 'api-key' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(4);
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'oauth2-openai', providerId: 'openai' });
+      expect(result[1]).toEqual({ kind: 'oauth2', id: 'agent-github', providerId: 'github' });
+      expect(result[2]).toEqual({ kind: 'api-key', id: 'openai-api-key', providerId: 'openai' });
+      expect(result[3]).toEqual({ kind: 'api-key', id: 'generic-key', providerId: undefined });
+    });
+
+    it('should reject oauth2 methods with invalid providerId', () => {
+      const raw = [
+        { id: 'oauth2-invalid', type: 'oauth2', providerId: 'not-a-real-provider' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should reject oauth2 methods without providerId and no mapping', () => {
+      const raw = [
+        { id: 'unmapped-oauth', type: 'oauth2' },  // No providerId, no mapping
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('should use mapping when providerId not provided but id is mapped', () => {
+      const raw = [
+        { id: 'oauth2-google', type: 'oauth2' },  // No providerId, but id is mapped
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].providerId).toBe('google');
+    });
+
+    it('should handle all supported providers', () => {
+      const providers = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+
+      for (const provider of providers) {
+        const raw = [
+          { id: `oauth2-${provider}`, type: 'oauth2', providerId: provider },
+        ];
+
+        const result = parseAuthMethods(raw);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].providerId).toBe(provider);
+      }
+    });
+  });
+
+  /**
+   * Validates: Requirements 3.1, 3.2
+   * Test OAuth flow trigger when type is "oauth2"
+   */
+  describe('OAuth flow trigger', () => {
+    it('should identify OAuth methods from authMethods array', () => {
+      const methods = parseAuthMethods([
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'api-key', type: 'api-key' },
+        { id: 'agent-github', type: 'agent', providerId: 'github' },
+      ]);
+
+      const oauthMethods = getOAuthMethods(methods);
+
+      expect(oauthMethods).toHaveLength(2);
+      expect(oauthMethods[0].kind).toBe('oauth2');
+      expect(oauthMethods[0].providerId).toBe('openai');
+      expect(oauthMethods[1].kind).toBe('oauth2');
+      expect(oauthMethods[1].providerId).toBe('github');
+    });
+
+    it('should prioritize OAuth methods over API key methods', () => {
+      const methods = parseAuthMethods([
+        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      ]);
+
+      const oauthMethods = getOAuthMethods(methods);
+      const apiKeyMethods = getApiKeyMethods(methods);
+
+      // Both should be parsed
+      expect(oauthMethods).toHaveLength(1);
+      expect(apiKeyMethods).toHaveLength(1);
+
+      // OAuth should be selected first (per Requirement 3.1, 10.3)
+      expect(oauthMethods[0].kind).toBe('oauth2');
+    });
+
+    it('should handle agent type as OAuth (legacy support)', () => {
+      const methods = parseAuthMethods([
+        { id: 'agent-anthropic', type: 'agent', providerId: 'anthropic' },
+      ]);
+
+      const oauthMethods = getOAuthMethods(methods);
+
+      expect(oauthMethods).toHaveLength(1);
+      expect(oauthMethods[0].kind).toBe('oauth2');
+      expect(oauthMethods[0].providerId).toBe('anthropic');
+    });
+
+    it('should return empty array when no OAuth methods present', () => {
+      const methods = parseAuthMethods([
+        { id: 'api-key', type: 'api-key' },
+        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+      ]);
+
+      const oauthMethods = getOAuthMethods(methods);
+
+      expect(oauthMethods).toHaveLength(0);
+    });
+  });
+
+  /**
+   * Validates: Requirements 3.1, 3.5
+   * Test request queueing during pending auth
+   */
+  describe('request queueing during pending auth', () => {
+    it('should queue requests when OAuth auth is pending', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-agent', {
+        id: 'oauth-agent',
+        name: 'OAuth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Simulate OAuth flow starting (sets state to pending)
+      router.setAuthState('oauth-agent', 'pending');
+
+      // Queue multiple requests during pending auth
+      const request1 = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'oauth-agent',
+        params: {},
+      });
+
+      const request2 = router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        agentId: 'oauth-agent',
+        params: { prompt: 'test' },
+      });
+
+      // Verify requests are queued
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(2);
+
+      // Complete OAuth flow
+      router.setAuthState('oauth-agent', 'authenticated');
+
+      // Wait for requests to be processed
+      const [result1, result2] = await Promise.all([request1, request2]);
+
+      // Requests should succeed
+      expect(result1).toBeUndefined();
+      expect(result2).toBeUndefined();
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(0);
+    });
+
+    it('should reject queued requests when OAuth auth fails', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-agent', {
+        id: 'oauth-agent',
+        name: 'OAuth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Simulate OAuth flow starting
+      router.setAuthState('oauth-agent', 'pending');
+
+      // Queue a request
+      const requestPromise = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'oauth-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(1);
+
+      // OAuth flow fails
+      router.setAuthState('oauth-agent', 'failed');
+
+      // Request should be rejected with AUTH_REQUIRED
+      const result = await requestPromise;
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004);
+      expect(result?.error.message).toBe('Authentication required');
+    });
+
+    it('should not queue requests for different agents', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-agent', {
+        id: 'oauth-agent',
+        name: 'OAuth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-agent' } },
+      });
+      agents.set('other-agent', {
+        id: 'other-agent',
+        name: 'Other Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'other-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Only oauth-agent has pending auth
+      router.setAuthState('oauth-agent', 'pending');
+
+      // Request to oauth-agent should be queued
+      const oauthRequest = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'oauth-agent',
+        params: {},
+      });
+
+      // Request to other-agent should proceed immediately
+      const otherResult = await router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/new',
+        agentId: 'other-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(1);
+      expect(router.getQueuedRequestCount('other-agent')).toBe(0);
+      expect(otherResult).toBeUndefined();
+
+      // Complete OAuth for oauth-agent
+      router.setAuthState('oauth-agent', 'authenticated');
+      const oauthResult = await oauthRequest;
+      expect(oauthResult).toBeUndefined();
+    });
+  });
+
+  /**
+   * Validates: Requirements 3.1, 11.2
+   * Test state transitions: none → pending → authenticated
+   */
+  describe('state transitions', () => {
+    it('should transition from none to pending when OAuth starts', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Initial state is none
+      expect(router.getAuthState('test-agent')).toBe('none');
+
+      // Transition to pending (OAuth flow starting)
+      router.setAuthState('test-agent', 'pending');
+      expect(router.getAuthState('test-agent')).toBe('pending');
+    });
+
+    it('should transition from pending to authenticated on success', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Start OAuth flow
+      router.setAuthState('test-agent', 'pending');
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // OAuth succeeds
+      router.setAuthState('test-agent', 'authenticated');
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+    });
+
+    it('should transition from pending to failed on error', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Start OAuth flow
+      router.setAuthState('test-agent', 'pending');
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // OAuth fails
+      router.setAuthState('test-agent', 'failed');
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+
+    it('should allow transition from failed to pending (retry)', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // OAuth fails
+      router.setAuthState('test-agent', 'failed');
+      expect(router.getAuthState('test-agent')).toBe('failed');
+
+      // Retry OAuth
+      router.setAuthState('test-agent', 'pending');
+      expect(router.getAuthState('test-agent')).toBe('pending');
+    });
+
+    it('should allow transition from authenticated to none (logout)', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Authenticated
+      router.setAuthState('test-agent', 'authenticated');
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+
+      // Logout
+      router.setAuthState('test-agent', 'none');
+      expect(router.getAuthState('test-agent')).toBe('none');
+    });
+
+    it('should track state independently per agent', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set different states for different agents
+      router.setAuthState('agent-1', 'pending');
+      router.setAuthState('agent-2', 'authenticated');
+      router.setAuthState('agent-3', 'failed');
+
+      expect(router.getAuthState('agent-1')).toBe('pending');
+      expect(router.getAuthState('agent-2')).toBe('authenticated');
+      expect(router.getAuthState('agent-3')).toBe('failed');
+      expect(router.getAuthState('agent-4')).toBe('none');  // Unknown agent
+    });
+
+    it('should complete full OAuth lifecycle: none → pending → authenticated', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-agent', {
+        id: 'oauth-agent',
+        name: 'OAuth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Initial state
+      expect(router.getAuthState('oauth-agent')).toBe('none');
+
+      // Start OAuth flow
+      router.setAuthState('oauth-agent', 'pending');
+      expect(router.getAuthState('oauth-agent')).toBe('pending');
+
+      // Queue a request during pending
+      const requestPromise = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'oauth-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(1);
+
+      // OAuth completes successfully
+      router.setAuthState('oauth-agent', 'authenticated');
+      expect(router.getAuthState('oauth-agent')).toBe('authenticated');
+
+      // Queued request should be processed
+      const result = await requestPromise;
+      expect(result).toBeUndefined();
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(0);
+    });
+
+    it('should complete failed OAuth lifecycle: none → pending → failed', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-agent', {
+        id: 'oauth-agent',
+        name: 'OAuth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Initial state
+      expect(router.getAuthState('oauth-agent')).toBe('none');
+
+      // Start OAuth flow
+      router.setAuthState('oauth-agent', 'pending');
+      expect(router.getAuthState('oauth-agent')).toBe('pending');
+
+      // Queue a request during pending
+      const requestPromise = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'oauth-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(1);
+
+      // OAuth fails
+      router.setAuthState('oauth-agent', 'failed');
+      expect(router.getAuthState('oauth-agent')).toBe('failed');
+
+      // Queued request should be rejected
+      const result = await requestPromise;
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004);
+      expect(router.getQueuedRequestCount('oauth-agent')).toBe(0);
+    });
+  });
+
+  /**
+   * Additional edge cases for OAuth negotiation
+   */
+  describe('edge cases', () => {
+    it('should handle empty authMethods array', () => {
+      const result = parseAuthMethods([]);
+      expect(result).toEqual([]);
+    });
+
+    it('should handle authMethods with only invalid entries', () => {
+      const raw = [
+        { id: 'invalid-1', type: 'unknown-type' },
+        { id: '', type: 'oauth2', providerId: 'openai' },
+        { type: 'api-key' },  // Missing id
+      ];
+
+      const result = parseAuthMethods(raw);
+      expect(result).toEqual([]);
+    });
+
+    it('should preserve order of valid auth methods', () => {
+      const raw = [
+        { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+        { id: 'api-key', type: 'api-key' },
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(3);
+      expect(result[0].id).toBe('oauth2-github');
+      expect(result[1].id).toBe('api-key');
+      expect(result[2].id).toBe('oauth2-openai');
+    });
+
+    it('should handle concurrent state changes safely', async () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Rapid state changes
+      router.setAuthState('test-agent', 'pending');
+      router.setAuthState('test-agent', 'authenticated');
+      router.setAuthState('test-agent', 'none');
+      router.setAuthState('test-agent', 'pending');
+      router.setAuthState('test-agent', 'failed');
+
+      // Final state should be 'failed'
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+  });
+});
+
+
+// =============================================================================
+// Task 23.3: AUTH_REQUIRED Enforcement Unit Tests
+// =============================================================================
+
+describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
+  /**
+   * Validates: Requirement 11.2
+   * Test AUTH_REQUIRED returned when OAuth needed but not authenticated
+   */
+  describe('AUTH_REQUIRED when OAuth needed but not authenticated', () => {
+    it('should return AUTH_REQUIRED when agent requires OAuth but credentials not available', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-required-agent', {
+        id: 'oauth-required-agent',
+        name: 'OAuth Required Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-required-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      // Create router without AuthManager (no OAuth credentials available)
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set OAuth requirement for the agent
+      router.setAgentOAuthRequirement('oauth-required-agent', 'openai');
+
+      // Auth state is 'none' (not authenticated)
+      expect(router.getAuthState('oauth-required-agent')).toBe('none');
+
+      // Route a request - should return AUTH_REQUIRED
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'oauth-required-agent',
+        params: {},
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004); // AUTH_REQUIRED
+      expect(result?.error.message).toBe('Authentication required');
+    });
+
+    it('should return AUTH_REQUIRED when auth state is failed', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('failed-auth-agent', {
+        id: 'failed-auth-agent',
+        name: 'Failed Auth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'failed-auth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set OAuth requirement and mark auth as failed
+      router.setAgentOAuthRequirement('failed-auth-agent', 'github');
+      router.setAuthState('failed-auth-agent', 'failed');
+
+      // Route a request - should return AUTH_REQUIRED
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        agentId: 'failed-auth-agent',
+        params: { prompt: 'test' },
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004); // AUTH_REQUIRED
+      expect(result?.error.message).toBe('Authentication required');
+    });
+
+    it('should block multiple request types when OAuth required but not authenticated', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-agent', {
+        id: 'oauth-agent',
+        name: 'OAuth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set OAuth requirement
+      router.setAgentOAuthRequirement('oauth-agent', 'google');
+
+      // Test various request methods
+      const methods = ['session/new', 'session/prompt', 'session/end', 'tools/call'];
+
+      for (const method of methods) {
+        const result = await router.route({
+          jsonrpc: '2.0',
+          id: `test-${method}`,
+          method,
+          agentId: 'oauth-agent',
+          params: {},
+        });
+
+        expect(result).toBeDefined();
+        expect(result?.error.code).toBe(-32004);
+        expect(result?.error.message).toBe('Authentication required');
+      }
+    });
+  });
+
+  /**
+   * Validates: Requirement 11.2
+   * Test request proceeds when OAuth completed
+   */
+  describe('Request proceeds when OAuth completed', () => {
+    it('should route request normally when auth state is authenticated', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('authenticated-agent', {
+        id: 'authenticated-agent',
+        name: 'Authenticated Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'authenticated-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set OAuth requirement and mark as authenticated
+      router.setAgentOAuthRequirement('authenticated-agent', 'openai');
+      router.setAuthState('authenticated-agent', 'authenticated');
+
+      // Route a request - should proceed normally
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'authenticated-agent',
+        params: {},
+      });
+
+      // No error returned means request was routed successfully
+      expect(result).toBeUndefined();
+    });
+
+    it('should process queued requests after OAuth completes successfully', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('pending-auth-agent', {
+        id: 'pending-auth-agent',
+        name: 'Pending Auth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'pending-auth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set OAuth requirement and mark as pending
+      router.setAgentOAuthRequirement('pending-auth-agent', 'anthropic');
+      router.setAuthState('pending-auth-agent', 'pending');
+
+      // Queue a request while auth is pending
+      const requestPromise = router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'pending-auth-agent',
+        params: {},
+      });
+
+      // Verify request is queued
+      expect(router.getQueuedRequestCount('pending-auth-agent')).toBe(1);
+
+      // Complete OAuth authentication
+      router.setAuthState('pending-auth-agent', 'authenticated');
+
+      // Wait for request to be processed
+      const result = await requestPromise;
+
+      // Request should succeed (no error)
+      expect(result).toBeUndefined();
+      expect(router.getQueuedRequestCount('pending-auth-agent')).toBe(0);
+    });
+
+    it('should allow requests for agents without OAuth requirements', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('no-auth-agent', {
+        id: 'no-auth-agent',
+        name: 'No Auth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'no-auth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // No OAuth requirement set for this agent
+      expect(router.getAgentOAuthRequirement('no-auth-agent')).toBeUndefined();
+
+      // Route a request - should proceed normally
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'no-auth-agent',
+        params: {},
+      });
+
+      // No error returned means request was routed successfully
+      expect(result).toBeUndefined();
+    });
+  });
+
+  /**
+   * Validates: Requirement 11.2
+   * Test error response format matches spec (requiredMethod, supportedMethods, providerId)
+   */
+  describe('Error response format matches spec', () => {
+    it('should include requiredMethod in AUTH_REQUIRED error', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-openai');
+
+      expect(errorResponse.error.data).toBeDefined();
+      const data = errorResponse.error.data as Record<string, unknown>;
+      expect(data.requiredMethod).toBe('oauth2-openai');
+    });
+
+    it('should include supportedMethods array in AUTH_REQUIRED error', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-github');
+
+      expect(errorResponse.error.data).toBeDefined();
+      const data = errorResponse.error.data as Record<string, unknown>;
+      expect(data.supportedMethods).toBeDefined();
+      expect(Array.isArray(data.supportedMethods)).toBe(true);
+      expect((data.supportedMethods as string[]).length).toBeGreaterThan(0);
+    });
+
+    it('should include agentId in AUTH_REQUIRED error', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError(1, 'my-test-agent', 'oauth2-google');
+
+      expect(errorResponse.error.data).toBeDefined();
+      const data = errorResponse.error.data as Record<string, unknown>;
+      expect(data.agentId).toBe('my-test-agent');
+    });
+
+    it('should include providerId in AUTH_REQUIRED error when OAuth required', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('oauth-agent', {
+        id: 'oauth-agent',
+        name: 'OAuth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'oauth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set OAuth requirement with specific provider
+      router.setAgentOAuthRequirement('oauth-agent', 'azure');
+
+      // Route a request - should return AUTH_REQUIRED with providerId
+      const result = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'oauth-agent',
+        params: {},
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004);
+      expect(result?.error.data).toBeDefined();
+      const data = result?.error.data as Record<string, unknown>;
+      expect(data.providerId).toBe('azure');
+    });
+
+    it('should have correct JSON-RPC 2.0 error structure', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError(42, 'test-agent', 'oauth2-cognito');
+
+      // Verify JSON-RPC 2.0 structure
+      expect(errorResponse.jsonrpc).toBe('2.0');
+      expect(errorResponse.id).toBe(42);
+      expect(errorResponse.error).toBeDefined();
+      expect(errorResponse.error.code).toBe(-32004);
+      expect(errorResponse.error.message).toBe('Authentication required');
+    });
+
+    it('should default requiredMethod to api-key when not specified', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError(1, 'test-agent');
+
+      expect(errorResponse.error.data).toBeDefined();
+      const data = errorResponse.error.data as Record<string, unknown>;
+      expect(data.requiredMethod).toBe('api-key');
+    });
+
+    it('should include all supported auth methods in supportedMethods', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-openai');
+
+      const data = errorResponse.error.data as Record<string, unknown>;
+      const supportedMethods = data.supportedMethods as string[];
+
+      // Should include at least the basic api-key methods
+      expect(supportedMethods).toContain('api-key');
+      expect(supportedMethods).toContain('openai-api-key');
+      expect(supportedMethods).toContain('anthropic-api-key');
+    });
+
+    it('should handle null request ID in error response', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError(null, 'test-agent', 'oauth2-openai');
+
+      expect(errorResponse.jsonrpc).toBe('2.0');
+      expect(errorResponse.id).toBeNull();
+      expect(errorResponse.error.code).toBe(-32004);
+    });
+
+    it('should handle string request ID in error response', () => {
+      const registry = createMockRegistry(new Map());
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      const errorResponse = router.createAuthRequiredError('request-uuid-123', 'test-agent', 'oauth2-github');
+
+      expect(errorResponse.jsonrpc).toBe('2.0');
+      expect(errorResponse.id).toBe('request-uuid-123');
+      expect(errorResponse.error.code).toBe(-32004);
+    });
+  });
+
+  /**
+   * Additional edge cases for AUTH_REQUIRED enforcement
+   */
+  describe('Edge cases', () => {
+    it('should handle OAuth requirement being set after initial request', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('dynamic-auth-agent', {
+        id: 'dynamic-auth-agent',
+        name: 'Dynamic Auth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'dynamic-auth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // First request should succeed (no OAuth requirement)
+      const result1 = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'dynamic-auth-agent',
+        params: {},
+      });
+      expect(result1).toBeUndefined();
+
+      // Set OAuth requirement
+      router.setAgentOAuthRequirement('dynamic-auth-agent', 'openai');
+
+      // Second request should fail with AUTH_REQUIRED
+      const result2 = await router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        agentId: 'dynamic-auth-agent',
+        params: {},
+      });
+      expect(result2).toBeDefined();
+      expect(result2?.error.code).toBe(-32004);
+    });
+
+    it('should clear OAuth requirement and allow requests again', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('clearable-auth-agent', {
+        id: 'clearable-auth-agent',
+        name: 'Clearable Auth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'clearable-auth-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set OAuth requirement
+      router.setAgentOAuthRequirement('clearable-auth-agent', 'github');
+
+      // Request should fail
+      const result1 = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'clearable-auth-agent',
+        params: {},
+      });
+      expect(result1?.error.code).toBe(-32004);
+
+      // Clear OAuth requirement
+      router.clearAgentOAuthRequirement('clearable-auth-agent');
+
+      // Request should succeed now
+      const result2 = await router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/new',
+        agentId: 'clearable-auth-agent',
+        params: {},
+      });
+      expect(result2).toBeUndefined();
+    });
+
+    it('should handle multiple agents with different OAuth requirements', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('agent-openai', {
+        id: 'agent-openai',
+        name: 'OpenAI Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'agent-openai' } },
+      });
+      agents.set('agent-github', {
+        id: 'agent-github',
+        name: 'GitHub Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'agent-github' } },
+      });
+      agents.set('agent-no-auth', {
+        id: 'agent-no-auth',
+        name: 'No Auth Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'agent-no-auth' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback);
+
+      // Set different OAuth requirements
+      router.setAgentOAuthRequirement('agent-openai', 'openai');
+      router.setAgentOAuthRequirement('agent-github', 'github');
+      // agent-no-auth has no OAuth requirement
+
+      // Authenticate only agent-openai
+      router.setAuthState('agent-openai', 'authenticated');
+
+      // agent-openai should succeed
+      const result1 = await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'session/new',
+        agentId: 'agent-openai',
+        params: {},
+      });
+      expect(result1).toBeUndefined();
+
+      // agent-github should fail (not authenticated)
+      const result2 = await router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/new',
+        agentId: 'agent-github',
+        params: {},
+      });
+      expect(result2?.error.code).toBe(-32004);
+      expect((result2?.error.data as any).providerId).toBe('github');
+
+      // agent-no-auth should succeed (no OAuth requirement)
+      const result3 = await router.route({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'session/new',
+        agentId: 'agent-no-auth',
+        params: {},
+      });
+      expect(result3).toBeUndefined();
     });
   });
 });

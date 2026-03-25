@@ -71,6 +71,28 @@ export type {
 
   // ACP protocol types
   AcpAuthMethod,
+
+  // Method precedence types
+  AuthMethodType,
+  AuthMethodPrecedenceConfig,
+} from './types.js';
+
+export {
+  // Type guards and validation
+  isValidProviderId as isValidProviderIdFromTypes,
+  isValidAuthMethodType,
+  isValidAuthMethodId,
+  // Mapping functions
+  resolveAuthMethodIdToProviderId,
+  tryResolveAuthMethodIdToProviderId,
+  // Error class
+  UnknownAuthMethodIdError,
+  // Constants
+  VALID_PROVIDER_IDS,
+  VALID_AUTH_METHOD_TYPES,
+  VALID_AUTH_METHOD_IDS,
+  AUTH_METHOD_ID_TO_PROVIDER_ID,
+  DEFAULT_AUTH_METHOD_PRECEDENCE,
 } from './types.js';
 
 // =============================================================================
@@ -114,7 +136,17 @@ export {
 // Auth Manager
 // =============================================================================
 
-export { AuthManager } from './auth-manager.js';
+export type {
+  AuthManagerOptions,
+  AuthMethodSelectionResult,
+} from './auth-manager.js';
+export {
+  AuthManager,
+  createAuthManager,
+  AuthMethodSelectionError,
+  CLIENT_CREDENTIALS_MARKER,
+  isMarkerToken,
+} from './auth-manager.js';
 
 // =============================================================================
 // Token Manager

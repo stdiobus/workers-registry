@@ -44,8 +44,15 @@ import type {
   AuthStatusMap,
   AuthStatusEntry,
   AgentAuthOptions,
+  AuthMethodType,
+  AuthMethodPrecedenceConfig,
 } from './types.js';
-import { isValidProviderId, VALID_PROVIDER_IDS } from './types.js';
+import {
+  isValidProviderId,
+  VALID_PROVIDER_IDS,
+  DEFAULT_AUTH_METHOD_PRECEDENCE,
+  isValidAuthMethodType,
+} from './types.js';
 
 /**
  * Marker token used to indicate client credentials are configured but not authenticated.
@@ -74,6 +81,42 @@ export interface AuthManagerOptions {
   legacyApiKeys: Record<string, AgentApiKeys>;
   /** Optional custom provider resolver (for testing) */
   providerResolver?: (providerId: AuthProviderId) => IAuthProvider;
+  /**
+   * Authentication method precedence configuration.
+   * Controls which auth method is preferred when multiple are available.
+   * Default: oauth2 > api-key (OAuth preferred when available)
+   *
+   * Requirements: 3.1, 10.3
+   */
+  methodPrecedence?: Partial<AuthMethodPrecedenceConfig>;
+}
+
+/**
+ * Result of authentication method selection.
+ */
+export interface AuthMethodSelectionResult {
+  /** The selected authentication method type */
+  methodType: AuthMethodType;
+  /** The provider ID to use (for oauth2) */
+  providerId?: AuthProviderId;
+  /** Whether a valid credential was found */
+  hasCredential: boolean;
+  /** Error message if selection failed */
+  error?: string;
+}
+
+/**
+ * Error thrown when authentication method selection fails.
+ */
+export class AuthMethodSelectionError extends Error {
+  constructor(
+    message: string,
+    public readonly code: 'UNSUPPORTED_METHOD' | 'AMBIGUOUS_PROVIDER' | 'NO_CREDENTIALS',
+    public readonly details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'AuthMethodSelectionError';
+  }
 }
 
 /**
@@ -87,12 +130,18 @@ export interface AuthManagerOptions {
  * - Inject authentication into agent requests
  * - Report authentication status
  * - Handle logout operations
+ *
+ * Method Precedence Strategy (Requirements 3.1, 10.3):
+ * - Default precedence: oauth2 > api-key (OAuth preferred when available)
+ * - Configurable via AuthConfig.methodPrecedence
+ * - Fail-fast on unsupported or ambiguous providerId (configurable)
  */
 export class AuthManager {
   private readonly credentialStore: ICredentialStore;
   private readonly tokenManager: ITokenManager;
   private readonly legacyApiKeys: Record<string, AgentApiKeys>;
   private readonly providerResolver: (providerId: AuthProviderId) => IAuthProvider;
+  private readonly methodPrecedenceConfig: AuthMethodPrecedenceConfig;
 
   /**
    * Create a new AuthManager.
@@ -123,12 +172,18 @@ export class AuthManager {
       this.tokenManager = optionsOrCredentialStore.tokenManager;
       this.legacyApiKeys = optionsOrCredentialStore.legacyApiKeys;
       this.providerResolver = optionsOrCredentialStore.providerResolver ?? getProvider;
+      // Merge user-provided precedence config with defaults
+      this.methodPrecedenceConfig = {
+        ...DEFAULT_AUTH_METHOD_PRECEDENCE,
+        ...optionsOrCredentialStore.methodPrecedence,
+      };
     } else {
       // Legacy constructor
       this.credentialStore = optionsOrCredentialStore;
       this.tokenManager = tokenManager!;
       this.legacyApiKeys = legacyApiKeys ?? {};
       this.providerResolver = getProvider;
+      this.methodPrecedenceConfig = { ...DEFAULT_AUTH_METHOD_PRECEDENCE };
     }
   }
 
@@ -698,6 +753,212 @@ export class AuthManager {
     }
 
     return undefined;
+  }
+
+  /**
+   * Select the best authentication method for an agent based on precedence configuration.
+   *
+   * Method Precedence Strategy (Requirements 3.1, 10.3):
+   * - Default precedence: oauth2 > api-key (OAuth preferred when available)
+   * - Iterates through methods in precedence order
+   * - Returns the first method with available credentials
+   * - Fail-fast on unsupported or ambiguous providerId (configurable)
+   *
+   * @param agentId - The agent identifier
+   * @param availableMethods - Optional list of methods the agent supports (from authMethods)
+   * @param providerId - Optional explicit provider ID (strict binding when specified)
+   * @returns Selection result with method type, provider, and credential availability
+   * @throws AuthMethodSelectionError if fail-fast is enabled and an error occurs
+   */
+  async selectAuthMethod(
+    agentId: string,
+    availableMethods?: AuthMethodType[],
+    providerId?: AuthProviderId
+  ): Promise<AuthMethodSelectionResult> {
+    const { methodPrecedence, failFastOnUnsupported, failFastOnAmbiguous } = this.methodPrecedenceConfig;
+
+    // Validate explicit providerId if specified
+    if (providerId !== undefined) {
+      if (!isValidProviderId(providerId)) {
+        const error = `Provider '${providerId}' is not supported. Valid providers: ${VALID_PROVIDER_IDS.join(', ')}`;
+        if (failFastOnUnsupported) {
+          throw new AuthMethodSelectionError(
+            error,
+            'UNSUPPORTED_METHOD',
+            { providerId, supportedProviders: [...VALID_PROVIDER_IDS] }
+          );
+        }
+        console.error(`[AuthManager] ${error}`);
+        return {
+          methodType: 'api-key',
+          hasCredential: false,
+          error,
+        };
+      }
+    }
+
+    // Determine which methods to consider
+    const methodsToTry = availableMethods
+      ? methodPrecedence.filter(m => availableMethods.includes(m))
+      : methodPrecedence;
+
+    // Check for ambiguous provider mapping (multiple providers could match)
+    if (!providerId && failFastOnAmbiguous) {
+      const ambiguityCheck = this.checkProviderAmbiguity(agentId);
+      if (ambiguityCheck.isAmbiguous) {
+        throw new AuthMethodSelectionError(
+          `Ambiguous provider mapping for agent '${agentId}'. Multiple providers could match: ${ambiguityCheck.matchingProviders.join(', ')}. Specify an explicit providerId.`,
+          'AMBIGUOUS_PROVIDER',
+          { agentId, matchingProviders: ambiguityCheck.matchingProviders }
+        );
+      }
+    }
+
+    // Iterate through methods in precedence order
+    for (const methodType of methodsToTry) {
+      // Validate method type
+      if (!isValidAuthMethodType(methodType)) {
+        const error = `Unsupported authentication method: ${methodType}`;
+        if (failFastOnUnsupported) {
+          throw new AuthMethodSelectionError(
+            error,
+            'UNSUPPORTED_METHOD',
+            { methodType, supportedMethods: ['oauth2', 'api-key'] }
+          );
+        }
+        console.error(`[AuthManager] ${error}, skipping...`);
+        continue;
+      }
+
+      const result = await this.tryAuthMethod(agentId, methodType, providerId);
+      if (result.hasCredential) {
+        console.error(`[AuthManager] Selected auth method '${methodType}' for agent '${agentId}'`);
+        return result;
+      }
+    }
+
+    // No credentials found for any method
+    console.error(`[AuthManager] No credentials available for agent '${agentId}'`);
+    return {
+      methodType: methodPrecedence[0] ?? 'oauth2',
+      hasCredential: false,
+      error: `No credentials available for agent '${agentId}'`,
+    };
+  }
+
+  /**
+   * Try a specific authentication method for an agent.
+   *
+   * @param agentId - The agent identifier
+   * @param methodType - The authentication method to try
+   * @param providerId - Optional explicit provider ID
+   * @returns Selection result for this method
+   */
+  private async tryAuthMethod(
+    agentId: string,
+    methodType: AuthMethodType,
+    providerId?: AuthProviderId
+  ): Promise<AuthMethodSelectionResult> {
+    switch (methodType) {
+      case 'oauth2': {
+        // Determine provider for OAuth
+        const effectiveProviderId = providerId ?? this.getProviderForAgent(agentId);
+        if (!effectiveProviderId) {
+          return {
+            methodType: 'oauth2',
+            hasCredential: false,
+            error: `No OAuth provider mapping for agent '${agentId}'`,
+          };
+        }
+
+        // Check for OAuth token
+        const token = await this.tokenManager.getAccessToken(effectiveProviderId);
+        if (token && !isMarkerToken(token)) {
+          return {
+            methodType: 'oauth2',
+            providerId: effectiveProviderId,
+            hasCredential: true,
+          };
+        }
+
+        return {
+          methodType: 'oauth2',
+          providerId: effectiveProviderId,
+          hasCredential: false,
+          error: `No OAuth token available for provider '${effectiveProviderId}'`,
+        };
+      }
+
+      case 'api-key': {
+        // Check for legacy API key
+        const legacyKeys = this.legacyApiKeys[agentId];
+        if (legacyKeys?.apiKey) {
+          return {
+            methodType: 'api-key',
+            hasCredential: true,
+          };
+        }
+
+        return {
+          methodType: 'api-key',
+          hasCredential: false,
+          error: `No API key available for agent '${agentId}'`,
+        };
+      }
+
+      default: {
+        // This should never happen due to type checking, but handle gracefully
+        return {
+          methodType: methodType as AuthMethodType,
+          hasCredential: false,
+          error: `Unknown authentication method: ${methodType}`,
+        };
+      }
+    }
+  }
+
+  /**
+   * Check if an agent ID has ambiguous provider mapping.
+   *
+   * Ambiguity occurs when multiple provider keywords match the agent ID.
+   * For example, "azure-openai-agent" matches both "azure" and "openai".
+   *
+   * @param agentId - The agent identifier
+   * @returns Ambiguity check result
+   */
+  private checkProviderAmbiguity(agentId: string): { isAmbiguous: boolean; matchingProviders: AuthProviderId[] } {
+    const agentLower = agentId.toLowerCase();
+    const matchingProviders: AuthProviderId[] = [];
+
+    // Check each provider's keywords
+    const providerKeywords: Record<AuthProviderId, string[]> = {
+      openai: ['openai', 'gpt'],
+      anthropic: ['anthropic', 'claude'],
+      github: ['github', 'copilot'],
+      google: ['google', 'gemini'],
+      azure: ['azure'],
+      cognito: ['cognito', 'aws'],
+    };
+
+    for (const [provider, keywords] of Object.entries(providerKeywords)) {
+      if (keywords.some(keyword => agentLower.includes(keyword))) {
+        matchingProviders.push(provider as AuthProviderId);
+      }
+    }
+
+    return {
+      isAmbiguous: matchingProviders.length > 1,
+      matchingProviders,
+    };
+  }
+
+  /**
+   * Get the current method precedence configuration.
+   *
+   * @returns The current method precedence configuration
+   */
+  getMethodPrecedenceConfig(): AuthMethodPrecedenceConfig {
+    return { ...this.methodPrecedenceConfig };
   }
 }
 
