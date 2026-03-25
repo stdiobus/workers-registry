@@ -239,38 +239,74 @@ describe('Auth Session Property Tests', () => {
       );
     }, 30000);
 
-    test('session with zero timeout is immediately expired', () => {
+    test('session with zero timeout uses default timeout', () => {
       fc.assert(
         fc.property(
           providerIdArb,
           (providerId) => {
-            // Create session with 0 timeout
+            // Create session with 0 timeout - should use default
             const session = createSession(providerId, 0);
 
-            // Should be expired immediately
-            expect(session.isExpired()).toBe(true);
-            expect(session.remainingTime()).toBe(0);
+            // Should use default timeout, not be immediately expired
+            expect(session.timeoutMs).toBe(DEFAULT_SESSION_TIMEOUT_MS);
+            expect(session.isExpired()).toBe(false);
+            expect(session.remainingTime()).toBeGreaterThan(0);
           }
         ),
         { numRuns: 100 }
       );
     });
 
-    test('session with negative timeout is immediately expired', () => {
+    test('session with negative timeout uses default timeout', () => {
       fc.assert(
         fc.property(
           providerIdArb,
           fc.integer({ min: -1000, max: -1 }),
           (providerId, negativeTimeout) => {
-            // Create session with negative timeout
+            // Create session with negative timeout - should use default
             const session = createSession(providerId, negativeTimeout);
 
-            // Should be expired immediately
-            expect(session.isExpired()).toBe(true);
-            expect(session.remainingTime()).toBe(0);
+            // Should use default timeout, not be immediately expired
+            expect(session.timeoutMs).toBe(DEFAULT_SESSION_TIMEOUT_MS);
+            expect(session.isExpired()).toBe(false);
+            expect(session.remainingTime()).toBeGreaterThan(0);
           }
         ),
         { numRuns: 100 }
+      );
+    });
+
+    test('session with NaN timeout uses default timeout', () => {
+      fc.assert(
+        fc.property(
+          providerIdArb,
+          (providerId) => {
+            // Create session with NaN timeout - should use default
+            const session = createSession(providerId, NaN);
+
+            // Should use default timeout
+            expect(session.timeoutMs).toBe(DEFAULT_SESSION_TIMEOUT_MS);
+            expect(session.isExpired()).toBe(false);
+          }
+        ),
+        { numRuns: 10 }
+      );
+    });
+
+    test('session with Infinity timeout uses max timeout', () => {
+      fc.assert(
+        fc.property(
+          providerIdArb,
+          (providerId) => {
+            // Create session with Infinity timeout - should use default (Infinity is not finite)
+            const session = createSession(providerId, Infinity);
+
+            // Should use default timeout since Infinity is not finite
+            expect(session.timeoutMs).toBe(DEFAULT_SESSION_TIMEOUT_MS);
+            expect(session.isExpired()).toBe(false);
+          }
+        ),
+        { numRuns: 10 }
       );
     });
   });

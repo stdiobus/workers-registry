@@ -198,11 +198,64 @@ describe('CognitoProvider', () => {
     });
     expect(provider.id).toBe('cognito');
   });
+
+  describe('userPoolDomain validation', () => {
+    it('should reject empty userPoolDomain', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: '', region: 'us-east-1' })).toThrow('is required');
+    });
+
+    it('should reject userPoolDomain with URL injection characters', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: 'my/app', region: 'us-east-1' })).toThrow('invalid characters');
+      expect(() => new CognitoProvider({ userPoolDomain: 'my?app', region: 'us-east-1' })).toThrow('invalid characters');
+      expect(() => new CognitoProvider({ userPoolDomain: 'my#app', region: 'us-east-1' })).toThrow('invalid characters');
+    });
+
+    it('should reject userPoolDomain with whitespace', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: ' my-app', region: 'us-east-1' })).toThrow('whitespace');
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app ', region: 'us-east-1' })).toThrow('whitespace');
+    });
+
+    it('should reject userPoolDomain with leading/trailing hyphens', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: '-my-app', region: 'us-east-1' })).toThrow('alphanumeric');
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app-', region: 'us-east-1' })).toThrow('alphanumeric');
+    });
+
+    it('should reject userPoolDomain exceeding 63 characters', () => {
+      const longDomain = 'a'.repeat(64);
+      expect(() => new CognitoProvider({ userPoolDomain: longDomain, region: 'us-east-1' })).toThrow('63 characters');
+    });
+  });
+
+  describe('region validation', () => {
+    it('should reject empty region', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: '' })).toThrow('is required');
+    });
+
+    it('should reject region with URL injection characters', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: 'us/east-1' })).toThrow('invalid characters');
+    });
+
+    it('should reject region with whitespace', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: ' us-east-1' })).toThrow('whitespace');
+    });
+
+    it('should reject invalid region format', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: 'invalid' })).toThrow('valid AWS region format');
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: 'us-east' })).toThrow('valid AWS region format');
+    });
+
+    it('should accept valid AWS regions', () => {
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: 'us-east-1' })).not.toThrow();
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: 'eu-west-2' })).not.toThrow();
+      expect(() => new CognitoProvider({ userPoolDomain: 'my-app', region: 'ap-southeast-1' })).not.toThrow();
+    });
+  });
 });
 
 describe('AzureProvider', () => {
+  // Use a valid GUID format for tenant ID
   const defaultConfig = {
-    tenantId: 'my-tenant-id',
+    tenantId: '12345678-1234-1234-1234-123456789012',
   };
 
   it('should have correct provider ID', () => {
@@ -224,10 +277,10 @@ describe('AzureProvider', () => {
     const provider = new AzureProvider(defaultConfig);
     const endpoints = provider.getEndpoints();
     expect(endpoints.authorizationEndpoint).toBe(
-      'https://login.microsoftonline.com/my-tenant-id/oauth2/v2.0/authorize'
+      'https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/oauth2/v2.0/authorize'
     );
     expect(endpoints.tokenEndpoint).toBe(
-      'https://login.microsoftonline.com/my-tenant-id/oauth2/v2.0/token'
+      'https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/oauth2/v2.0/token'
     );
   });
 
@@ -235,6 +288,24 @@ describe('AzureProvider', () => {
     const provider = new AzureProvider({ tenantId: 'common' });
     const endpoints = provider.getEndpoints();
     expect(endpoints.authorizationEndpoint).toContain('/common/');
+  });
+
+  it('should support organizations tenant', () => {
+    const provider = new AzureProvider({ tenantId: 'organizations' });
+    const endpoints = provider.getEndpoints();
+    expect(endpoints.authorizationEndpoint).toContain('/organizations/');
+  });
+
+  it('should support consumers tenant', () => {
+    const provider = new AzureProvider({ tenantId: 'consumers' });
+    const endpoints = provider.getEndpoints();
+    expect(endpoints.authorizationEndpoint).toContain('/consumers/');
+  });
+
+  it('should support verified domain names', () => {
+    const provider = new AzureProvider({ tenantId: 'contoso.onmicrosoft.com' });
+    const endpoints = provider.getEndpoints();
+    expect(endpoints.authorizationEndpoint).toContain('/contoso.onmicrosoft.com/');
   });
 
   it('should use Bearer token injection', () => {
@@ -257,6 +328,32 @@ describe('AzureProvider', () => {
       clientSecret: 'my-client-secret',
     });
     expect(provider.id).toBe('azure');
+  });
+
+  describe('tenant ID validation', () => {
+    it('should reject empty tenant ID', () => {
+      expect(() => new AzureProvider({ tenantId: '' })).toThrow('is required');
+    });
+
+    it('should reject tenant ID with URL injection characters', () => {
+      expect(() => new AzureProvider({ tenantId: 'tenant/path' })).toThrow('invalid characters');
+      expect(() => new AzureProvider({ tenantId: 'tenant?query' })).toThrow('invalid characters');
+      expect(() => new AzureProvider({ tenantId: 'tenant#fragment' })).toThrow('invalid characters');
+      expect(() => new AzureProvider({ tenantId: 'user:pass@tenant' })).toThrow('invalid characters');
+    });
+
+    it('should reject tenant ID with whitespace', () => {
+      expect(() => new AzureProvider({ tenantId: ' common' })).toThrow('whitespace');
+      expect(() => new AzureProvider({ tenantId: 'common ' })).toThrow('whitespace');
+      expect(() => new AzureProvider({ tenantId: 'com mon' })).toThrow('invalid characters');
+    });
+
+    it('should reject invalid tenant ID format', () => {
+      // 'invalid-tenant-id' matches the domain pattern, so use something that doesn't
+      expect(() => new AzureProvider({ tenantId: '-invalid' })).toThrow(
+        /must be 'common', 'organizations', 'consumers', a valid GUID, or a verified domain name/
+      );
+    });
   });
 });
 

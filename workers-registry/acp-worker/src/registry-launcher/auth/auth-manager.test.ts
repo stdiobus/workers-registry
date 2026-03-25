@@ -710,8 +710,10 @@ describe('Auth Manager Unit Tests', () => {
       const result = await authManager.authenticateAgent('invalid-provider' as AuthProviderId);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('UNSUPPORTED_PROVIDER');
-      expect(result.error?.message).toContain('not supported');
+      if (!result.success) {
+        expect(result.error.code).toBe('UNSUPPORTED_PROVIDER');
+        expect(result.error.message).toContain('not supported');
+      }
     });
 
     it('should return error for unregistered provider', async () => {
@@ -725,7 +727,9 @@ describe('Auth Manager Unit Tests', () => {
 
       // The provider is valid but not registered
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('UNSUPPORTED_PROVIDER');
+      if (!result.success) {
+        expect(result.error.code).toBe('UNSUPPORTED_PROVIDER');
+      }
     });
   });
 
@@ -740,8 +744,10 @@ describe('Auth Manager Unit Tests', () => {
       const result = await authManager.setupTerminal('invalid-provider' as AuthProviderId);
 
       expect(result.success).toBe(false);
-      expect(result.error?.code).toBe('UNSUPPORTED_PROVIDER');
-      expect(result.error?.message).toContain('not supported');
+      if (!result.success) {
+        expect(result.error.code).toBe('UNSUPPORTED_PROVIDER');
+        expect(result.error.message).toContain('not supported');
+      }
     });
   });
 

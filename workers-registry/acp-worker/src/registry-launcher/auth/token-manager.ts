@@ -148,6 +148,8 @@ export class TokenManager implements ITokenManager {
    * Store new tokens from an OAuth response.
    *
    * Converts the token response to stored credentials format and persists them.
+   * Preserves the existing refresh token if the new response doesn't include one
+   * (some providers only return refresh tokens on initial auth, not on refresh).
    *
    * @param providerId - The provider identifier
    * @param tokens - The token response from the OAuth provider
@@ -155,18 +157,32 @@ export class TokenManager implements ITokenManager {
   async storeTokens(providerId: AuthProviderId, tokens: TokenResponse): Promise<void> {
     const now = Date.now();
 
+    // Validate token response
+    if (!tokens.accessToken || typeof tokens.accessToken !== 'string') {
+      throw new Error('Invalid token response: missing or invalid accessToken');
+    }
+    if (tokens.expiresIn !== undefined) {
+      if (typeof tokens.expiresIn !== 'number' || !Number.isFinite(tokens.expiresIn) || tokens.expiresIn < 0) {
+        throw new Error('Invalid token response: expiresIn must be a non-negative finite number');
+      }
+    }
+
     // Calculate expiration timestamp if expiresIn is provided
     const expiresAt = tokens.expiresIn
       ? now + tokens.expiresIn * 1000
       : undefined;
 
-    // Get existing credentials to preserve client info
+    // Get existing credentials to preserve client info and refresh token
     const existing = await this.credentialStore.retrieve(providerId);
+
+    // Preserve existing refresh token if new response doesn't include one
+    // (some providers only return refresh tokens on initial auth, not on refresh)
+    const refreshToken = tokens.refreshToken ?? existing?.refreshToken;
 
     const credentials: StoredCredentials = {
       providerId,
       accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      refreshToken,
       expiresAt,
       scope: tokens.scope,
       // Preserve client info from existing credentials
@@ -366,7 +382,13 @@ export class TokenManager implements ITokenManager {
       console.error(`[TokenManager] Token refreshed successfully for ${providerId}`);
       return tokenResponse.accessToken;
     } catch (error) {
-      console.error(`[TokenManager] Token refresh failed for ${providerId}: ${error}`);
+      // Sanitize error logging to avoid leaking sensitive information
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // Remove any potential tokens or secrets from error message
+      const sanitizedMessage = errorMessage
+        .replace(/[A-Za-z0-9_-]{20,}/g, '[REDACTED]')
+        .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]');
+      console.error(`[TokenManager] Token refresh failed for ${providerId}: ${sanitizedMessage}`);
 
       // Clear credentials on refresh failure (Requirement 6.3)
       // This signals that re-authentication is required

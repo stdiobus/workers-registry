@@ -61,6 +61,7 @@ export function generateState(): string {
  *
  * Uses constant-time comparison to prevent timing attacks.
  * Returns false for missing, empty, or mismatched state parameters.
+ * Never throws exceptions - always returns boolean.
  *
  * @param expected - The original state parameter
  * @param received - The state parameter from the callback
@@ -72,15 +73,25 @@ export function validateState(expected: string | null | undefined, received: str
     return false;
   }
 
-  // Return false if lengths don't match (can be done in constant time)
-  if (expected.length !== received.length) {
+  // Convert strings to Buffers first to compare byte lengths
+  // This handles Unicode characters correctly
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  const receivedBuffer = Buffer.from(received, 'utf8');
+
+  // Return false if byte lengths don't match
+  // This is safe to do before timingSafeEqual since length comparison
+  // doesn't leak information about the content
+  if (expectedBuffer.length !== receivedBuffer.length) {
     return false;
   }
 
   // Use constant-time comparison to prevent timing attacks
-  // Convert strings to Buffers for timingSafeEqual
-  const expectedBuffer = Buffer.from(expected, 'utf8');
-  const receivedBuffer = Buffer.from(received, 'utf8');
-
-  return timingSafeEqual(expectedBuffer, receivedBuffer);
+  try {
+    return timingSafeEqual(expectedBuffer, receivedBuffer);
+  } catch {
+    // Safety net: if timingSafeEqual throws for any reason, return false
+    // This should never happen with the byte length check above, but
+    // provides defense in depth
+    return false;
+  }
 }

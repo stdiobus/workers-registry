@@ -138,14 +138,29 @@ export interface AuthorizationParams {
 }
 
 /**
- * Callback result from OAuth redirect.
+ * Successful callback result from OAuth redirect.
  */
-export interface CallbackResult {
+export interface CallbackSuccess {
+  success: true;
   code: string;
   state: string;
-  error?: string;
-  errorDescription?: string;
 }
+
+/**
+ * Error callback result from OAuth redirect.
+ */
+export interface CallbackErrorResult {
+  success: false;
+  error: string;
+  errorDescription?: string;
+  state?: string;  // State may be present in error callbacks
+}
+
+/**
+ * Callback result from OAuth redirect (discriminated union).
+ * OAuth error redirects may not include 'code', only 'error'.
+ */
+export type CallbackResult = CallbackSuccess | CallbackErrorResult;
 
 /**
  * Agent auth flow options.
@@ -170,13 +185,26 @@ export interface AuthError {
 }
 
 /**
- * Authentication result.
+ * Successful authentication result.
  */
-export interface AuthResult {
-  success: boolean;
+export interface AuthResultSuccess {
+  success: true;
   providerId: AuthProviderId;
-  error?: AuthError;
 }
+
+/**
+ * Failed authentication result.
+ */
+export interface AuthResultFailure {
+  success: false;
+  providerId: AuthProviderId;
+  error: AuthError;
+}
+
+/**
+ * Authentication result (discriminated union).
+ */
+export type AuthResult = AuthResultSuccess | AuthResultFailure;
 
 /**
  * Auth status for display.

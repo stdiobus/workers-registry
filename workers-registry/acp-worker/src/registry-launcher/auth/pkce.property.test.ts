@@ -38,6 +38,7 @@ import {
   generatePKCEPair,
   PKCE_VERIFIER_MIN_LENGTH,
   PKCE_VERIFIER_MAX_LENGTH,
+  PKCE_CODE_CHALLENGE_METHOD,
 } from './pkce';
 
 /**
@@ -51,11 +52,6 @@ const UNRESERVED_CHARS_REGEX = /^[A-Za-z0-9\-._~]+$/;
  * Characters: A-Z, a-z, 0-9, hyphen (-), underscore (_)
  */
 const BASE64URL_NO_PADDING_REGEX = /^[A-Za-z0-9\-_]+$/;
-
-/**
- * S256 code challenge method constant.
- */
-const CODE_CHALLENGE_METHOD = 'S256';
 
 describe('PKCE Property Tests', () => {
   /**
@@ -267,8 +263,8 @@ describe('PKCE Property Tests', () => {
             // If challenge matches S256 computation, S256 method is being used
             expect(challenge).toBe(expectedChallenge);
 
-            // The challenge method constant should be S256
-            expect(CODE_CHALLENGE_METHOD).toBe('S256');
+            // The challenge method constant should be S256 (from production code)
+            expect(PKCE_CODE_CHALLENGE_METHOD).toBe('S256');
           }
         ),
         { numRuns: 100 }

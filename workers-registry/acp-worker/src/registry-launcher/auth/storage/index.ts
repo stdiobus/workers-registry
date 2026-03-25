@@ -31,6 +31,6 @@ export type { ICredentialStore, IStorageBackend } from './types.js';
 export { CredentialStore, createCredentialStore } from './credential-store.js';
 export type { CredentialStoreOptions } from './credential-store.js';
 export { MemoryBackend } from './memory-backend.js';
-export { EncryptedFileBackend } from './encrypted-file-backend.js';
+export { EncryptedFileBackend, CredentialStoreCorruptedError } from './encrypted-file-backend.js';
 export { KeychainBackend } from './keychain-backend.js';
 export type { KeytarModule } from './keychain-backend.js';

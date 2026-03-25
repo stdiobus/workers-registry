@@ -49,41 +49,98 @@ export const PKCE_VERIFIER_MAX_LENGTH = 128;
 const DEFAULT_VERIFIER_LENGTH = 64;
 
 /**
+ * PKCE code challenge method.
+ * OAuth 2.1 requires S256 (SHA-256) method.
+ */
+export const PKCE_CODE_CHALLENGE_METHOD = 'S256' as const;
+
+/**
  * Unreserved URI characters allowed in PKCE code verifier per RFC 7636.
  * Characters: A-Z, a-z, 0-9, hyphen (-), period (.), underscore (_), tilde (~)
  */
 const UNRESERVED_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
 
 /**
+ * Regex pattern for validating PKCE code verifier format.
+ * Only unreserved URI characters are allowed per RFC 7636.
+ */
+const UNRESERVED_CHARS_REGEX = /^[A-Za-z0-9\-._~]+$/;
+
+/**
  * Generate a cryptographically secure PKCE code verifier.
  *
  * The verifier is generated using crypto.randomBytes for cryptographic randomness,
  * then encoded using only unreserved URI characters as specified in RFC 7636.
+ * Uses rejection sampling to avoid modulo bias.
  *
  * @param length - Optional length of the verifier (default: 64, must be 43-128)
  * @returns A random string between 43-128 characters using unreserved URI characters
- * @throws Error if length is outside the valid range (43-128)
+ * @throws Error if length is outside the valid range (43-128) or not a valid integer
  */
 export function generateCodeVerifier(length: number = DEFAULT_VERIFIER_LENGTH): string {
+  // Validate length is a valid integer
+  if (!Number.isInteger(length) || !Number.isFinite(length)) {
+    throw new Error(
+      `PKCE code verifier length must be a valid integer, got ${length}`,
+    );
+  }
+
   if (length < PKCE_VERIFIER_MIN_LENGTH || length > PKCE_VERIFIER_MAX_LENGTH) {
     throw new Error(
       `PKCE code verifier length must be between ${PKCE_VERIFIER_MIN_LENGTH} and ${PKCE_VERIFIER_MAX_LENGTH}, got ${length}`,
     );
   }
 
-  // Generate random bytes - we need enough bytes to select from our character set
-  // Each byte gives us a value 0-255, which we use to index into UNRESERVED_CHARS
-  const randomBuffer = randomBytes(length);
-  const charsetLength = UNRESERVED_CHARS.length;
+  const charsetLength = UNRESERVED_CHARS.length; // 66 characters
+
+  // Calculate the largest multiple of charsetLength that fits in a byte (256)
+  // This is used for rejection sampling to avoid modulo bias
+  // For 66 chars: 256 - (256 % 66) = 256 - 58 = 198
+  const maxValidByte = 256 - (256 % charsetLength);
 
   let verifier = '';
-  for (let i = 0; i < length; i++) {
-    // Use modulo to map random byte to character index
-    // This provides uniform distribution since 256 % 66 has minimal bias
-    verifier += UNRESERVED_CHARS[randomBuffer[i] % charsetLength];
+  let bytesNeeded = length;
+
+  while (verifier.length < length) {
+    // Generate more random bytes than needed to account for rejections
+    // On average, we reject about 22.6% of bytes (58/256), so request ~30% extra
+    const randomBuffer = randomBytes(Math.ceil(bytesNeeded * 1.4));
+
+    for (let i = 0; i < randomBuffer.length && verifier.length < length; i++) {
+      const byte = randomBuffer[i];
+
+      // Rejection sampling: only use bytes that don't cause modulo bias
+      if (byte < maxValidByte) {
+        verifier += UNRESERVED_CHARS[byte % charsetLength];
+      }
+    }
+
+    bytesNeeded = length - verifier.length;
   }
 
   return verifier;
+}
+
+/**
+ * Validate a PKCE code verifier format.
+ *
+ * Checks that the verifier meets RFC 7636 requirements:
+ * - Length between 43 and 128 characters
+ * - Contains only unreserved URI characters
+ *
+ * @param verifier - The code verifier to validate
+ * @returns True if the verifier is valid, false otherwise
+ */
+export function validateCodeVerifier(verifier: string): boolean {
+  if (typeof verifier !== 'string') {
+    return false;
+  }
+
+  if (verifier.length < PKCE_VERIFIER_MIN_LENGTH || verifier.length > PKCE_VERIFIER_MAX_LENGTH) {
+    return false;
+  }
+
+  return UNRESERVED_CHARS_REGEX.test(verifier);
 }
 
 /**
@@ -93,9 +150,17 @@ export function generateCodeVerifier(length: number = DEFAULT_VERIFIER_LENGTH): 
  * without padding, as required by RFC 7636 S256 method.
  *
  * @param verifier - The code verifier to hash
+ * @param strict - If true, validates verifier format (default: false for backward compatibility)
  * @returns Base64url-encoded SHA-256 hash of the verifier (without padding)
+ * @throws Error if strict mode is enabled and verifier format is invalid
  */
-export function generateCodeChallenge(verifier: string): string {
+export function generateCodeChallenge(verifier: string, strict: boolean = false): string {
+  if (strict && !validateCodeVerifier(verifier)) {
+    throw new Error(
+      `Invalid PKCE code verifier format. Must be ${PKCE_VERIFIER_MIN_LENGTH}-${PKCE_VERIFIER_MAX_LENGTH} characters using only unreserved URI characters.`,
+    );
+  }
+
   // Compute SHA-256 hash of the verifier
   const hash = createHash('sha256').update(verifier, 'ascii').digest();
 

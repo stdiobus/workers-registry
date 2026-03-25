@@ -76,6 +76,40 @@ export interface IAuthSession {
 export const DEFAULT_SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
+ * Maximum allowed session timeout in milliseconds (1 hour).
+ */
+export const MAX_SESSION_TIMEOUT_MS = 60 * 60 * 1000;
+
+/**
+ * Validate and normalize a timeout value.
+ *
+ * Ensures the timeout is a finite positive number within allowed bounds.
+ * Returns the default timeout for invalid values (NaN, Infinity, negative, zero).
+ *
+ * @param timeoutMs - The timeout value to validate
+ * @returns A valid timeout value within bounds
+ */
+export function validateTimeout(timeoutMs: number): number {
+  // Check for NaN, Infinity, or non-finite values
+  if (!Number.isFinite(timeoutMs)) {
+    return DEFAULT_SESSION_TIMEOUT_MS;
+  }
+
+  // Check for non-positive values
+  if (timeoutMs <= 0) {
+    return DEFAULT_SESSION_TIMEOUT_MS;
+  }
+
+  // Clamp to maximum allowed
+  if (timeoutMs > MAX_SESSION_TIMEOUT_MS) {
+    return MAX_SESSION_TIMEOUT_MS;
+  }
+
+  // Round to integer (floor to avoid extending timeout)
+  return Math.floor(timeoutMs);
+}
+
+/**
  * Represents an in-progress OAuth authorization flow.
  *
  * Implements the IAuthSession interface from the design document.
@@ -125,7 +159,7 @@ export class AuthSession implements IAuthSession {
     this.codeChallenge = codeChallenge;
     this.state = state;
     this.startedAt = Date.now();
-    this.timeoutMs = timeoutMs;
+    this.timeoutMs = validateTimeout(timeoutMs);
   }
 
   /**
@@ -185,7 +219,7 @@ export function createSession(
   const { verifier, challenge } = generatePKCEPair();
   const state = generateState();
 
-  return new AuthSession(providerId, verifier, challenge, state, timeoutMs);
+  return new AuthSession(providerId, verifier, challenge, state, validateTimeout(timeoutMs));
 }
 
 /**
@@ -222,6 +256,16 @@ export class SessionManager {
     private readonly cleanupIntervalMs: number = SessionManager.DEFAULT_CLEANUP_INTERVAL_MS,
     autoStartCleanup: boolean = true,
   ) {
+    // Validate cleanup interval - use default for invalid values
+    if (!Number.isFinite(this.cleanupIntervalMs) || this.cleanupIntervalMs <= 0) {
+      // TypeScript doesn't allow reassigning readonly in constructor after initial assignment,
+      // so we use Object.defineProperty to override
+      Object.defineProperty(this, 'cleanupIntervalMs', {
+        value: SessionManager.DEFAULT_CLEANUP_INTERVAL_MS,
+        writable: false,
+      });
+    }
+
     if (autoStartCleanup) {
       this.startCleanup();
     }
@@ -241,7 +285,7 @@ export class SessionManager {
     providerId: AuthProviderId,
     timeoutMs: number = DEFAULT_SESSION_TIMEOUT_MS,
   ): AuthSession {
-    const session = createSession(providerId, timeoutMs);
+    const session = createSession(providerId, validateTimeout(timeoutMs));
     this.sessions.set(session.sessionId, session);
     this.stateToSessionId.set(session.state, session.sessionId);
     return session;

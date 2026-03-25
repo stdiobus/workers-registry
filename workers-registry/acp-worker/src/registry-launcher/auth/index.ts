@@ -53,10 +53,14 @@ export type {
   // Authorization flow types
   AuthorizationParams,
   CallbackResult,
+  CallbackSuccess,
+  CallbackErrorResult,
   AgentAuthOptions,
 
   // Result and error types
   AuthResult,
+  AuthResultSuccess,
+  AuthResultFailure,
   AuthError,
   AuthStatusEntry,
   AuthStatusMap,
@@ -77,6 +81,10 @@ export {
   generateCodeVerifier,
   generateCodeChallenge,
   generatePKCEPair,
+  validateCodeVerifier,
+  PKCE_CODE_CHALLENGE_METHOD,
+  PKCE_VERIFIER_MIN_LENGTH,
+  PKCE_VERIFIER_MAX_LENGTH,
 } from './pkce.js';
 
 // =============================================================================
@@ -93,7 +101,14 @@ export {
 // =============================================================================
 
 export type { IAuthSession } from './session.js';
-export { AuthSession, createSession, SessionManager, DEFAULT_SESSION_TIMEOUT_MS } from './session.js';
+export {
+  AuthSession,
+  createSession,
+  SessionManager,
+  DEFAULT_SESSION_TIMEOUT_MS,
+  MAX_SESSION_TIMEOUT_MS,
+  validateTimeout,
+} from './session.js';
 
 // =============================================================================
 // Auth Manager

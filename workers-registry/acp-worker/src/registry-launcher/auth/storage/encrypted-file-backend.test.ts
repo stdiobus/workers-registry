@@ -32,7 +32,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { AuthProviderId, StoredCredentials } from '../types.js';
-import { EncryptedFileBackend } from './encrypted-file-backend.js';
+import { EncryptedFileBackend, CredentialStoreCorruptedError } from './encrypted-file-backend.js';
 
 describe('EncryptedFileBackend', () => {
   let backend: EncryptedFileBackend;
@@ -215,31 +215,42 @@ describe('EncryptedFileBackend', () => {
       expect(contentStr).not.toContain('test-refresh-token');
     });
 
-    it('should have correct file format (IV + AuthTag + Ciphertext)', async () => {
+    it('should have correct file format (Salt + IV + AuthTag + Ciphertext)', async () => {
       await backend.store('openai', createTestCredentials('openai'));
 
       const rawContent = await fs.readFile(testFilePath);
 
-      // File should be at least IV (12) + AuthTag (16) + some ciphertext
-      expect(rawContent.length).toBeGreaterThan(28);
+      // File should be at least Salt (32) + IV (12) + AuthTag (16) + some ciphertext
+      expect(rawContent.length).toBeGreaterThan(60);
     });
 
-    it('should handle corrupted file gracefully', async () => {
+    it('should throw CredentialStoreCorruptedError for corrupted file', async () => {
       // Write corrupted data to the file
-      await fs.writeFile(testFilePath, 'corrupted data');
+      await fs.writeFile(testFilePath, 'corrupted data that is long enough to pass minimum length check but is still invalid');
 
-      // Should return null (empty store) instead of throwing
-      const retrieved = await backend.retrieve('openai');
-      expect(retrieved).toBeNull();
+      // Should throw CredentialStoreCorruptedError
+      await expect(backend.retrieve('openai')).rejects.toThrow(CredentialStoreCorruptedError);
     });
 
-    it('should handle truncated file gracefully', async () => {
-      // Write truncated data (less than IV + AuthTag)
+    it('should throw CredentialStoreCorruptedError for truncated file', async () => {
+      // Write truncated data (less than Salt + IV + AuthTag)
       await fs.writeFile(testFilePath, Buffer.alloc(10));
 
-      // Should return null (empty store) instead of throwing
-      const retrieved = await backend.retrieve('openai');
-      expect(retrieved).toBeNull();
+      // Should throw CredentialStoreCorruptedError
+      await expect(backend.retrieve('openai')).rejects.toThrow(CredentialStoreCorruptedError);
+    });
+
+    it('should include descriptive message in CredentialStoreCorruptedError', async () => {
+      // Write truncated data
+      await fs.writeFile(testFilePath, Buffer.alloc(10));
+
+      try {
+        await backend.retrieve('openai');
+        fail('Expected CredentialStoreCorruptedError to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(CredentialStoreCorruptedError);
+        expect((error as CredentialStoreCorruptedError).message).toContain('too short');
+      }
     });
   });
 

@@ -123,23 +123,30 @@ describe('BaseAuthProvider', () => {
       expect(() => provider.validateConfig()).not.toThrow();
     });
 
-    it('should throw for HTTP authorization endpoint', () => {
-      const provider = new TestProvider({
+    it('should throw for HTTP authorization endpoint at construction time', () => {
+      // Validation now happens at construction time
+      expect(() => new TestProvider({
         authorizationEndpoint: 'http://auth.example.com/authorize',
-      });
-
-      expect(() => provider.validateConfig()).toThrow(
+      })).toThrow(
         'Test Provider authorization endpoint must use HTTPS'
       );
     });
 
-    it('should throw for HTTP token endpoint', () => {
-      const provider = new TestProvider({
+    it('should throw for HTTP token endpoint at construction time', () => {
+      // Validation now happens at construction time
+      expect(() => new TestProvider({
         tokenEndpoint: 'http://auth.example.com/token',
-      });
-
-      expect(() => provider.validateConfig()).toThrow(
+      })).toThrow(
         'Test Provider token endpoint must use HTTPS'
+      );
+    });
+
+    it('should throw for endpoints with embedded credentials', () => {
+      // Validation rejects URLs with username:password@host
+      expect(() => new TestProvider({
+        authorizationEndpoint: 'https://user:pass@auth.example.com/authorize',
+      })).toThrow(
+        'Test Provider authorization endpoint must not contain embedded credentials'
       );
     });
   });

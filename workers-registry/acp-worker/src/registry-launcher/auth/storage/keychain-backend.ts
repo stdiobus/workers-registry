@@ -31,6 +31,7 @@
  */
 
 import type { AuthProviderId, StorageBackendType, StoredCredentials } from '../types.js';
+import { isValidProviderId } from '../types.js';
 import type { IStorageBackend } from './types.js';
 
 /** Service name for keychain entries */
@@ -223,8 +224,11 @@ export class KeychainBackend implements IStorageBackend {
 
       for (const cred of credentials) {
         if (cred.account.startsWith(ACCOUNT_PREFIX)) {
-          const providerId = cred.account.slice(ACCOUNT_PREFIX.length) as AuthProviderId;
-          providers.push(providerId);
+          const candidateId = cred.account.slice(ACCOUNT_PREFIX.length);
+          // Validate that the extracted ID is a valid provider ID
+          if (isValidProviderId(candidateId)) {
+            providers.push(candidateId);
+          }
         }
       }
 
@@ -244,7 +248,15 @@ export class KeychainBackend implements IStorageBackend {
 
     try {
       const existing = await keytar.getPassword(SERVICE_NAME, PROVIDERS_LIST_ACCOUNT);
-      const providers: AuthProviderId[] = existing ? JSON.parse(existing) : [];
+      let providers: AuthProviderId[] = [];
+
+      if (existing) {
+        const parsed = JSON.parse(existing);
+        // Validate that parsed is an array and filter to valid provider IDs only
+        if (Array.isArray(parsed)) {
+          providers = parsed.filter((p): p is AuthProviderId => isValidProviderId(p));
+        }
+      }
 
       if (!providers.includes(providerId)) {
         providers.push(providerId);
@@ -265,9 +277,13 @@ export class KeychainBackend implements IStorageBackend {
     try {
       const existing = await keytar.getPassword(SERVICE_NAME, PROVIDERS_LIST_ACCOUNT);
       if (existing) {
-        const providers: AuthProviderId[] = JSON.parse(existing);
-        const filtered = providers.filter(p => p !== providerId);
-        await keytar.setPassword(SERVICE_NAME, PROVIDERS_LIST_ACCOUNT, JSON.stringify(filtered));
+        const parsed = JSON.parse(existing);
+        // Validate that parsed is an array and filter to valid provider IDs only
+        if (Array.isArray(parsed)) {
+          const providers = parsed.filter((p): p is AuthProviderId => isValidProviderId(p));
+          const filtered = providers.filter(p => p !== providerId);
+          await keytar.setPassword(SERVICE_NAME, PROVIDERS_LIST_ACCOUNT, JSON.stringify(filtered));
+        }
       }
     } catch {
       // Ignore errors updating providers list

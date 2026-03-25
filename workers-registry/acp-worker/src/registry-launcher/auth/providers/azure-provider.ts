@@ -42,6 +42,23 @@ export interface AzureProviderConfig {
 }
 
 /**
+ * Well-known Azure AD tenant values for multi-tenant scenarios.
+ */
+const WELL_KNOWN_TENANTS = new Set(['common', 'organizations', 'consumers']);
+
+/**
+ * Pattern for valid Azure AD tenant GUIDs.
+ * Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ */
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Pattern for valid Azure AD verified domain names.
+ * Must be a valid domain format without URL injection characters.
+ */
+const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
+
+/**
  * Azure AD OAuth provider.
  *
  * Endpoints are dynamically constructed based on tenant ID:
@@ -55,6 +72,9 @@ export interface AzureProviderConfig {
  */
 export class AzureProvider extends BaseAuthProvider {
   constructor(config: AzureProviderConfig) {
+    // Validate tenantId to prevent URL injection
+    AzureProvider.validateTenantId(config.tenantId);
+
     const baseUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0`;
 
     super({
@@ -71,5 +91,49 @@ export class AzureProvider extends BaseAuthProvider {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
     });
+  }
+
+  /**
+   * Validate Azure AD tenant ID.
+   * @param tenantId - The tenant ID to validate
+   * @throws Error if tenantId is invalid or contains injection characters
+   */
+  private static validateTenantId(tenantId: string): void {
+    if (!tenantId || typeof tenantId !== 'string') {
+      throw new Error('Azure tenantId is required');
+    }
+
+    const trimmed = tenantId.trim();
+    if (trimmed !== tenantId) {
+      throw new Error('Azure tenantId must not contain leading/trailing whitespace');
+    }
+
+    if (tenantId.length === 0) {
+      throw new Error('Azure tenantId cannot be empty');
+    }
+
+    // Check for URL injection characters
+    if (/[/:?#@\s]/.test(tenantId)) {
+      throw new Error('Azure tenantId contains invalid characters (/, :, ?, #, @, or whitespace)');
+    }
+
+    // Accept well-known tenant values
+    if (WELL_KNOWN_TENANTS.has(tenantId.toLowerCase())) {
+      return;
+    }
+
+    // Accept valid GUIDs
+    if (GUID_PATTERN.test(tenantId)) {
+      return;
+    }
+
+    // Accept valid domain names (verified domains)
+    if (DOMAIN_PATTERN.test(tenantId)) {
+      return;
+    }
+
+    throw new Error(
+      `Azure tenantId must be 'common', 'organizations', 'consumers', a valid GUID, or a verified domain name`
+    );
   }
 }

@@ -81,9 +81,32 @@ export abstract class BaseAuthProvider implements IAuthProvider {
   protected clientId?: string;
   protected clientSecret?: string;
 
+  /** Default timeout for HTTP requests in milliseconds (30 seconds) */
+  protected static readonly DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+
+  /**
+   * Security-critical OAuth parameters that cannot be overridden by additionalParams.
+   * These parameters are set by the OAuth flow and must not be tampered with.
+   */
+  private static readonly PROTECTED_PARAMS = new Set([
+    'client_id',
+    'redirect_uri',
+    'response_type',
+    'scope',
+    'state',
+    'code_challenge',
+    'code_challenge_method',
+    'code',
+    'code_verifier',
+    'grant_type',
+    'refresh_token',
+    'client_secret',
+  ]);
+
   /**
    * Create a new base auth provider.
    * @param config - Provider configuration
+   * @throws Error if endpoints are not HTTPS or contain embedded credentials
    */
   constructor(config: BaseProviderConfig) {
     this.id = config.id;
@@ -94,6 +117,9 @@ export abstract class BaseAuthProvider implements IAuthProvider {
     this.tokenInjection = config.tokenInjection;
     this.clientId = config.clientId;
     this.clientSecret = config.clientSecret;
+
+    // Validate HTTPS endpoints at construction time
+    this.validateConfig();
   }
 
   /**
@@ -110,6 +136,7 @@ export abstract class BaseAuthProvider implements IAuthProvider {
    *
    * @param params - Authorization parameters
    * @returns The complete authorization URL
+   * @throws Error if additionalParams attempts to override protected parameters
    */
   buildAuthorizationUrl(params: AuthorizationParams): string {
     const url = new URL(this.authorizationEndpoint);
@@ -126,8 +153,14 @@ export abstract class BaseAuthProvider implements IAuthProvider {
     url.searchParams.set('code_challenge_method', params.codeChallengeMethod);
 
     // Add any additional provider-specific parameters
+    // Security: Reject attempts to override protected OAuth parameters
     if (params.additionalParams) {
       for (const [key, value] of Object.entries(params.additionalParams)) {
+        if (BaseAuthProvider.PROTECTED_PARAMS.has(key.toLowerCase())) {
+          throw new Error(
+            `Security violation: additionalParams cannot override protected OAuth parameter '${key}'`
+          );
+        }
         url.searchParams.set(key, value);
       }
     }
@@ -163,22 +196,40 @@ export abstract class BaseAuthProvider implements IAuthProvider {
       body.set('client_secret', this.clientSecret);
     }
 
-    const response = await fetch(this.tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
-      body: body.toString(),
-    });
+    // Use AbortController for timeout and prevent redirect following
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      BaseAuthProvider.DEFAULT_REQUEST_TIMEOUT_MS
+    );
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Token exchange failed: ${response.status} ${errorBody}`);
+    try {
+      const response = await fetch(this.tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: body.toString(),
+        signal: controller.signal,
+        redirect: 'error', // Prevent following redirects for security
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Token exchange failed: ${response.status} ${errorBody}`);
+      }
+
+      const data = await response.json() as Record<string, unknown>;
+      return this.parseTokenResponse(data);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Token exchange timed out after ${BaseAuthProvider.DEFAULT_REQUEST_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const data = await response.json() as Record<string, unknown>;
-    return this.parseTokenResponse(data);
   }
 
   /**
@@ -201,22 +252,40 @@ export abstract class BaseAuthProvider implements IAuthProvider {
       body.set('client_secret', this.clientSecret);
     }
 
-    const response = await fetch(this.tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
-      body: body.toString(),
-    });
+    // Use AbortController for timeout and prevent redirect following
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      BaseAuthProvider.DEFAULT_REQUEST_TIMEOUT_MS
+    );
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Token refresh failed: ${response.status} ${errorBody}`);
+    try {
+      const response = await fetch(this.tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: body.toString(),
+        signal: controller.signal,
+        redirect: 'error', // Prevent following redirects for security
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Token refresh failed: ${response.status} ${errorBody}`);
+      }
+
+      const data = await response.json() as Record<string, unknown>;
+      return this.parseTokenResponse(data);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Token refresh timed out after ${BaseAuthProvider.DEFAULT_REQUEST_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const data = await response.json() as Record<string, unknown>;
-    return this.parseTokenResponse(data);
   }
 
   /**
@@ -264,17 +333,23 @@ export abstract class BaseAuthProvider implements IAuthProvider {
   }
 
   /**
-   * Validate that an endpoint uses HTTPS.
+   * Validate that an endpoint uses HTTPS and has no embedded credentials.
    *
    * @param endpoint - The endpoint URL to validate
    * @param name - The name of the endpoint (for error messages)
-   * @throws Error if the endpoint does not use HTTPS
+   * @throws Error if the endpoint does not use HTTPS or contains embedded credentials
    */
   protected validateHttpsEndpoint(endpoint: string, name: string): void {
     const url = new URL(endpoint);
     if (url.protocol !== 'https:') {
       throw new Error(
         `${this.name} ${name} endpoint must use HTTPS: ${endpoint}`
+      );
+    }
+    // Reject URLs with embedded credentials (username:password@host)
+    if (url.username || url.password) {
+      throw new Error(
+        `${this.name} ${name} endpoint must not contain embedded credentials: ${endpoint}`
       );
     }
   }

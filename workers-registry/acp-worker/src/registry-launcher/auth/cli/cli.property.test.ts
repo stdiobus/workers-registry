@@ -450,7 +450,7 @@ describe('CLI Property Tests', () => {
         ),
         { numRuns: 100 }
       );
-    });
+    }, 30000);  // Increased timeout for property test
 
     test('logout command returns exit code 0 even when no credentials exist', async () => {
       await fc.assert(

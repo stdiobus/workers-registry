@@ -161,8 +161,8 @@ export class AgentAuthFlow {
       // (Requirement 3.4: Receive authorization code via callback)
       const callbackResult = await callbackServer.waitForCallback(session.remainingTime());
 
-      // Check for OAuth error in callback
-      if (callbackResult.error) {
+      // Check for OAuth error in callback (discriminated union check)
+      if (!callbackResult.success) {
         console.error(`[AgentAuthFlow] OAuth error: ${callbackResult.error} - ${callbackResult.errorDescription}`);
         return {
           success: false,
@@ -192,21 +192,9 @@ export class AgentAuthFlow {
         };
       }
 
-      // Ensure we have an authorization code
-      if (!callbackResult.code) {
-        console.error(`[AgentAuthFlow] Missing authorization code for ${providerId}`);
-        return {
-          success: false,
-          providerId,
-          error: {
-            code: 'CALLBACK_ERROR',
-            message: 'Authorization callback did not include an authorization code.',
-          },
-        };
-      }
-
       // Step 8: Exchange the authorization code for tokens
       // (Requirement 3.4: Exchange code for tokens with code verifier)
+      // Note: callbackResult.code is guaranteed to exist here due to discriminated union
       console.error(`[AgentAuthFlow] Exchanging authorization code for tokens`);
       const tokenResponse = await provider.exchangeCode(
         callbackResult.code,

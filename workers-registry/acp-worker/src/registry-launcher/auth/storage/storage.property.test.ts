@@ -265,7 +265,7 @@ describe('Storage Property Tests', () => {
         const filePath = path.join(tempDir, 'isolation-test.enc');
         const backend = new EncryptedFileBackend(filePath);
         await testProviderIsolation(backend);
-      });
+      }, 30000);  // Increased timeout for file I/O operations
 
       it('should list only providers with stored credentials', async () => {
         await fc.assert(

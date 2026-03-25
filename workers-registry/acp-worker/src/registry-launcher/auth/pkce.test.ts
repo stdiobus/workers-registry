@@ -36,8 +36,10 @@ import {
   generateCodeVerifier,
   generateCodeChallenge,
   generatePKCEPair,
+  validateCodeVerifier,
   PKCE_VERIFIER_MIN_LENGTH,
   PKCE_VERIFIER_MAX_LENGTH,
+  PKCE_CODE_CHALLENGE_METHOD,
 } from './pkce';
 
 /**
@@ -124,6 +126,24 @@ describe('PKCE Unit Tests', () => {
       it('should throw error for length of 1', () => {
         expect(() => generateCodeVerifier(1)).toThrow(
           `PKCE code verifier length must be between ${PKCE_VERIFIER_MIN_LENGTH} and ${PKCE_VERIFIER_MAX_LENGTH}, got 1`
+        );
+      });
+
+      it('should throw error for NaN length', () => {
+        expect(() => generateCodeVerifier(NaN)).toThrow(
+          'PKCE code verifier length must be a valid integer'
+        );
+      });
+
+      it('should throw error for Infinity length', () => {
+        expect(() => generateCodeVerifier(Infinity)).toThrow(
+          'PKCE code verifier length must be a valid integer'
+        );
+      });
+
+      it('should throw error for non-integer length (float)', () => {
+        expect(() => generateCodeVerifier(43.5)).toThrow(
+          'PKCE code verifier length must be a valid integer'
         );
       });
     });
@@ -399,6 +419,90 @@ describe('PKCE Unit Tests', () => {
 
     it('should export correct maximum length constant', () => {
       expect(PKCE_VERIFIER_MAX_LENGTH).toBe(128);
+    });
+
+    it('should export S256 as the code challenge method', () => {
+      expect(PKCE_CODE_CHALLENGE_METHOD).toBe('S256');
+    });
+  });
+
+  describe('validateCodeVerifier', () => {
+    describe('Valid verifiers', () => {
+      it('should return true for valid verifier at minimum length', () => {
+        const verifier = 'a'.repeat(43);
+        expect(validateCodeVerifier(verifier)).toBe(true);
+      });
+
+      it('should return true for valid verifier at maximum length', () => {
+        const verifier = 'z'.repeat(128);
+        expect(validateCodeVerifier(verifier)).toBe(true);
+      });
+
+      it('should return true for verifier with all unreserved characters', () => {
+        const verifier = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop-._~';
+        expect(validateCodeVerifier(verifier)).toBe(true);
+      });
+
+      it('should return true for generated verifier', () => {
+        const verifier = generateCodeVerifier();
+        expect(validateCodeVerifier(verifier)).toBe(true);
+      });
+    });
+
+    describe('Invalid verifiers', () => {
+      it('should return false for verifier too short', () => {
+        const verifier = 'a'.repeat(42);
+        expect(validateCodeVerifier(verifier)).toBe(false);
+      });
+
+      it('should return false for verifier too long', () => {
+        const verifier = 'a'.repeat(129);
+        expect(validateCodeVerifier(verifier)).toBe(false);
+      });
+
+      it('should return false for empty string', () => {
+        expect(validateCodeVerifier('')).toBe(false);
+      });
+
+      it('should return false for verifier with invalid characters', () => {
+        const verifier = 'a'.repeat(42) + '!';  // 43 chars but has invalid char
+        expect(validateCodeVerifier(verifier)).toBe(false);
+      });
+
+      it('should return false for verifier with spaces', () => {
+        const verifier = 'a'.repeat(42) + ' ';
+        expect(validateCodeVerifier(verifier)).toBe(false);
+      });
+
+      it('should return false for non-string input', () => {
+        expect(validateCodeVerifier(123 as unknown as string)).toBe(false);
+        expect(validateCodeVerifier(null as unknown as string)).toBe(false);
+        expect(validateCodeVerifier(undefined as unknown as string)).toBe(false);
+      });
+    });
+  });
+
+  describe('generateCodeChallenge strict mode', () => {
+    it('should throw error in strict mode for invalid verifier', () => {
+      expect(() => generateCodeChallenge('short', true)).toThrow(
+        'Invalid PKCE code verifier format'
+      );
+    });
+
+    it('should throw error in strict mode for verifier with invalid chars', () => {
+      const invalidVerifier = 'a'.repeat(42) + '!';
+      expect(() => generateCodeChallenge(invalidVerifier, true)).toThrow(
+        'Invalid PKCE code verifier format'
+      );
+    });
+
+    it('should not throw in strict mode for valid verifier', () => {
+      const validVerifier = generateCodeVerifier();
+      expect(() => generateCodeChallenge(validVerifier, true)).not.toThrow();
+    });
+
+    it('should not throw in non-strict mode for invalid verifier (backward compatibility)', () => {
+      expect(() => generateCodeChallenge('short')).not.toThrow();
     });
   });
 });

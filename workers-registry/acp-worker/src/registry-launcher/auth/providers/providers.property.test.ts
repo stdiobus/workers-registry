@@ -172,29 +172,27 @@ describe('Provider Property Tests', () => {
      */
     const pathArb = fc.constantFrom('/authorize', '/oauth/authorize', '/auth', '/token', '/oauth/token');
 
-    it('should reject HTTP authorization endpoints', () => {
+    it('should reject HTTP authorization endpoints at construction time', () => {
       fc.assert(
         fc.property(domainArb, pathArb, (domain, path) => {
           const httpUrl = `http://${domain}${path}`;
-          const provider = new TestProvider({
+          // Validation now happens at construction time
+          expect(() => new TestProvider({
             authorizationEndpoint: httpUrl,
-          });
-
-          expect(() => provider.validateConfig()).toThrow(/must use HTTPS/);
+          })).toThrow(/must use HTTPS/);
         }),
         { numRuns: 50 }
       );
     });
 
-    it('should reject HTTP token endpoints', () => {
+    it('should reject HTTP token endpoints at construction time', () => {
       fc.assert(
         fc.property(domainArb, pathArb, (domain, path) => {
           const httpUrl = `http://${domain}${path}`;
-          const provider = new TestProvider({
+          // Validation now happens at construction time
+          expect(() => new TestProvider({
             tokenEndpoint: httpUrl,
-          });
-
-          expect(() => provider.validateConfig()).toThrow(/must use HTTPS/);
+          })).toThrow(/must use HTTPS/);
         }),
         { numRuns: 50 }
       );

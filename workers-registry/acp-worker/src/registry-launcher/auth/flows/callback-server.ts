@@ -108,6 +108,12 @@ export class CallbackServer implements ICallbackServer {
   private callbackResolve: ((result: CallbackResult) => void) | null = null;
   private callbackReject: ((error: Error) => void) | null = null;
   private timeoutId: NodeJS.Timeout | null = null;
+  private callbackHandled = false; // One-shot guard to prevent multiple callbacks
+
+  /** Minimum timeout in milliseconds (1 second) */
+  private static readonly MIN_TIMEOUT_MS = 1000;
+  /** Maximum timeout in milliseconds (10 minutes) */
+  private static readonly MAX_TIMEOUT_MS = 600000;
 
   /**
    * Creates a new CallbackServer instance.
@@ -171,6 +177,20 @@ export class CallbackServer implements ICallbackServer {
     if (this.callbackPromise) {
       throw new Error('Already waiting for callback');
     }
+
+    // Validate timeout parameter
+    if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs)) {
+      throw new Error('Timeout must be a finite number');
+    }
+    if (timeoutMs < CallbackServer.MIN_TIMEOUT_MS) {
+      throw new Error(`Timeout must be at least ${CallbackServer.MIN_TIMEOUT_MS}ms`);
+    }
+    if (timeoutMs > CallbackServer.MAX_TIMEOUT_MS) {
+      throw new Error(`Timeout must not exceed ${CallbackServer.MAX_TIMEOUT_MS}ms`);
+    }
+
+    // Reset one-shot guard for new wait
+    this.callbackHandled = false;
 
     this.callbackPromise = new Promise<CallbackResult>((resolve, reject) => {
       this.callbackResolve = resolve;
@@ -252,32 +272,53 @@ export class CallbackServer implements ICallbackServer {
       return;
     }
 
+    // One-shot guard: reject duplicate callbacks (Requirement 8.3)
+    if (this.callbackHandled) {
+      res.writeHead(409, { 'Content-Type': 'text/plain' });
+      res.end('Conflict: Callback already processed');
+      return;
+    }
+    this.callbackHandled = true;
+
     // Parse query parameters
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const error = url.searchParams.get('error');
     const errorDescription = url.searchParams.get('error_description');
 
-    // Build callback result
-    const result: CallbackResult = {
-      code: code || '',
-      state: state || '',
-      error: error || undefined,
-      errorDescription: errorDescription || undefined,
-    };
+    // Build callback result based on whether it's success or error
+    let result: CallbackResult;
 
     // Send response to browser
     if (error) {
+      // OAuth error response
+      result = {
+        success: false,
+        error: error,
+        errorDescription: errorDescription || undefined,
+        state: state || undefined,
+      };
       res.writeHead(400, { 'Content-Type': 'text/html' });
       res.end(this.buildErrorPage(error, errorDescription));
     } else if (code && state) {
+      // Successful authorization
+      result = {
+        success: true,
+        code: code,
+        state: state,
+      };
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(this.buildSuccessPage());
     } else {
+      // Missing required parameters
+      result = {
+        success: false,
+        error: 'missing_params',
+        errorDescription: 'Missing code or state parameter',
+        state: state || undefined,
+      };
       res.writeHead(400, { 'Content-Type': 'text/html' });
       res.end(this.buildErrorPage('missing_params', 'Missing code or state parameter'));
-      result.error = 'missing_params';
-      result.errorDescription = 'Missing code or state parameter';
     }
 
     // Resolve the callback promise and stop accepting new connections (Requirement 8.3)

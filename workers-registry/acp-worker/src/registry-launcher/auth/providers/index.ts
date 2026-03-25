@@ -30,6 +30,7 @@
  */
 
 import type { AuthProviderId } from '../types.js';
+import { isValidProviderId as isValidProviderIdFromTypes } from '../types.js';
 import type { IAuthProvider } from './types.js';
 
 /**
@@ -59,8 +60,15 @@ export const SUPPORTED_PROVIDERS: readonly AuthProviderId[] = [
  *
  * @param providerId - The provider identifier
  * @param factory - Factory function that creates the provider
+ * @throws Error if providerId is not a valid supported provider ID
  */
 export function registerProvider(providerId: AuthProviderId, factory: ProviderFactory): void {
+  // Runtime validation to ensure only valid provider IDs are registered
+  if (!isValidProviderIdFromTypes(providerId)) {
+    throw new Error(
+      `Invalid provider ID: '${providerId}'. Supported providers: ${SUPPORTED_PROVIDERS.join(', ')}`
+    );
+  }
   providerRegistry.set(providerId, factory);
 }
 
@@ -130,12 +138,13 @@ export function getSupportedProviders(): readonly AuthProviderId[] {
 
 /**
  * Check if a provider ID is valid (supported).
+ * Re-exports the centralized type guard from types.ts.
  *
  * @param providerId - The provider identifier to check
  * @returns True if the provider is supported
  */
-export function isValidProviderId(providerId: string): providerId is AuthProviderId {
-  return SUPPORTED_PROVIDERS.includes(providerId as AuthProviderId);
+export function isValidProviderId(providerId: unknown): providerId is AuthProviderId {
+  return isValidProviderIdFromTypes(providerId);
 }
 
 /**

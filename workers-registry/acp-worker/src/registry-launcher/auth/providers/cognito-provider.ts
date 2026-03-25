@@ -44,6 +44,18 @@ export interface CognitoProviderConfig {
 }
 
 /**
+ * Pattern for valid Cognito user pool domain names.
+ * Must be alphanumeric with hyphens, no leading/trailing hyphens.
+ */
+const VALID_DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i;
+
+/**
+ * Pattern for valid AWS region names.
+ * Format: xx-xxxx-N (e.g., us-east-1, eu-west-2)
+ */
+const VALID_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d+$/;
+
+/**
  * AWS Cognito OAuth provider.
  *
  * Endpoints are dynamically constructed based on user pool domain and region:
@@ -55,6 +67,11 @@ export interface CognitoProviderConfig {
  */
 export class CognitoProvider extends BaseAuthProvider {
   constructor(config: CognitoProviderConfig) {
+    // Validate userPoolDomain to prevent URL injection
+    CognitoProvider.validateUserPoolDomain(config.userPoolDomain);
+    // Validate region to prevent URL injection
+    CognitoProvider.validateRegion(config.region);
+
     const baseUrl = `https://${config.userPoolDomain}.auth.${config.region}.amazoncognito.com`;
 
     super({
@@ -71,5 +88,71 @@ export class CognitoProvider extends BaseAuthProvider {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
     });
+  }
+
+  /**
+   * Validate Cognito user pool domain name.
+   * @param domain - The user pool domain to validate
+   * @throws Error if domain is invalid or contains injection characters
+   */
+  private static validateUserPoolDomain(domain: string): void {
+    if (!domain || typeof domain !== 'string') {
+      throw new Error('Cognito userPoolDomain is required');
+    }
+
+    const trimmed = domain.trim();
+    if (trimmed !== domain) {
+      throw new Error('Cognito userPoolDomain must not contain leading/trailing whitespace');
+    }
+
+    if (domain.length === 0) {
+      throw new Error('Cognito userPoolDomain cannot be empty');
+    }
+
+    if (domain.length > 63) {
+      throw new Error('Cognito userPoolDomain must be 63 characters or less');
+    }
+
+    // Check for URL injection characters
+    if (/[/:?#@\s]/.test(domain)) {
+      throw new Error('Cognito userPoolDomain contains invalid characters (/, :, ?, #, @, or whitespace)');
+    }
+
+    if (!VALID_DOMAIN_PATTERN.test(domain)) {
+      throw new Error(
+        'Cognito userPoolDomain must be alphanumeric with hyphens, no leading/trailing hyphens'
+      );
+    }
+  }
+
+  /**
+   * Validate AWS region name.
+   * @param region - The AWS region to validate
+   * @throws Error if region is invalid or contains injection characters
+   */
+  private static validateRegion(region: string): void {
+    if (!region || typeof region !== 'string') {
+      throw new Error('Cognito region is required');
+    }
+
+    const trimmed = region.trim();
+    if (trimmed !== region) {
+      throw new Error('Cognito region must not contain leading/trailing whitespace');
+    }
+
+    if (region.length === 0) {
+      throw new Error('Cognito region cannot be empty');
+    }
+
+    // Check for URL injection characters
+    if (/[/:?#@\s]/.test(region)) {
+      throw new Error('Cognito region contains invalid characters (/, :, ?, #, @, or whitespace)');
+    }
+
+    if (!VALID_REGION_PATTERN.test(region)) {
+      throw new Error(
+        'Cognito region must be a valid AWS region format (e.g., us-east-1, eu-west-2)'
+      );
+    }
   }
 }

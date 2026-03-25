@@ -312,9 +312,12 @@ describe('Callback Server Property Tests', () => {
             // Wait for callback to be processed
             const result = await callbackPromise;
 
-            // Verify callback was received
-            expect(result.code).toBe('test_code');
-            expect(result.state).toBe('test_state');
+            // Verify callback was received (discriminated union check)
+            expect(result.success).toBe(true);
+            if (result.success) {
+              expect(result.code).toBe('test_code');
+              expect(result.state).toBe('test_state');
+            }
 
             // Server should no longer be running after processing callback
             expect(server.isRunning()).toBe(false);

@@ -431,23 +431,22 @@ describe('State Parameter Unit Tests', () => {
 
     describe('Unicode characters', () => {
       /**
-       * Note: The validateState function checks string length (character count)
-       * before calling timingSafeEqual. For strings with same character length
-       * but different byte lengths (e.g., ASCII 'a' vs Cyrillic 'а'), the
-       * function will throw a RangeError from timingSafeEqual.
+       * Note: The validateState function compares byte lengths (not string lengths)
+       * before calling timingSafeEqual. This correctly handles Unicode characters
+       * with different byte lengths.
        *
-       * This is expected behavior for OAuth state parameters which should
-       * only contain base64url characters (ASCII). Unicode characters in
-       * state parameters indicate potential tampering or encoding issues.
+       * For OAuth state parameters which should only contain base64url characters
+       * (ASCII), Unicode characters indicate potential tampering or encoding issues.
+       * The function returns false for any mismatch, never throws.
        */
 
-      it('should throw RangeError for ASCII vs Unicode lookalikes with same string length', () => {
+      it('should return false for ASCII vs Unicode lookalikes with same string length', () => {
         // 'a' (U+0061, 1 byte) vs 'а' (Cyrillic, U+0430, 2 bytes in UTF-8)
         // Both have string length 1, but different byte lengths
         const expected = 'test-state-a';
         const received = 'test-state-\u0430';
-        // Same string length but different byte length causes RangeError
-        expect(() => validateState(expected, received)).toThrow('Input buffers must have the same byte length');
+        // Different byte length returns false (no throw)
+        expect(validateState(expected, received)).toBe(false);
       });
 
       it('should return false for different Unicode characters with same byte length', () => {
@@ -469,12 +468,10 @@ describe('State Parameter Unit Tests', () => {
         expect(validateState(state, state)).toBe(true);
       });
 
-      it('should throw RangeError for different emojis with same string length', () => {
-        // Emojis can have same string length but different byte lengths
-        // 😀 (U+1F600) and 😁 (U+1F601) both are 4 bytes, so this should work
+      it('should return false for different emojis', () => {
+        // 😀 (U+1F600) and 😁 (U+1F601) both are 4 bytes
         const state1 = 'test-😀-state';
         const state2 = 'test-😁-state';
-        // Both emojis are 4 bytes, so comparison should work
         expect(validateState(state1, state2)).toBe(false);
       });
 
@@ -490,17 +487,17 @@ describe('State Parameter Unit Tests', () => {
         expect(validateState(expected, received)).toBe(false);
       });
 
-      it('should return false for combining characters vs precomposed (different string length)', () => {
+      it('should return false for combining characters vs precomposed (different byte length)', () => {
         // 'é' can be represented as single char (U+00E9) or e + combining acute (U+0065 U+0301)
-        const composed = '\u00e9'; // é as single character (1 char)
-        const decomposed = 'e\u0301'; // e + combining acute accent (2 chars)
-        // Different string lengths, so returns false before byte comparison
+        const composed = '\u00e9'; // é as single character (2 bytes)
+        const decomposed = 'e\u0301'; // e + combining acute accent (3 bytes)
+        // Different byte lengths, returns false
         expect(validateState(composed, decomposed)).toBe(false);
       });
 
-      it('should return false for zero-width characters (different string length)', () => {
-        const expected = 'test\u200Bstate'; // zero-width space (11 chars)
-        const received = 'teststate'; // 9 chars
+      it('should return false for zero-width characters (different byte length)', () => {
+        const expected = 'test\u200Bstate'; // zero-width space
+        const received = 'teststate';
         const result = validateState(expected, received);
         expect(result).toBe(false);
       });

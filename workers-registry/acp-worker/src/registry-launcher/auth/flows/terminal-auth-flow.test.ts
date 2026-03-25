@@ -464,8 +464,10 @@ describe('Terminal Auth Flow Unit Tests', () => {
         const result = await executePromise;
 
         expect(result.success).toBe(false);
-        expect(result.error?.code).toBe('INVALID_CREDENTIALS');
-        expect(result.error?.message).toContain('user cancelled');
+        if (!result.success) {
+          expect(result.error.code).toBe('INVALID_CREDENTIALS');
+          expect(result.error.message).toContain('user cancelled');
+        }
       });
     });
 
@@ -502,8 +504,10 @@ describe('Terminal Auth Flow Unit Tests', () => {
         const result = await executePromise;
 
         expect(result.success).toBe(false);
-        expect(result.error?.code).toBe('INVALID_CREDENTIALS');
-        expect(result.error?.message).toContain('after 3 attempts');
+        if (!result.success) {
+          expect(result.error.code).toBe('INVALID_CREDENTIALS');
+          expect(result.error.message).toContain('after 3 attempts');
+        }
       });
     });
 
@@ -690,7 +694,9 @@ describe('Terminal Auth Flow Unit Tests', () => {
         const result = await flow.execute('invalid_provider' as AuthProviderId);
 
         expect(result.success).toBe(false);
-        expect(result.error?.code).toBe('UNSUPPORTED_PROVIDER');
+        if (!result.success) {
+          expect(result.error.code).toBe('UNSUPPORTED_PROVIDER');
+        }
       });
 
       it('should handle credential store errors', async () => {
@@ -716,7 +722,9 @@ describe('Terminal Auth Flow Unit Tests', () => {
         const result = await executePromise;
 
         expect(result.success).toBe(false);
-        expect(result.error?.code).toBe('PROVIDER_ERROR');
+        if (!result.success) {
+          expect(result.error.code).toBe('PROVIDER_ERROR');
+        }
       });
 
       it('should handle validation function errors', async () => {

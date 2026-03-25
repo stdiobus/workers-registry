@@ -24,10 +24,10 @@
 /**
  * Encrypted file storage backend.
  *
- * Uses AES-256-GCM encryption with machine-specific key derivation.
+ * Uses AES-256-GCM encryption with random salt + machine-specific key derivation.
  * Stores credentials in ~/.stdio-bus/auth-credentials.enc
  *
- * File format: IV (12 bytes) + Auth Tag (16 bytes) + Encrypted JSON data
+ * File format v2: Salt (32 bytes) + IV (12 bytes) + Auth Tag (16 bytes) + Encrypted JSON data
  *
  * @module storage/encrypted-file-backend
  */
@@ -45,15 +45,26 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;  // 96 bits for GCM
 const AUTH_TAG_LENGTH = 16;  // 128 bits
 const KEY_LENGTH = 32;  // 256 bits
+const SALT_LENGTH = 32;  // 256 bits random salt
 const PBKDF2_ITERATIONS = 100000;
 const PBKDF2_DIGEST = 'sha256';
 
-/** Static salt for key derivation (combined with machine-specific entropy) */
-const STATIC_SALT = 'stdio-bus-auth-v1';
+/** File permission mode: owner read/write only (0600) */
+const FILE_PERMISSION_MODE = 0o600;
 
 /** Default storage directory and file names */
 const CONFIG_DIR_NAME = '.stdio-bus';
 const CREDENTIALS_FILE_NAME = 'auth-credentials.enc';
+
+/**
+ * Custom error for credential store corruption.
+ */
+export class CredentialStoreCorruptedError extends Error {
+  constructor(message: string, public readonly cause?: Error) {
+    super(message);
+    this.name = 'CredentialStoreCorruptedError';
+  }
+}
 
 /**
  * Internal storage format for credentials map.
@@ -63,19 +74,26 @@ interface CredentialsStore {
   credentials: Record<string, StoredCredentials>;
 }
 
+
 /**
  * Encrypted file storage backend implementation.
  *
- * Uses AES-256-GCM encryption with a key derived from machine-specific
- * entropy (hostname, username) using PBKDF2.
+ * Uses AES-256-GCM encryption with a key derived from:
+ * - Random salt (stored with file, unique per file)
+ * - Machine-specific entropy (hostname, username)
+ *
+ * This provides both uniqueness (random salt) and machine binding (entropy).
  *
  * Requirements: 5.2, 5.3
  */
 export class EncryptedFileBackend implements IStorageBackend {
   readonly type: StorageBackendType = 'encrypted-file';
 
-  /** Cached encryption key (derived once per instance) */
+  /** Cached encryption key (derived once per instance, per salt) */
   private encryptionKey: Buffer | null = null;
+
+  /** Cached salt from current file */
+  private currentSalt: Buffer | null = null;
 
   /** Path to the credentials file */
   private readonly filePath: string;
@@ -158,6 +176,9 @@ export class EncryptedFileBackend implements IStorageBackend {
   async deleteAll(): Promise<void> {
     try {
       await fs.unlink(this.filePath);
+      // Clear cached key and salt
+      this.encryptionKey = null;
+      this.currentSalt = null;
     } catch (error) {
       // Ignore if file doesn't exist
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -176,12 +197,14 @@ export class EncryptedFileBackend implements IStorageBackend {
   }
 
   /**
-   * Derive the encryption key from machine-specific entropy.
-   * Uses PBKDF2 with hostname, username, and a static salt.
+   * Derive the encryption key from salt and machine-specific entropy.
+   * Uses PBKDF2 with random salt + hostname + username.
+   * @param salt - The random salt (32 bytes)
    * @returns The derived 256-bit encryption key
    */
-  private async deriveKey(): Promise<Buffer> {
-    if (this.encryptionKey) {
+  private async deriveKey(salt: Buffer): Promise<Buffer> {
+    // Check if we can use cached key (same salt)
+    if (this.encryptionKey && this.currentSalt && salt.equals(this.currentSalt)) {
       return this.encryptionKey;
     }
 
@@ -190,37 +213,42 @@ export class EncryptedFileBackend implements IStorageBackend {
     const username = os.userInfo().username;
     const machineEntropy = `${hostname}:${username}`;
 
-    // Combine with static salt
-    const salt = Buffer.from(`${STATIC_SALT}:${machineEntropy}`, 'utf8');
+    // Combine random salt with machine entropy for key derivation
+    const combinedSalt = Buffer.concat([salt, Buffer.from(machineEntropy, 'utf8')]);
 
     // Derive key using PBKDF2
-    this.encryptionKey = await new Promise<Buffer>((resolve, reject) => {
+    const derivedKey = await new Promise<Buffer>((resolve, reject) => {
       crypto.pbkdf2(
         machineEntropy,
-        salt,
+        combinedSalt,
         PBKDF2_ITERATIONS,
         KEY_LENGTH,
         PBKDF2_DIGEST,
-        (err, derivedKey) => {
+        (err, key) => {
           if (err) {
             reject(err);
           } else {
-            resolve(derivedKey);
+            resolve(key);
           }
         }
       );
     });
 
-    return this.encryptionKey;
+    // Cache the key and salt
+    this.encryptionKey = derivedKey;
+    this.currentSalt = salt;
+
+    return derivedKey;
   }
 
   /**
    * Encrypt data using AES-256-GCM.
    * @param plaintext - The data to encrypt
-   * @returns Buffer containing IV + Auth Tag + Ciphertext
+   * @param salt - The salt to use for key derivation
+   * @returns Buffer containing Salt + IV + Auth Tag + Ciphertext
    */
-  private async encrypt(plaintext: string): Promise<Buffer> {
-    const key = await this.deriveKey();
+  private async encrypt(plaintext: string, salt: Buffer): Promise<Buffer> {
+    const key = await this.deriveKey(salt);
     const iv = crypto.randomBytes(IV_LENGTH);
 
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv, {
@@ -234,83 +262,127 @@ export class EncryptedFileBackend implements IStorageBackend {
 
     const authTag = cipher.getAuthTag();
 
-    // Format: IV (12 bytes) + Auth Tag (16 bytes) + Encrypted data
-    return Buffer.concat([iv, authTag, encrypted]);
+    // Format: Salt (32 bytes) + IV (12 bytes) + Auth Tag (16 bytes) + Encrypted data
+    return Buffer.concat([salt, iv, authTag, encrypted]);
   }
 
   /**
    * Decrypt data using AES-256-GCM.
-   * @param data - Buffer containing IV + Auth Tag + Ciphertext
+   * @param data - Buffer containing Salt + IV + Auth Tag + Ciphertext
    * @returns The decrypted plaintext
+   * @throws CredentialStoreCorruptedError if decryption fails
    */
   private async decrypt(data: Buffer): Promise<string> {
-    if (data.length < IV_LENGTH + AUTH_TAG_LENGTH) {
-      throw new Error('Invalid encrypted data: too short');
+    const minLength = SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH;
+    if (data.length < minLength) {
+      throw new CredentialStoreCorruptedError(
+        `Invalid encrypted data: too short (${data.length} bytes, minimum ${minLength})`
+      );
     }
 
-    const key = await this.deriveKey();
-
     // Extract components
-    const iv = data.subarray(0, IV_LENGTH);
-    const authTag = data.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
-    const ciphertext = data.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
+    const salt = data.subarray(0, SALT_LENGTH);
+    const iv = data.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
+    const authTag = data.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
+    const ciphertext = data.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
 
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
-      authTagLength: AUTH_TAG_LENGTH,
-    });
-    decipher.setAuthTag(authTag);
+    const key = await this.deriveKey(salt);
 
-    const decrypted = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]);
+    try {
+      const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, {
+        authTagLength: AUTH_TAG_LENGTH,
+      });
+      decipher.setAuthTag(authTag);
 
-    return decrypted.toString('utf8');
+      const decrypted = Buffer.concat([
+        decipher.update(ciphertext),
+        decipher.final(),
+      ]);
+
+      return decrypted.toString('utf8');
+    } catch (error) {
+      throw new CredentialStoreCorruptedError(
+        'Failed to decrypt credential store: authentication failed or data corrupted',
+        error instanceof Error ? error : undefined
+      );
+    }
   }
+
 
   /**
    * Load the credentials store from the encrypted file.
    * @returns The decrypted credentials store
+   * @throws CredentialStoreCorruptedError if the file exists but cannot be decrypted
    */
   private async loadStore(): Promise<CredentialsStore> {
     try {
       const encryptedData = await fs.readFile(this.filePath);
       const jsonData = await this.decrypt(encryptedData);
-      const store = JSON.parse(jsonData) as CredentialsStore;
+
+      let store: CredentialsStore;
+      try {
+        store = JSON.parse(jsonData) as CredentialsStore;
+      } catch (parseError) {
+        throw new CredentialStoreCorruptedError(
+          'Failed to parse credential store: invalid JSON',
+          parseError instanceof Error ? parseError : undefined
+        );
+      }
 
       // Validate store structure
       if (typeof store.version !== 'number' || typeof store.credentials !== 'object') {
-        throw new Error('Invalid store format');
+        throw new CredentialStoreCorruptedError(
+          'Invalid credential store format: missing version or credentials'
+        );
       }
 
       return store;
     } catch (error) {
-      // Return empty store if file doesn't exist or is corrupted
+      // Return empty store only if file doesn't exist
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return { version: 1, credentials: {} };
       }
 
-      // For decryption errors or invalid format, return empty store
-      // This handles cases where the machine entropy changed
-      console.error('[EncryptedFileBackend] Failed to load store, starting fresh:', error);
-      return { version: 1, credentials: {} };
+      // Re-throw CredentialStoreCorruptedError as-is
+      if (error instanceof CredentialStoreCorruptedError) {
+        throw error;
+      }
+
+      // Wrap other errors
+      throw new CredentialStoreCorruptedError(
+        'Failed to load credential store',
+        error instanceof Error ? error : undefined
+      );
     }
   }
 
   /**
    * Save the credentials store to the encrypted file.
+   * Sets restrictive file permissions (0600 - owner read/write only).
    * @param store - The credentials store to save
    */
   private async saveStore(store: CredentialsStore): Promise<void> {
     // Ensure config directory exists
     await fs.mkdir(this.configDir, { recursive: true });
 
+    // Generate new random salt for each save (provides forward secrecy)
+    const salt = crypto.randomBytes(SALT_LENGTH);
+
     const jsonData = JSON.stringify(store);
-    const encryptedData = await this.encrypt(jsonData);
+    const encryptedData = await this.encrypt(jsonData, salt);
 
     // Write atomically using a temporary file
     const tempFile = `${this.filePath}.tmp`;
-    await fs.writeFile(tempFile, encryptedData);
+    await fs.writeFile(tempFile, encryptedData, { mode: FILE_PERMISSION_MODE });
+
+    // Rename atomically
     await fs.rename(tempFile, this.filePath);
+
+    // Ensure final file has correct permissions (rename may not preserve mode on all systems)
+    try {
+      await fs.chmod(this.filePath, FILE_PERMISSION_MODE);
+    } catch {
+      // Ignore chmod errors on systems that don't support it (e.g., Windows)
+    }
   }
 }

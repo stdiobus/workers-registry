@@ -216,8 +216,10 @@ describe('Agent Auth Flow Unit Tests', () => {
 
         expect(result.success).toBe(false);
         expect(result.providerId).toBe('openai');
-        expect(result.error).toBeDefined();
-        expect(result.error?.code).toBe('TIMEOUT');
+        if (!result.success) {
+          expect(result.error).toBeDefined();
+          expect(result.error.code).toBe('TIMEOUT');
+        }
       });
     });
 
@@ -242,7 +244,9 @@ describe('Agent Auth Flow Unit Tests', () => {
         const result = await flow.execute('openai', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
-        expect(result.error).toBeDefined();
+        if (!result.success) {
+          expect(result.error).toBeDefined();
+        }
       });
     });
 
@@ -312,12 +316,15 @@ describe('Agent Auth Flow Unit Tests', () => {
 
         process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
 
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        // Use minimum valid timeout (1000ms) for callback server
+        const result = await flow.execute('openai', { timeoutMs: 1000 });
 
         expect(result.success).toBe(false);
-        expect(result.error?.code).toBe('TIMEOUT');
-        expect(result.error?.message).toContain('timed out');
-      });
+        if (!result.success) {
+          expect(result.error.code).toBe('TIMEOUT');
+          expect(result.error.message).toContain('timed out');
+        }
+      }, 5000);
 
       it('should use default timeout when not specified', async () => {
         expect(DEFAULT_AUTH_TIMEOUT_MS).toBe(5 * 60 * 1000); // 5 minutes
@@ -335,13 +342,14 @@ describe('Agent Auth Flow Unit Tests', () => {
 
         process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
 
-        await flow.execute('openai', { timeoutMs: 200 });
+        // Use a timeout slightly above minimum (1500ms) for callback server
+        await flow.execute('openai', { timeoutMs: 1500 });
 
         const elapsed = Date.now() - startTime;
-        // Should timeout around 200ms (with some tolerance)
-        expect(elapsed).toBeGreaterThanOrEqual(150);
-        expect(elapsed).toBeLessThan(1000);
-      });
+        // Should timeout around 1500ms (with some tolerance)
+        expect(elapsed).toBeGreaterThanOrEqual(1400);
+        expect(elapsed).toBeLessThan(3000);
+      }, 5000);
     });
 
     describe('7. Network error handling', () => {
@@ -363,10 +371,11 @@ describe('Agent Auth Flow Unit Tests', () => {
         process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
 
         // Flow will timeout, but network error handling is tested
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        // Use minimum valid timeout (1000ms) for callback server
+        const result = await flow.execute('openai', { timeoutMs: 1000 });
 
         expect(result.success).toBe(false);
-      });
+      }, 5000);
 
       it('should return NETWORK_ERROR for DNS resolution failure', async () => {
         const mockProvider = createMockProvider({
@@ -423,7 +432,9 @@ describe('Agent Auth Flow Unit Tests', () => {
         const result = await flow.execute('openai', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
-        expect(result.error?.code).toBe('PROVIDER_ERROR');
+        if (!result.success) {
+          expect(result.error.code).toBe('PROVIDER_ERROR');
+        }
       });
     });
 
@@ -446,7 +457,9 @@ describe('Agent Auth Flow Unit Tests', () => {
         const result = await flow.execute('openai', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
-        expect(result.error?.message).toContain('No client ID configured');
+        if (!result.success) {
+          expect(result.error.message).toContain('No client ID configured');
+        }
       });
 
       it('should use environment variable for client ID', async () => {

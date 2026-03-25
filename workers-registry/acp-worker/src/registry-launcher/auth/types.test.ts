@@ -380,9 +380,50 @@ describe('isValidErrorCode', () => {
           case 'TOKEN_REFRESH_FAILED':
             message = 'Token refresh failed';
             break;
+          default: {
+            // Exhaustiveness check: if all cases are handled, this should never be reached
+            // TypeScript will error if a case is missing
+            const _exhaustiveCheck: never = value;
+            throw new Error(`Unhandled error code: ${_exhaustiveCheck}`);
+          }
         }
         expect(message).toBe('Operation timed out');
       }
+    });
+
+    it('should handle all error codes in exhaustive switch', () => {
+      // Test that all error codes are handled
+      const errorCodeToMessage = (code: AuthErrorCode): string => {
+        switch (code) {
+          case 'INVALID_STATE':
+            return 'State mismatch';
+          case 'TIMEOUT':
+            return 'Operation timed out';
+          case 'NETWORK_ERROR':
+            return 'Network failure';
+          case 'INVALID_CREDENTIALS':
+            return 'Bad credentials';
+          case 'STORAGE_ERROR':
+            return 'Storage failure';
+          case 'PROVIDER_ERROR':
+            return 'Provider error';
+          case 'UNSUPPORTED_PROVIDER':
+            return 'Provider not supported';
+          case 'CALLBACK_ERROR':
+            return 'Callback error';
+          case 'TOKEN_REFRESH_FAILED':
+            return 'Token refresh failed';
+          default: {
+            const _exhaustiveCheck: never = code;
+            throw new Error(`Unhandled error code: ${_exhaustiveCheck}`);
+          }
+        }
+      };
+
+      // Verify all error codes return a message
+      VALID_ERROR_CODES.forEach((code) => {
+        expect(typeof errorCodeToMessage(code)).toBe('string');
+      });
     });
   });
 });
@@ -396,6 +437,17 @@ describe('constant arrays', () => {
       expect(VALID_PROVIDER_IDS).toHaveLength(6);
     });
 
+    it('should contain the exact expected providers', () => {
+      expect([...VALID_PROVIDER_IDS].sort()).toEqual([
+        'anthropic',
+        'azure',
+        'cognito',
+        'github',
+        'google',
+        'openai',
+      ]);
+    });
+
     it('should be readonly', () => {
       // TypeScript enforces this at compile time, but we can verify the array exists
       expect(Array.isArray(VALID_PROVIDER_IDS)).toBe(true);
@@ -406,17 +458,48 @@ describe('constant arrays', () => {
     it('should contain exactly 3 backends', () => {
       expect(VALID_STORAGE_BACKENDS).toHaveLength(3);
     });
+
+    it('should contain the exact expected backends', () => {
+      expect([...VALID_STORAGE_BACKENDS].sort()).toEqual([
+        'encrypted-file',
+        'keychain',
+        'memory',
+      ]);
+    });
   });
 
   describe('VALID_TOKEN_STATUSES', () => {
     it('should contain exactly 4 statuses', () => {
       expect(VALID_TOKEN_STATUSES).toHaveLength(4);
     });
+
+    it('should contain the exact expected statuses', () => {
+      expect([...VALID_TOKEN_STATUSES].sort()).toEqual([
+        'authenticated',
+        'expired',
+        'not-configured',
+        'refresh-failed',
+      ]);
+    });
   });
 
   describe('VALID_ERROR_CODES', () => {
     it('should contain exactly 9 error codes', () => {
       expect(VALID_ERROR_CODES).toHaveLength(9);
+    });
+
+    it('should contain the exact expected error codes', () => {
+      expect([...VALID_ERROR_CODES].sort()).toEqual([
+        'CALLBACK_ERROR',
+        'INVALID_CREDENTIALS',
+        'INVALID_STATE',
+        'NETWORK_ERROR',
+        'PROVIDER_ERROR',
+        'STORAGE_ERROR',
+        'TIMEOUT',
+        'TOKEN_REFRESH_FAILED',
+        'UNSUPPORTED_PROVIDER',
+      ]);
     });
   });
 });

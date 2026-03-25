@@ -228,23 +228,45 @@ describe('Callback Server Unit Tests', () => {
         server = new CallbackServer('/callback');
         await server.start();
 
-        // Use a very short timeout (50ms)
-        await expect(server.waitForCallback(50)).rejects.toThrow('Callback timeout exceeded');
-      });
+        // Use minimum valid timeout (1000ms)
+        await expect(server.waitForCallback(1000)).rejects.toThrow('Callback timeout exceeded');
+      }, 5000);
 
       it('should clean up after timeout', async () => {
         server = new CallbackServer('/callback');
         await server.start();
 
         try {
-          await server.waitForCallback(50);
+          await server.waitForCallback(1000);
         } catch {
           // Expected timeout
         }
 
         // Server should still be technically running but callback state cleaned up
         // We can verify by trying to wait again
-        await expect(server.waitForCallback(50)).rejects.toThrow();
+        await expect(server.waitForCallback(1000)).rejects.toThrow();
+      }, 10000);
+
+      it('should reject timeout below minimum', async () => {
+        server = new CallbackServer('/callback');
+        await server.start();
+
+        await expect(server.waitForCallback(50)).rejects.toThrow('Timeout must be at least 1000ms');
+      });
+
+      it('should reject timeout above maximum', async () => {
+        server = new CallbackServer('/callback');
+        await server.start();
+
+        await expect(server.waitForCallback(700000)).rejects.toThrow('Timeout must not exceed 600000ms');
+      });
+
+      it('should reject non-finite timeout', async () => {
+        server = new CallbackServer('/callback');
+        await server.start();
+
+        await expect(server.waitForCallback(NaN)).rejects.toThrow('Timeout must be a finite number');
+        await expect(server.waitForCallback(Infinity)).rejects.toThrow('Timeout must be a finite number');
       });
     });
 
@@ -264,10 +286,11 @@ describe('Callback Server Unit Tests', () => {
 
         const result = await callbackPromise;
 
-        expect(result.code).toBe('auth_code_123');
-        expect(result.state).toBe('state_456');
-        expect(result.error).toBeUndefined();
-        expect(result.errorDescription).toBeUndefined();
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.code).toBe('auth_code_123');
+          expect(result.state).toBe('state_456');
+        }
       });
 
       it('should handle URL-encoded parameters', async () => {
@@ -282,8 +305,11 @@ describe('Callback Server Unit Tests', () => {
 
         const result = await callbackPromise;
 
-        expect(result.code).toBe('auth code');
-        expect(result.state).toBe('state+123');
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.code).toBe('auth code');
+          expect(result.state).toBe('state+123');
+        }
       });
     });
 
@@ -306,10 +332,11 @@ describe('Callback Server Unit Tests', () => {
 
         const result = await callbackPromise;
 
-        expect(result.error).toBe('access_denied');
-        expect(result.errorDescription).toBe('User denied access');
-        expect(result.code).toBe('');
-        expect(result.state).toBe('');
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error).toBe('access_denied');
+          expect(result.errorDescription).toBe('User denied access');
+        }
       });
 
       it('should handle error without description', async () => {
@@ -323,8 +350,11 @@ describe('Callback Server Unit Tests', () => {
 
         const result = await callbackPromise;
 
-        expect(result.error).toBe('server_error');
-        expect(result.errorDescription).toBeUndefined();
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error).toBe('server_error');
+          expect(result.errorDescription).toBeUndefined();
+        }
       });
 
       it('should return 400 status for error responses', async () => {
@@ -359,8 +389,11 @@ describe('Callback Server Unit Tests', () => {
         expect(response.statusCode).toBe(400);
 
         const result = await callbackPromise;
-        expect(result.error).toBe('missing_params');
-        expect(result.errorDescription).toBe('Missing code or state parameter');
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error).toBe('missing_params');
+          expect(result.errorDescription).toBe('Missing code or state parameter');
+        }
       });
 
       it('should handle missing state parameter', async () => {
@@ -375,7 +408,10 @@ describe('Callback Server Unit Tests', () => {
         expect(response.statusCode).toBe(400);
 
         const result = await callbackPromise;
-        expect(result.error).toBe('missing_params');
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error).toBe('missing_params');
+        }
       });
 
       it('should handle empty query string', async () => {
@@ -390,7 +426,10 @@ describe('Callback Server Unit Tests', () => {
         expect(response.statusCode).toBe(400);
 
         const result = await callbackPromise;
-        expect(result.error).toBe('missing_params');
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error).toBe('missing_params');
+        }
       });
 
       it('should return 200 status for successful callback', async () => {
@@ -586,11 +625,11 @@ describe('Callback Server Unit Tests', () => {
         await server.start();
         const port = server.getPort();
 
-        // Start first wait with short timeout
-        const firstWait = server.waitForCallback(100);
+        // Start first wait with valid timeout
+        const firstWait = server.waitForCallback(5000);
 
         // Second wait should fail immediately
-        await expect(server.waitForCallback(100)).rejects.toThrow(
+        await expect(server.waitForCallback(5000)).rejects.toThrow(
           'Already waiting for callback'
         );
 
@@ -695,8 +734,11 @@ describe('Callback Server Unit Tests', () => {
 
       const result = await callbackPromise;
 
-      expect(result.code).toBe(longCode);
-      expect(result.state).toBe(longState);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.code).toBe(longCode);
+        expect(result.state).toBe(longState);
+      }
     });
 
     it('should handle special characters in code and state', async () => {
@@ -714,8 +756,11 @@ describe('Callback Server Unit Tests', () => {
 
       const result = await callbackPromise;
 
-      expect(result.code).toBe('code/with/slashes');
-      expect(result.state).toBe('state=with=equals');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.code).toBe('code/with/slashes');
+        expect(result.state).toBe('state=with=equals');
+      }
     });
 
     it('should handle custom callback paths', async () => {
@@ -730,7 +775,10 @@ describe('Callback Server Unit Tests', () => {
       await makeRequest(port, '/oauth2/v1/callback?code=test&state=test');
 
       const result = await callbackPromise;
-      expect(result.code).toBe('test');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.code).toBe('test');
+      }
     });
 
     it('should return 404 for requests to wrong callback path', async () => {
