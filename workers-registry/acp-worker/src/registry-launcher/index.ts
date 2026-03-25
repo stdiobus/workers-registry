@@ -42,6 +42,8 @@ import { NDJSONHandler } from './stream/ndjson-handler.js';
 import { AgentRuntimeManager } from './runtime/manager.js';
 import { MessageRouter } from './router/message-router.js';
 import { logError, logExit, logInfo, logWarn } from './log.js';
+import { runSetupCommand, runStatusCommand, runLogoutCommand } from './auth/cli/index.js';
+import type { AuthProviderId } from './auth/types.js';
 
 /**
  * Exit codes for the Registry Launcher.
@@ -66,12 +68,20 @@ interface ParsedArgs {
   configPath?: string;
   /** Path to the custom agents JSON file (--custom-agents <path>) */
   customAgentsPath?: string;
+  /** Run the --setup auth command */
+  setup?: boolean;
+  /** Run the --auth-status command */
+  authStatus?: boolean;
+  /** Run the --logout command */
+  logout?: boolean;
+  /** Provider ID for --logout (optional) */
+  logoutProvider?: AuthProviderId;
 }
 
 /**
  * Parse command-line arguments.
  *
- * Usage: node index.js [config-path] [--custom-agents <path>]
+ * Usage: node index.js [config-path] [--custom-agents <path>] [--setup] [--auth-status] [--logout [provider]]
  *
  * @returns Parsed arguments
  */
@@ -93,6 +103,32 @@ function parseArgs(): ParsedArgs {
       }
       // --custom-agents without value: log warning and skip
       logWarn('--custom-agents requires a file path argument, ignoring');
+      i += 1;
+      continue;
+    }
+
+    // Auth CLI flags (Requirement 9.1, 9.2, 9.3)
+    if (arg === '--setup') {
+      result.setup = true;
+      i += 1;
+      continue;
+    }
+
+    if (arg === '--auth-status') {
+      result.authStatus = true;
+      i += 1;
+      continue;
+    }
+
+    if (arg === '--logout') {
+      result.logout = true;
+      // Check if next arg is a provider ID (not a flag)
+      const nextArg = args[i + 1];
+      if (nextArg && !nextArg.startsWith('-')) {
+        result.logoutProvider = nextArg as AuthProviderId;
+        i += 2;
+        continue;
+      }
       i += 1;
       continue;
     }
@@ -261,17 +297,39 @@ function setupAgentResponseHandling(
  * Main entry point for the Registry Launcher.
  *
  * 1. Load configuration from command-line argument
- * 2. Fetch and parse registry on startup
- * 3. Set up stdin NDJSON handler
- * 4. Wire up message router with registry and runtime manager
- * 5. Handle SIGTERM for graceful shutdown
- * 6. Exit with appropriate codes
+ * 2. Handle auth CLI commands (--setup, --auth-status, --logout) if present
+ * 3. Fetch and parse registry on startup
+ * 4. Set up stdin NDJSON handler
+ * 5. Wire up message router with registry and runtime manager
+ * 6. Handle SIGTERM for graceful shutdown
+ * 7. Exit with appropriate codes
  */
 async function main(): Promise<void> {
   logInfo('Registry Launcher starting');
 
   // Parse command-line arguments
   const parsedArgs = parseArgs();
+
+  // Handle auth CLI commands (Requirement 9.1, 9.2, 9.3)
+  // These commands exit after completion and don't start the worker
+  if (parsedArgs.setup) {
+    logInfo('Running --setup command');
+    const exitCode = await runSetupCommand();
+    process.exit(exitCode);
+  }
+
+  if (parsedArgs.authStatus) {
+    logInfo('Running --auth-status command');
+    const exitCode = await runStatusCommand();
+    process.exit(exitCode);
+  }
+
+  if (parsedArgs.logout) {
+    logInfo('Running --logout command');
+    const exitCode = await runLogoutCommand(parsedArgs.logoutProvider);
+    process.exit(exitCode);
+  }
+
   if (parsedArgs.configPath) {
     logInfo(`Loading configuration from: ${parsedArgs.configPath}`);
   }

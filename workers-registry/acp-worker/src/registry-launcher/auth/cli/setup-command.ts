@@ -26,16 +26,75 @@
  *
  * Starts the interactive authentication Setup_Wizard.
  *
+ * Requirements: 9.1
+ *
  * @module cli/setup-command
  */
 
-// TODO: Implement in Task 17.1
+import { TerminalAuthFlow } from '../flows/terminal-auth-flow.js';
+import { CredentialStore } from '../storage/credential-store.js';
+import type { AuthProviderId } from '../types.js';
+
+/**
+ * Options for the setup command.
+ */
+export interface SetupCommandOptions {
+  /** Optional pre-selected provider (skips provider selection) */
+  providerId?: AuthProviderId;
+  /** Custom input stream (for testing) */
+  input?: NodeJS.ReadableStream;
+  /** Custom output stream (for testing) */
+  output?: NodeJS.WritableStream;
+}
 
 /**
  * Run the setup command.
  *
- * @returns Exit code (0 for success)
+ * Starts the interactive Setup_Wizard for configuring OAuth credentials.
+ * All output goes to stderr to comply with NDJSON protocol requirements.
+ *
+ * Requirement 9.1: WHEN the `--setup` flag is provided, THE Registry_Launcher
+ * SHALL start the interactive authentication Setup_Wizard.
+ *
+ * @param options - Command options
+ * @returns Exit code (0 for success, 1 for failure)
  */
-export async function runSetupCommand(): Promise<number> {
-  throw new Error('Not implemented - Task 17.1');
+export async function runSetupCommand(options: SetupCommandOptions = {}): Promise<number> {
+  const output = options.output ?? process.stderr;
+
+  try {
+    // Create credential store
+    const credentialStore = new CredentialStore();
+
+    // Create terminal auth flow
+    const terminalAuthFlow = new TerminalAuthFlow({
+      credentialStore,
+      validateCredentials: async (_providerId, credentials) => {
+        // Basic validation - check that required fields are present
+        if (!credentials.clientId || credentials.clientId.trim().length === 0) {
+          return { valid: false, error: 'Client ID is required' };
+        }
+        // For terminal auth, we accept the credentials as valid
+        // The actual validation happens when the credentials are used
+        return { valid: true, accessToken: '' };
+      },
+      input: options.input,
+      output,
+    });
+
+    // Execute the setup wizard
+    const result = await terminalAuthFlow.execute(options.providerId);
+
+    if (result.success) {
+      return 0;
+    } else {
+      // Error message already displayed by terminal auth flow
+      return 1;
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    output.write(`\nSetup failed: ${errorMessage}\n`);
+    console.error(`[SetupCommand] Error: ${errorMessage}`);
+    return 1;
+  }
 }

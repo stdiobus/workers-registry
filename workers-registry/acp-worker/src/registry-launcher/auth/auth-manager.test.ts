@@ -1,0 +1,889 @@
+/*
+ * Apache License 2.0
+ * Copyright (c) 2025–present Raman Marozau, Target Insight Function.
+ * Contact: raman@worktif.com
+ *
+ * This file is part of the stdio bus protocol reference implementation:
+ *   stdio_bus_kernel_workers (target: <target_stdio_bus_kernel_workers>).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Unit tests for Auth Manager module.
+ *
+ * Tests flow orchestration, credential precedence, and status reporting.
+ *
+ * **Validates: Requirements 3.1, 4.1, 10.1, 10.2, 10.3, 10.4, 11.1, 11.2, 11.4**
+ *
+ * @module auth-manager.test
+ */
+
+import { AuthManager, createAuthManager } from './auth-manager';
+import type { ICredentialStore } from './storage/types';
+import type { IAuthProvider } from './providers/types';
+import type { ITokenManager } from './token-manager';
+import type {
+  AuthProviderId,
+  StoredCredentials,
+  TokenResponse,
+  TokenStatus,
+  TokenInjectionMethod,
+} from './types';
+import type { AgentApiKeys } from '../config/api-keys';
+
+
+/**
+ * Mock credential store for testing.
+ */
+class MockCredentialStore implements ICredentialStore {
+  private credentials = new Map<AuthProviderId, StoredCredentials>();
+
+  async store(providerId: AuthProviderId, credentials: StoredCredentials): Promise<void> {
+    this.credentials.set(providerId, { ...credentials });
+  }
+
+  async retrieve(providerId: AuthProviderId): Promise<StoredCredentials | null> {
+    const creds = this.credentials.get(providerId);
+    return creds ? { ...creds } : null;
+  }
+
+  async delete(providerId: AuthProviderId): Promise<void> {
+    this.credentials.delete(providerId);
+  }
+
+  async deleteAll(): Promise<void> {
+    this.credentials.clear();
+  }
+
+  async listProviders(): Promise<AuthProviderId[]> {
+    return Array.from(this.credentials.keys());
+  }
+
+  getBackendType(): 'memory' {
+    return 'memory';
+  }
+
+  setCredentials(providerId: AuthProviderId, credentials: StoredCredentials): void {
+    this.credentials.set(providerId, { ...credentials });
+  }
+
+  hasCredentials(providerId: AuthProviderId): boolean {
+    return this.credentials.has(providerId);
+  }
+
+  reset(): void {
+    this.credentials.clear();
+  }
+}
+
+
+/**
+ * Mock token manager for testing.
+ */
+class MockTokenManager implements ITokenManager {
+  private tokens = new Map<AuthProviderId, string>();
+  private tokenStatus = new Map<AuthProviderId, TokenStatus>();
+  private validTokens = new Set<AuthProviderId>();
+  public storeTokensCallCount = 0;
+  public clearTokensCallCount = 0;
+
+  async getAccessToken(providerId: AuthProviderId): Promise<string | null> {
+    return this.tokens.get(providerId) ?? null;
+  }
+
+  async storeTokens(providerId: AuthProviderId, tokens: TokenResponse): Promise<void> {
+    this.storeTokensCallCount++;
+    this.tokens.set(providerId, tokens.accessToken);
+    this.validTokens.add(providerId);
+  }
+
+  async hasValidTokens(providerId: AuthProviderId): Promise<boolean> {
+    return this.validTokens.has(providerId);
+  }
+
+  async forceRefresh(providerId: AuthProviderId): Promise<string | null> {
+    return this.tokens.get(providerId) ?? null;
+  }
+
+  async clearTokens(providerId: AuthProviderId): Promise<void> {
+    this.clearTokensCallCount++;
+    this.tokens.delete(providerId);
+    this.validTokens.delete(providerId);
+  }
+
+  async getStatus(): Promise<Map<AuthProviderId, TokenStatus>> {
+    return new Map(this.tokenStatus);
+  }
+
+  setToken(providerId: AuthProviderId, token: string): void {
+    this.tokens.set(providerId, token);
+    this.validTokens.add(providerId);
+  }
+
+  setTokenStatus(providerId: AuthProviderId, status: TokenStatus): void {
+    this.tokenStatus.set(providerId, status);
+  }
+
+  setValidTokens(providerId: AuthProviderId, valid: boolean): void {
+    if (valid) {
+      this.validTokens.add(providerId);
+    } else {
+      this.validTokens.delete(providerId);
+    }
+  }
+
+  reset(): void {
+    this.tokens.clear();
+    this.tokenStatus.clear();
+    this.validTokens.clear();
+    this.storeTokensCallCount = 0;
+    this.clearTokensCallCount = 0;
+  }
+}
+
+
+/**
+ * Mock auth provider for testing.
+ */
+class MockAuthProvider implements IAuthProvider {
+  readonly id: AuthProviderId;
+  readonly name: string;
+  readonly defaultScopes: readonly string[] = ['openid', 'profile'];
+  private injectionMethod: TokenInjectionMethod;
+
+  constructor(
+    id: AuthProviderId,
+    name: string = 'Mock Provider',
+    injectionMethod?: TokenInjectionMethod
+  ) {
+    this.id = id;
+    this.name = name;
+    this.injectionMethod = injectionMethod ?? {
+      type: 'header',
+      key: 'Authorization',
+      format: 'Bearer {token}',
+    };
+  }
+
+  buildAuthorizationUrl(): string {
+    return `https://mock.${this.id}.com/authorize`;
+  }
+
+  async exchangeCode(): Promise<TokenResponse> {
+    return {
+      accessToken: 'exchanged-token',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+    };
+  }
+
+  async refreshToken(): Promise<TokenResponse> {
+    return {
+      accessToken: 'refreshed-token',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+    };
+  }
+
+  validateConfig(): void {
+    // No-op for mock
+  }
+
+  getTokenInjection(): TokenInjectionMethod {
+    return this.injectionMethod;
+  }
+}
+
+
+describe('Auth Manager Unit Tests', () => {
+  let credentialStore: MockCredentialStore;
+  let tokenManager: MockTokenManager;
+  let mockProviders: Map<AuthProviderId, MockAuthProvider>;
+
+  beforeEach(() => {
+    credentialStore = new MockCredentialStore();
+    tokenManager = new MockTokenManager();
+    mockProviders = new Map();
+
+    // Set up default providers
+    const providers: AuthProviderId[] = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+    for (const id of providers) {
+      mockProviders.set(id, new MockAuthProvider(id));
+    }
+  });
+
+  afterEach(() => {
+    credentialStore.reset();
+    tokenManager.reset();
+    mockProviders.clear();
+  });
+
+  describe('Constructor', () => {
+    it('should create AuthManager with options object', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager).toBeInstanceOf(AuthManager);
+    });
+
+    it('should create AuthManager with legacy constructor signature', () => {
+      const authManager = new AuthManager(credentialStore, tokenManager, {});
+
+      expect(authManager).toBeInstanceOf(AuthManager);
+    });
+
+    it('should create AuthManager using factory function', () => {
+      const authManager = createAuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager).toBeInstanceOf(AuthManager);
+    });
+  });
+
+
+  describe('getTokenForAgent - Credential Precedence (Requirement 10.3)', () => {
+    it('should return OAuth token when both OAuth and legacy credentials exist', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'oauth-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('openai', 'oauth-token');
+
+      const legacyApiKeys: Record<string, AgentApiKeys> = {
+        'test-agent': { apiKey: 'legacy-api-key', env: {} },
+      };
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys,
+      });
+
+      const result = await authManager.getTokenForAgent('test-agent', 'openai');
+
+      expect(result).toBe('oauth-token');
+    });
+
+    it('should return legacy API key when no OAuth credentials exist', async () => {
+      const legacyApiKeys: Record<string, AgentApiKeys> = {
+        'test-agent': { apiKey: 'legacy-api-key', env: {} },
+      };
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys,
+      });
+
+      const result = await authManager.getTokenForAgent('test-agent');
+
+      expect(result).toBe('legacy-api-key');
+    });
+
+    it('should return null when no credentials exist', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.getTokenForAgent('test-agent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should find OAuth token from any configured provider when no provider specified', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
+        accessToken: 'github-oauth-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('github', 'github-oauth-token');
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.getTokenForAgent('test-agent');
+
+      expect(result).toBe('github-oauth-token');
+    });
+  });
+
+
+  describe('injectAuth - Token Injection (Requirement 11.4)', () => {
+    it('should inject token into header with Bearer format', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'test-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('openai', 'test-token');
+
+      const provider = new MockAuthProvider('openai', 'OpenAI', {
+        type: 'header',
+        key: 'Authorization',
+        format: 'Bearer {token}',
+      });
+      mockProviders.set('openai', provider);
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+        providerResolver: (id) => mockProviders.get(id)!,
+      });
+
+      const request = { method: 'POST', url: 'https://api.openai.com' };
+      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+
+      expect(result.headers).toBeDefined();
+      const headers = result.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer test-token');
+    });
+
+    it('should inject token into query parameter', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
+        accessToken: 'github-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('github', 'github-token');
+
+      const provider = new MockAuthProvider('github', 'GitHub', {
+        type: 'query',
+        key: 'access_token',
+      });
+      mockProviders.set('github', provider);
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+        providerResolver: (id) => mockProviders.get(id)!,
+      });
+
+      const request = { method: 'GET', url: 'https://api.github.com' };
+      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+
+      expect(result.query).toBeDefined();
+      const query = result.query as Record<string, string>;
+      expect(query['access_token']).toBe('github-token');
+    });
+
+    it('should inject token into body', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('google', {
+        providerId: 'google',
+        accessToken: 'google-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('google', 'google-token');
+
+      const provider = new MockAuthProvider('google', 'Google', {
+        type: 'body',
+        key: 'token',
+      });
+      mockProviders.set('google', provider);
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+        providerResolver: (id) => mockProviders.get(id)!,
+      });
+
+      const request = { method: 'POST', url: 'https://api.google.com' };
+      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+
+      expect(result.body).toBeDefined();
+      const body = result.body as Record<string, string>;
+      expect(body['token']).toBe('google-token');
+    });
+
+    it('should preserve existing request properties', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'test-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('openai', 'test-token');
+
+      const provider = new MockAuthProvider('openai', 'OpenAI', {
+        type: 'header',
+        key: 'Authorization',
+        format: 'Bearer {token}',
+      });
+      mockProviders.set('openai', provider);
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+        providerResolver: (id) => mockProviders.get(id)!,
+      });
+
+      const request = {
+        method: 'POST',
+        url: 'https://api.openai.com',
+        headers: { 'Content-Type': 'application/json' },
+        body: { data: 'test' },
+      };
+      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+
+      expect(result.method).toBe('POST');
+      expect(result.url).toBe('https://api.openai.com');
+      expect((result.body as Record<string, unknown>).data).toBe('test');
+      const headers = result.headers as Record<string, string>;
+      expect(headers['Content-Type']).toBe('application/json');
+      expect(headers['Authorization']).toBe('Bearer test-token');
+    });
+
+    it('should return original request when no credentials available', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const request = { method: 'GET', url: 'https://api.example.com' };
+      const result = await authManager.injectAuth('test-agent', request);
+
+      expect(result).toEqual(request);
+    });
+
+    it('should use legacy API key with Bearer header when no OAuth credentials', async () => {
+      const legacyApiKeys: Record<string, AgentApiKeys> = {
+        'test-agent': { apiKey: 'legacy-key', env: {} },
+      };
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys,
+      });
+
+      const request = { method: 'POST', url: 'https://api.example.com' };
+      const result = await authManager.injectAuth('test-agent', request) as Record<string, unknown>;
+
+      expect(result.headers).toBeDefined();
+      const headers = result.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer legacy-key');
+    });
+  });
+
+
+  describe('getStatus - Status Reporting (Requirement 11.1)', () => {
+    it('should return status for all valid provider IDs', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const status = await authManager.getStatus();
+
+      // Should include all valid provider IDs
+      expect(status.has('openai')).toBe(true);
+      expect(status.has('github')).toBe(true);
+      expect(status.has('google')).toBe(true);
+      expect(status.has('cognito')).toBe(true);
+      expect(status.has('azure')).toBe(true);
+      expect(status.has('anthropic')).toBe(true);
+    });
+
+    it('should return not-configured for providers without credentials', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const status = await authManager.getStatus();
+
+      for (const [, entry] of status) {
+        expect(entry.status).toBe('not-configured');
+      }
+    });
+
+    it('should return authenticated status for providers with valid tokens', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'valid-token',
+        expiresAt: now + 3600000,
+        storedAt: now,
+      });
+      tokenManager.setTokenStatus('openai', 'authenticated');
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const status = await authManager.getStatus();
+
+      const openaiStatus = status.get('openai');
+      expect(openaiStatus).toBeDefined();
+      expect(openaiStatus!.status).toBe('authenticated');
+    });
+
+    it('should include expiration and scope information', async () => {
+      const now = Date.now();
+      const expiresAt = now + 3600000;
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'valid-token',
+        expiresAt,
+        scope: 'openid profile',
+        storedAt: now,
+      });
+      tokenManager.setTokenStatus('openai', 'authenticated');
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const status = await authManager.getStatus();
+
+      const openaiStatus = status.get('openai');
+      expect(openaiStatus).toBeDefined();
+      expect(openaiStatus!.expiresAt).toBe(expiresAt);
+      expect(openaiStatus!.scope).toBe('openid profile');
+    });
+  });
+
+
+  describe('requiresReauth - Auth Required Detection (Requirement 11.2)', () => {
+    it('should return true when no credentials exist', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.requiresReauth('openai');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when valid tokens exist', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'valid-token',
+        storedAt: now,
+      });
+      tokenManager.setValidTokens('openai', true);
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.requiresReauth('openai');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return true when tokens are invalid and refresh fails', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'expired-token',
+        storedAt: now,
+      });
+      tokenManager.setValidTokens('openai', false);
+      // forceRefresh returns null (simulating failure)
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.requiresReauth('openai');
+
+      expect(result).toBe(true);
+    });
+  });
+
+
+  describe('logout', () => {
+    it('should clear tokens and credentials for specific provider', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'openai-token',
+        storedAt: now,
+      });
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
+        accessToken: 'github-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('openai', 'openai-token');
+      tokenManager.setToken('github', 'github-token');
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      await authManager.logout('openai');
+
+      expect(tokenManager.clearTokensCallCount).toBe(1);
+      expect(credentialStore.hasCredentials('openai')).toBe(false);
+      expect(credentialStore.hasCredentials('github')).toBe(true);
+    });
+
+    it('should clear all tokens and credentials when no provider specified', async () => {
+      const now = Date.now();
+      credentialStore.setCredentials('openai', {
+        providerId: 'openai',
+        accessToken: 'openai-token',
+        storedAt: now,
+      });
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
+        accessToken: 'github-token',
+        storedAt: now,
+      });
+      tokenManager.setToken('openai', 'openai-token');
+      tokenManager.setToken('github', 'github-token');
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      await authManager.logout();
+
+      expect(tokenManager.clearTokensCallCount).toBe(2);
+      expect(credentialStore.hasCredentials('openai')).toBe(false);
+      expect(credentialStore.hasCredentials('github')).toBe(false);
+    });
+  });
+
+
+  describe('authenticateAgent - Flow Orchestration (Requirement 3.1)', () => {
+    it('should return error for unsupported provider ID', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.authenticateAgent('invalid-provider' as AuthProviderId);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('UNSUPPORTED_PROVIDER');
+      expect(result.error?.message).toContain('not supported');
+    });
+
+    it('should return error for unregistered provider', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.authenticateAgent('openai');
+
+      // The provider is valid but not registered
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('UNSUPPORTED_PROVIDER');
+    });
+  });
+
+  describe('setupTerminal - Terminal Flow Orchestration (Requirement 4.1)', () => {
+    it('should return error for unsupported provider ID', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const result = await authManager.setupTerminal('invalid-provider' as AuthProviderId);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe('UNSUPPORTED_PROVIDER');
+      expect(result.error?.message).toContain('not supported');
+    });
+  });
+
+
+  describe('getProviderForAgent', () => {
+    it('should return openai for agent IDs containing openai', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager.getProviderForAgent('openai-agent')).toBe('openai');
+      expect(authManager.getProviderForAgent('my-openai-bot')).toBe('openai');
+      expect(authManager.getProviderForAgent('gpt-4-agent')).toBe('openai');
+    });
+
+    it('should return anthropic for agent IDs containing anthropic or claude', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager.getProviderForAgent('anthropic-agent')).toBe('anthropic');
+      expect(authManager.getProviderForAgent('claude-3-bot')).toBe('anthropic');
+    });
+
+    it('should return github for agent IDs containing github or copilot', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager.getProviderForAgent('github-agent')).toBe('github');
+      expect(authManager.getProviderForAgent('copilot-assistant')).toBe('github');
+    });
+
+    it('should return google for agent IDs containing google or gemini', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager.getProviderForAgent('google-agent')).toBe('google');
+      expect(authManager.getProviderForAgent('gemini-pro')).toBe('google');
+    });
+
+    it('should return azure for agent IDs containing azure', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager.getProviderForAgent('azure-agent')).toBe('azure');
+    });
+
+    it('should return cognito for agent IDs containing cognito or aws', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager.getProviderForAgent('cognito-agent')).toBe('cognito');
+      expect(authManager.getProviderForAgent('aws-bedrock')).toBe('cognito');
+    });
+
+    it('should return undefined for unrecognized agent IDs', () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      expect(authManager.getProviderForAgent('custom-agent')).toBeUndefined();
+      expect(authManager.getProviderForAgent('my-bot')).toBeUndefined();
+    });
+  });
+
+
+  describe('Optional Authentication (Requirement 10.4)', () => {
+    it('should allow requests without credentials for agents without auth requirements', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      // No credentials configured
+      const token = await authManager.getTokenForAgent('no-auth-agent');
+
+      // Should return null, allowing request to proceed without auth
+      expect(token).toBeNull();
+    });
+
+    it('should not inject auth when no credentials available', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const request = { method: 'GET', url: 'https://api.example.com' };
+      const result = await authManager.injectAuth('no-auth-agent', request);
+
+      // Request should be unchanged
+      expect(result).toEqual(request);
+      expect((result as Record<string, unknown>).headers).toBeUndefined();
+    });
+  });
+
+  describe('Backward Compatibility (Requirements 10.1, 10.2)', () => {
+    it('should support legacy api-keys.json format', async () => {
+      const legacyApiKeys: Record<string, AgentApiKeys> = {
+        'legacy-agent': { apiKey: 'sk-legacy-key-12345', env: {} },
+      };
+
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys,
+      });
+
+      const token = await authManager.getTokenForAgent('legacy-agent');
+
+      expect(token).toBe('sk-legacy-key-12345');
+    });
+
+    it('should work with empty legacy api keys', async () => {
+      const authManager = new AuthManager({
+        credentialStore,
+        tokenManager,
+        legacyApiKeys: {},
+      });
+
+      const token = await authManager.getTokenForAgent('any-agent');
+
+      expect(token).toBeNull();
+    });
+  });
+});

@@ -26,6 +26,7 @@
  *
  * Routes incoming JSON-RPC messages to the appropriate agent based on agentId.
  * Handles agentId extraction, message transformation, and error response generation.
+ * Integrates with AuthManager for OAuth authentication (Requirements 11.2, 11.4).
  *
  * @module router/message-router
  */
@@ -35,6 +36,8 @@ import { AgentNotFoundError, PlatformNotSupportedError } from '../registry/index
 import type { AgentRuntimeManager } from '../runtime/manager.js';
 import type { AgentRuntime } from '../runtime/types.js';
 import { getAgentApiKey } from '../config/api-keys.js';
+import type { AuthManager } from '../auth/auth-manager.js';
+import type { AcpAuthMethod } from '../auth/types.js';
 
 /**
  * JSON-RPC error codes for routing errors.
@@ -48,6 +51,8 @@ export const RoutingErrorCodes = {
   PLATFORM_NOT_SUPPORTED: -32002,
   /** Agent spawn failed */
   SPAWN_FAILED: -32003,
+  /** Authentication required (Requirement 11.2) */
+  AUTH_REQUIRED: -32004,
 } as const;
 
 /**
@@ -175,6 +180,7 @@ export function transformMessage(message: object): object {
  *
  * Routes incoming JSON-RPC messages to the appropriate agent based on agentId.
  * Handles message transformation, error generation, and request correlation.
+ * Integrates with AuthManager for OAuth authentication (Requirements 11.2, 11.4).
  */
 export class MessageRouter {
   /** Registry index for agent lookup and resolution */
@@ -188,6 +194,9 @@ export class MessageRouter {
 
   /** API keys for agent authentication */
   private readonly apiKeys: Record<string, any>;
+
+  /** Optional AuthManager for OAuth authentication (Requirements 11.2, 11.4) */
+  private readonly authManager?: AuthManager;
 
   /** Map of request ID to pending request info for correlation */
   private readonly pendingRequests: Map<string | number, PendingRequest> = new Map();
@@ -205,17 +214,120 @@ export class MessageRouter {
    * @param runtimeManager - Runtime manager for agent processes
    * @param writeCallback - Callback for writing responses to stdout
    * @param apiKeys - API keys for agent authentication (optional)
+   * @param authManager - AuthManager for OAuth authentication (optional, Requirements 11.2, 11.4)
    */
   constructor(
     registry: IRegistryIndex,
     runtimeManager: AgentRuntimeManager,
     writeCallback: WriteCallback,
     apiKeys: Record<string, any> = {},
+    authManager?: AuthManager,
   ) {
     this.registry = registry;
     this.runtimeManager = runtimeManager;
     this.writeCallback = writeCallback;
     this.apiKeys = apiKeys;
+    this.authManager = authManager;
+  }
+
+  /**
+   * Get supported authentication methods for ACP initialize response.
+   *
+   * Requirement 11.1: WHEN responding to an initialize request, THE Registry_Launcher
+   * SHALL include an `authMethods` array listing supported authentication methods.
+   *
+   * @returns Array of supported authentication methods
+   */
+  getSupportedAuthMethods(): AcpAuthMethod[] {
+    const methods: AcpAuthMethod[] = [
+      // Legacy API key authentication
+      { id: 'api-key', type: 'api-key' },
+      { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+      { id: 'anthropic-api-key', type: 'api-key', providerId: 'anthropic' },
+    ];
+
+    // Add OAuth methods if AuthManager is available
+    if (this.authManager) {
+      methods.push(
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
+        { id: 'oauth2-cognito', type: 'oauth2', providerId: 'cognito' },
+        { id: 'oauth2-azure', type: 'oauth2', providerId: 'azure' },
+        { id: 'oauth2-anthropic', type: 'oauth2', providerId: 'anthropic' },
+      );
+    }
+
+    return methods;
+  }
+
+  /**
+   * Check if authentication is available for an agent.
+   *
+   * Requirement 11.2: WHEN an agent requires authentication and credentials are not available,
+   * THE Registry_Launcher SHALL return an AUTH_REQUIRED error response.
+   *
+   * @param agentId - The agent identifier
+   * @returns True if authentication is available (OAuth or legacy API key)
+   */
+  async hasAuthenticationForAgent(agentId: string): Promise<boolean> {
+    // Check OAuth credentials first (Requirement 10.3)
+    if (this.authManager) {
+      const token = await this.authManager.getTokenForAgent(agentId);
+      if (token) {
+        return true;
+      }
+    }
+
+    // Fall back to legacy API key
+    const apiKey = getAgentApiKey(this.apiKeys, agentId);
+    return apiKey !== undefined;
+  }
+
+  /**
+   * Create an AUTH_REQUIRED error response.
+   *
+   * Requirement 11.2: WHEN an agent requires authentication and credentials are not available,
+   * THE Registry_Launcher SHALL return an AUTH_REQUIRED error response with the required
+   * authentication method specified.
+   *
+   * @param id - The request ID
+   * @param agentId - The agent identifier
+   * @param requiredMethod - The required authentication method
+   * @returns AUTH_REQUIRED error response
+   */
+  createAuthRequiredError(
+    id: string | number | null,
+    agentId: string,
+    requiredMethod?: string
+  ): ErrorResponse {
+    return createErrorResponse(
+      id,
+      RoutingErrorCodes.AUTH_REQUIRED,
+      'Authentication required',
+      {
+        agentId,
+        requiredMethod: requiredMethod ?? 'api-key',
+        supportedMethods: this.getSupportedAuthMethods().map(m => m.id),
+      }
+    );
+  }
+
+  /**
+   * Inject authentication into a request using AuthManager.
+   *
+   * Requirement 11.4: WHEN authentication is successful, THE Auth_Module SHALL inject
+   * the access token into agent requests according to the provider's token injection method.
+   *
+   * @param agentId - The agent identifier
+   * @param message - The message to inject auth into
+   * @returns The message with authentication injected
+   */
+  async injectAuthentication(agentId: string, message: object): Promise<object> {
+    if (this.authManager) {
+      return this.authManager.injectAuth(agentId, message);
+    }
+    return message;
   }
 
   /**
@@ -364,7 +476,8 @@ export class MessageRouter {
   /**
    * Handle a response from an agent process.
    *
-   * Intercepts initialize responses to trigger automatic authentication.
+   * Intercepts initialize responses to trigger automatic authentication and
+   * inject authMethods (Requirement 11.1).
    * Handles agent-to-client requests (like session/request_permission) by
    * auto-responding when they cannot be forwarded to the client.
    * Tracks sessionId mapping for proper notification routing.
@@ -375,7 +488,7 @@ export class MessageRouter {
    */
   handleAgentResponse(agentId: string, response: object): void {
     const id = extractId(response);
-    const msg = response as Record<string, unknown>;
+    let msg = response as Record<string, unknown>;
     const method = typeof msg.method === 'string' ? msg.method : undefined;
 
     // Handle agent-to-client requests (messages with both id and method).
@@ -393,7 +506,33 @@ export class MessageRouter {
       if (pending && pending.agentId === agentId) {
         const result = msg.result as Record<string, unknown> | undefined;
 
-        // Check if this is an initialize response with authMethods
+        // Check if this is an initialize response - inject our authMethods (Requirement 11.1)
+        // We detect initialize responses by checking for typical initialize response fields
+        if (result && (result.protocolVersion !== undefined || result.agentInfo !== undefined)) {
+          const ourAuthMethods = this.getSupportedAuthMethods();
+          const existingAuthMethods = Array.isArray(result.authMethods) ? result.authMethods : [];
+
+          // Merge our auth methods with agent's auth methods (ours first)
+          const mergedAuthMethods = [
+            ...ourAuthMethods,
+            ...existingAuthMethods.filter((m: any) =>
+              !ourAuthMethods.some(our => our.id === m.id)
+            ),
+          ];
+
+          // Create enriched response with authMethods
+          msg = {
+            ...msg,
+            result: {
+              ...result,
+              authMethods: mergedAuthMethods,
+            },
+          };
+
+          logInfo(`Injected ${ourAuthMethods.length} auth methods into initialize response for ${agentId}`);
+        }
+
+        // Check if this is an initialize response with authMethods (from agent)
         if (result && Array.isArray(result.authMethods) && result.authMethods.length > 0) {
           logInfo(`Agent ${agentId} requires authentication, attempting auto-auth`);
           this.authState.set(agentId, 'pending');
@@ -473,7 +612,7 @@ export class MessageRouter {
     }
 
     // Forward response unchanged
-    this.writeCallback(response);
+    this.writeCallback(msg);
   }
 
   /**

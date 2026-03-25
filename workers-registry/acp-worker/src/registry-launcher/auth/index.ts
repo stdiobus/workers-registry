@@ -105,8 +105,8 @@ export { AuthManager } from './auth-manager.js';
 // Token Manager
 // =============================================================================
 
-export type { ITokenManager } from './token-manager.js';
-export { TokenManager } from './token-manager.js';
+export type { ITokenManager, TokenManagerOptions, ProviderResolver } from './token-manager.js';
+export { TokenManager, createTokenManager, DEFAULT_REFRESH_THRESHOLD_MS } from './token-manager.js';
 
 // =============================================================================
 // Providers
@@ -132,7 +132,17 @@ export { CredentialStore } from './storage/credential-store.js';
 
 export type { ICallbackServer } from './flows/callback-server.js';
 export { AgentAuthFlow } from './flows/agent-auth-flow.js';
-export { TerminalAuthFlow } from './flows/terminal-auth-flow.js';
+export type { AgentAuthFlowDependencies } from './flows/agent-auth-flow.js';
+export {
+  TerminalAuthFlow,
+  createTerminalAuthFlow,
+  getProviderInfo,
+  getAllProviderInfo,
+} from './flows/terminal-auth-flow.js';
+export type {
+  TerminalAuthFlowDependencies,
+  CollectedCredentials,
+} from './flows/terminal-auth-flow.js';
 
 // =============================================================================
 // CLI Commands
@@ -143,3 +153,33 @@ export {
   runStatusCommand,
   runLogoutCommand,
 } from './cli/index.js';
+
+// =============================================================================
+// Error Handling
+// =============================================================================
+
+export {
+  // Error classes
+  AuthenticationError,
+  InvalidStateError,
+  TimeoutError,
+  NetworkError,
+  InvalidCredentialsError,
+  StorageError,
+  ProviderError,
+  UnsupportedProviderError,
+  CallbackError,
+  TokenRefreshError,
+  // Error parsing functions
+  parseProviderErrorResponse,
+  parseHttpErrorResponse,
+  isOAuthErrorResponse,
+  // Error formatting functions
+  formatErrorResponse,
+  createUnsupportedProviderError,
+  createNetworkError,
+  createStorageError,
+  redactSensitiveData,
+} from './errors.js';
+
+export type { OAuthErrorResponse } from './errors.js';
