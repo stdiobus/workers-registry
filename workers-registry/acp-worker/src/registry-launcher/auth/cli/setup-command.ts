@@ -81,10 +81,17 @@ export async function runSetupCommand(options: SetupCommandOptions = {}): Promis
       validateCredentials: async (_providerId, credentials) => {
         // Basic validation - check that required fields are present
         if (!credentials.clientId || credentials.clientId.trim().length === 0) {
-          return { valid: false, error: 'Client ID is required' };
+          return { valid: false, error: 'This field is required' };
         }
-        // For terminal auth, we accept the credentials as valid
-        // Return the marker token to indicate client credentials are configured
+
+        // For API key auth (no clientSecret), the clientId IS the API key
+        // Return it directly as the access token
+        if (!credentials.clientSecret) {
+          // This is API key mode - the "clientId" is actually the API key
+          return { valid: true, accessToken: credentials.clientId.trim() };
+        }
+
+        // For OAuth client credentials mode, return the marker token
         // The actual OAuth token will be obtained when the credentials are used
         return { valid: true, accessToken: CLIENT_CREDENTIALS_MARKER };
       },

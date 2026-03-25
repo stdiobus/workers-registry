@@ -50,18 +50,26 @@ interface ProviderInfo {
   name: string;
   requiresClientSecret: boolean;
   requiresCustomEndpoints: boolean;
+  /** Whether this provider supports simple API key authentication */
+  supportsApiKey: boolean;
+  /** Label for the API key (e.g., "API Key", "Personal Access Token") */
+  apiKeyLabel?: string;
+  /** Environment variable name for the API key */
+  apiKeyEnvVar?: string;
 }
 
 /**
  * Provider information for display and configuration.
+ * Per ACP Registry spec: OpenAI, Anthropic support API key alternative,
+ * GitHub supports Personal Access Token alternative.
  */
 const PROVIDER_INFO: readonly ProviderInfo[] = [
-  { id: 'openai', name: 'OpenAI', requiresClientSecret: false, requiresCustomEndpoints: false },
-  { id: 'github', name: 'GitHub', requiresClientSecret: true, requiresCustomEndpoints: false },
-  { id: 'google', name: 'Google', requiresClientSecret: true, requiresCustomEndpoints: false },
-  { id: 'cognito', name: 'AWS Cognito', requiresClientSecret: true, requiresCustomEndpoints: true },
-  { id: 'azure', name: 'Azure AD', requiresClientSecret: true, requiresCustomEndpoints: true },
-  { id: 'anthropic', name: 'Anthropic', requiresClientSecret: false, requiresCustomEndpoints: false },
+  { id: 'openai', name: 'OpenAI', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'OPENAI_API_KEY' },
+  { id: 'github', name: 'GitHub', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: true, apiKeyLabel: 'Personal Access Token', apiKeyEnvVar: 'GITHUB_TOKEN' },
+  { id: 'google', name: 'Google', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: false },
+  { id: 'cognito', name: 'AWS Cognito', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false },
+  { id: 'azure', name: 'Azure AD', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false },
+  { id: 'anthropic', name: 'Anthropic', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'ANTHROPIC_API_KEY' },
 ] as const;
 
 
@@ -189,11 +197,27 @@ export class TerminalAuthFlow {
     let attempts = 0;
     const maxAttempts = 3;
 
+    // For providers that support API key, ask which auth method to use
+    let useApiKey = false;
+    if (providerInfo.supportsApiKey) {
+      this.writeLine(`${providerInfo.name} supports two authentication methods:\n`);
+      this.writeLine(`  1. ${providerInfo.apiKeyLabel || 'API Key'} (simple, recommended)`);
+      this.writeLine(`  2. OAuth Client Credentials (advanced)\n`);
+
+      const selection = await this.promptSelection('Select authentication method (1-2): ', 1, 2);
+      useApiKey = selection === 1;
+      this.writeLine('');
+    }
+
     while (attempts < maxAttempts) {
       attempts++;
 
       // Collect credentials (Requirement 4.3)
-      credentials = await this.collectCredentials(providerInfo);
+      if (useApiKey) {
+        credentials = await this.collectApiKeyCredentials(providerInfo);
+      } else {
+        credentials = await this.collectCredentials(providerInfo);
+      }
 
       // Validate credentials (Requirement 4.4)
       this.writeLine('\nValidating credentials...');
@@ -264,6 +288,43 @@ export class TerminalAuthFlow {
     return {
       success: true,
       providerId: selectedProvider,
+    };
+  }
+
+  /**
+   * Prompt for a numeric selection within a range.
+   */
+  private async promptSelection(message: string, min: number, max: number): Promise<number> {
+    while (true) {
+      const input = await this.prompt(message);
+      const selection = parseInt(input.trim(), 10);
+
+      if (selection >= min && selection <= max) {
+        return selection;
+      }
+
+      this.writeLine(`Invalid selection. Please enter a number between ${min} and ${max}.`);
+    }
+  }
+
+  /**
+   * Collect API key credentials (simple mode for OpenAI, Anthropic, GitHub).
+   */
+  private async collectApiKeyCredentials(providerInfo: ProviderInfo): Promise<CollectedCredentials> {
+    const label = providerInfo.apiKeyLabel || 'API Key';
+    const envVar = providerInfo.apiKeyEnvVar;
+
+    if (envVar) {
+      this.writeLine(`(You can also set this via ${envVar} environment variable)\n`);
+    }
+
+    const apiKey = await this.promptSecret(`${label}: `);
+
+    // For API key auth, we store the API key as the clientId
+    // The actual token will be the API key itself
+    return {
+      clientId: apiKey,
+      // No clientSecret needed for API key auth
     };
   }
 
