@@ -383,27 +383,27 @@ describe('parseAuthMethods (Task 21.1)', () => {
   describe('basic parsing', () => {
     it('should parse valid oauth2 auth methods', () => {
       const raw = [
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ kind: 'oauth2', id: 'oauth2-openai', providerId: 'openai' });
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'oauth2-google', providerId: 'google' });
       expect(result[1]).toEqual({ kind: 'oauth2', id: 'oauth2-github', providerId: 'github' });
     });
 
     it('should parse valid api-key auth methods', () => {
       const raw = [
-        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+        { id: 'google-api-key', type: 'api-key', providerId: 'google' },
         { id: 'api-key', type: 'api-key' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ kind: 'api-key', id: 'openai-api-key', providerId: 'openai' });
+      expect(result[0]).toEqual({ kind: 'api-key', id: 'google-api-key', providerId: 'google' });
       expect(result[1]).toEqual({ kind: 'api-key', id: 'api-key', providerId: undefined });
     });
 
@@ -411,13 +411,13 @@ describe('parseAuthMethods (Task 21.1)', () => {
       // AUTH_REQUIREMENTS.md: Agent Auth is the default authentication method
       // where the agent manages the entire OAuth flow independently.
       const raw = [
-        { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+        { id: 'agent-google', type: 'agent', providerId: 'google' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ kind: 'agent', id: 'agent-openai', providerId: 'openai' });
+      expect(result[0]).toEqual({ kind: 'agent', id: 'agent-google', providerId: 'google' });
     });
 
     it('should parse "agent" type without providerId', () => {
@@ -436,31 +436,31 @@ describe('parseAuthMethods (Task 21.1)', () => {
   describe('explicit id-to-provider mapping', () => {
     it('should resolve providerId from explicit mapping when not provided', () => {
       const raw = [
-        { id: 'oauth2-openai', type: 'oauth2' },  // No providerId, should map from id
+        { id: 'oauth2-google', type: 'oauth2' },  // No providerId, should map from id
         { id: 'oauth2-github', type: 'oauth2' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(2);
-      expect((result[0] as any).providerId).toBe('openai');
+      expect((result[0] as any).providerId).toBe('google');
       expect((result[1] as any).providerId).toBe('github');
     });
 
     it('should use explicit providerId when it matches mapping', () => {
       const raw = [
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect((result[0] as any).providerId).toBe('openai');
+      expect((result[0] as any).providerId).toBe('google');
     });
 
     it('should reject methods with conflicting providerId and mapping', () => {
       const raw = [
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'github' },  // Conflict!
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'github' },  // Conflict!
       ];
 
       const result = parseAuthMethods(raw);
@@ -495,7 +495,7 @@ describe('parseAuthMethods (Task 21.1)', () => {
 
     it('should skip methods with invalid type', () => {
       const raw = [
-        { id: 'valid', type: 'oauth2', providerId: 'openai' },
+        { id: 'valid', type: 'oauth2', providerId: 'google' },
         { id: 'invalid-type', type: 'unknown' },
         { id: 'another-valid', type: 'api-key' },
       ];
@@ -508,10 +508,10 @@ describe('parseAuthMethods (Task 21.1)', () => {
 
     it('should skip methods with missing or invalid id', () => {
       const raw = [
-        { type: 'oauth2', providerId: 'openai' },  // Missing id
-        { id: '', type: 'oauth2', providerId: 'openai' },  // Empty id
-        { id: 123, type: 'oauth2', providerId: 'openai' },  // Non-string id
-        { id: 'valid', type: 'oauth2', providerId: 'openai' },
+        { type: 'oauth2', providerId: 'google' },  // Missing id
+        { id: '', type: 'oauth2', providerId: 'google' },  // Empty id
+        { id: 123, type: 'oauth2', providerId: 'google' },  // Non-string id
+        { id: 'valid', type: 'oauth2', providerId: 'google' },
       ];
 
       const result = parseAuthMethods(raw);
@@ -523,13 +523,13 @@ describe('parseAuthMethods (Task 21.1)', () => {
     it('should skip oauth2 methods without valid providerId', () => {
       const raw = [
         { id: 'unknown-oauth', type: 'oauth2' },  // No providerId and no mapping
-        { id: 'oauth2-openai', type: 'oauth2' },  // Has mapping
+        { id: 'oauth2-google', type: 'oauth2' },  // Has mapping
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('oauth2-openai');
+      expect(result[0].id).toBe('oauth2-google');
     });
 
     it('should skip methods with invalid providerId', () => {
@@ -544,15 +544,15 @@ describe('parseAuthMethods (Task 21.1)', () => {
 
     it('should deduplicate methods by id', () => {
       const raw = [
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },  // Duplicate
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },  // Duplicate
         { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(2);
-      expect(result.map(m => m.id)).toEqual(['oauth2-openai', 'oauth2-github']);
+      expect(result.map(m => m.id)).toEqual(['oauth2-google', 'oauth2-github']);
     });
 
     it('should limit number of methods processed (DoS protection)', () => {
@@ -588,7 +588,7 @@ describe('parseAuthMethods (Task 21.1)', () => {
 describe('getOAuthMethods', () => {
   it('should filter only oauth2 methods', () => {
     const methods = parseAuthMethods([
-      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       { id: 'api-key', type: 'api-key' },
       { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
     ]);
@@ -597,7 +597,7 @@ describe('getOAuthMethods', () => {
 
     expect(oauthMethods).toHaveLength(2);
     expect(oauthMethods.every(m => m.kind === 'oauth2')).toBe(true);
-    expect(oauthMethods.map(m => m.providerId)).toEqual(['openai', 'github']);
+    expect(oauthMethods.map(m => m.providerId)).toEqual(['google', 'github']);
   });
 
   it('should return empty array when no oauth2 methods', () => {
@@ -614,8 +614,8 @@ describe('getOAuthMethods', () => {
 describe('getApiKeyMethods', () => {
   it('should filter only api-key methods', () => {
     const methods = parseAuthMethods([
-      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
-      { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+      { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
+      { id: 'google-api-key', type: 'api-key', providerId: 'google' },
       { id: 'api-key', type: 'api-key' },
     ]);
 
@@ -623,12 +623,12 @@ describe('getApiKeyMethods', () => {
 
     expect(apiKeyMethods).toHaveLength(2);
     expect(apiKeyMethods.every(m => m.kind === 'api-key')).toBe(true);
-    expect(apiKeyMethods.map(m => m.id)).toEqual(['openai-api-key', 'api-key']);
+    expect(apiKeyMethods.map(m => m.id)).toEqual(['google-api-key', 'api-key']);
   });
 
   it('should return empty array when no api-key methods', () => {
     const methods = parseAuthMethods([
-      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
     ]);
 
     const apiKeyMethods = getApiKeyMethods(methods);
@@ -639,26 +639,20 @@ describe('getApiKeyMethods', () => {
 
 describe('AUTH_METHOD_ID_TO_PROVIDER mapping', () => {
   it('should have all oauth2 provider mappings', () => {
-    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-openai']).toBe('openai');
     expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-github']).toBe('github');
     expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-google']).toBe('google');
     expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-cognito']).toBe('cognito');
     expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-azure']).toBe('azure');
-    expect(AUTH_METHOD_ID_TO_PROVIDER['oauth2-anthropic']).toBe('anthropic');
   });
 
   it('should have all agent provider mappings (legacy)', () => {
-    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-openai']).toBe('openai');
     expect(AUTH_METHOD_ID_TO_PROVIDER['agent-github']).toBe('github');
     expect(AUTH_METHOD_ID_TO_PROVIDER['agent-google']).toBe('google');
     expect(AUTH_METHOD_ID_TO_PROVIDER['agent-cognito']).toBe('cognito');
     expect(AUTH_METHOD_ID_TO_PROVIDER['agent-azure']).toBe('azure');
-    expect(AUTH_METHOD_ID_TO_PROVIDER['agent-anthropic']).toBe('anthropic');
   });
 
   it('should have all api-key provider mappings', () => {
-    expect(AUTH_METHOD_ID_TO_PROVIDER['openai-api-key']).toBe('openai');
-    expect(AUTH_METHOD_ID_TO_PROVIDER['anthropic-api-key']).toBe('anthropic');
     expect(AUTH_METHOD_ID_TO_PROVIDER['github-api-key']).toBe('github');
     expect(AUTH_METHOD_ID_TO_PROVIDER['google-api-key']).toBe('google');
     expect(AUTH_METHOD_ID_TO_PROVIDER['azure-api-key']).toBe('azure');
@@ -1016,13 +1010,13 @@ describe('OAuth Negotiation (Task 21.4)', () => {
   describe('authMethods parsing with type/providerId combinations', () => {
     it('should parse oauth2 type with explicit providerId', () => {
       const raw = [
-        { id: 'custom-oauth', type: 'oauth2', providerId: 'openai' },
+        { id: 'custom-oauth', type: 'oauth2', providerId: 'google' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ kind: 'oauth2', id: 'custom-oauth', providerId: 'openai' });
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'custom-oauth', providerId: 'google' });
     });
 
     it('should parse agent type with explicit providerId', () => {
@@ -1040,13 +1034,13 @@ describe('OAuth Negotiation (Task 21.4)', () => {
 
     it('should parse api-key type with explicit providerId', () => {
       const raw = [
-        { id: 'custom-api-key', type: 'api-key', providerId: 'anthropic' },
+        { id: 'custom-api-key', type: 'api-key', providerId: 'github' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ kind: 'api-key', id: 'custom-api-key', providerId: 'anthropic' });
+      expect(result[0]).toEqual({ kind: 'api-key', id: 'custom-api-key', providerId: 'github' });
     });
 
     it('should parse api-key type without providerId', () => {
@@ -1062,19 +1056,19 @@ describe('OAuth Negotiation (Task 21.4)', () => {
 
     it('should parse mixed auth methods correctly', () => {
       const raw = [
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'agent-github', type: 'agent', providerId: 'github' },
-        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+        { id: 'google-api-key', type: 'api-key', providerId: 'google' },
         { id: 'generic-key', type: 'api-key' },
       ];
 
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(4);
-      expect(result[0]).toEqual({ kind: 'oauth2', id: 'oauth2-openai', providerId: 'openai' });
+      expect(result[0]).toEqual({ kind: 'oauth2', id: 'oauth2-google', providerId: 'google' });
       // Agent Auth: type: 'agent' is parsed as kind: 'agent' (ACP-compliant)
       expect(result[1]).toEqual({ kind: 'agent', id: 'agent-github', providerId: 'github' });
-      expect(result[2]).toEqual({ kind: 'api-key', id: 'openai-api-key', providerId: 'openai' });
+      expect(result[2]).toEqual({ kind: 'api-key', id: 'google-api-key', providerId: 'google' });
       expect(result[3]).toEqual({ kind: 'api-key', id: 'generic-key', providerId: undefined });
     });
 
@@ -1110,7 +1104,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
     });
 
     it('should handle all supported providers', () => {
-      const providers = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+      const providers = ['github', 'google', 'cognito', 'azure', 'oidc'];
 
       for (const provider of providers) {
         const raw = [
@@ -1132,7 +1126,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
   describe('OAuth flow trigger', () => {
     it('should identify OAuth methods from authMethods array', () => {
       const methods = parseAuthMethods([
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'api-key', type: 'api-key' },
         { id: 'agent-github', type: 'agent', providerId: 'github' },
       ]);
@@ -1143,13 +1137,13 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       // Agent Auth (type: 'agent') is handled separately via getAgentAuthMethods()
       expect(oauthMethods).toHaveLength(1);
       expect(oauthMethods[0].kind).toBe('oauth2');
-      expect(oauthMethods[0].providerId).toBe('openai');
+      expect(oauthMethods[0].providerId).toBe('google');
     });
 
     it('should prioritize OAuth methods over API key methods', () => {
       const methods = parseAuthMethods([
-        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'google-api-key', type: 'api-key', providerId: 'google' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       ]);
 
       const oauthMethods = getOAuthMethods(methods);
@@ -1167,7 +1161,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       // Per AUTH_REQUIREMENTS.md: type: 'agent' means Agent Auth
       // where the agent handles OAuth internally via authenticate method
       const methods = parseAuthMethods([
-        { id: 'agent-anthropic', type: 'agent', providerId: 'anthropic' },
+        { id: 'agent-github', type: 'agent', providerId: 'github' },
       ]);
 
       const oauthMethods = getOAuthMethods(methods);
@@ -1178,13 +1172,13 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       // Agent Auth is handled separately
       expect(agentAuthMethods).toHaveLength(1);
       expect(agentAuthMethods[0].kind).toBe('agent');
-      expect(agentAuthMethods[0].providerId).toBe('anthropic');
+      expect(agentAuthMethods[0].providerId).toBe('github');
     });
 
     it('should return empty array when no OAuth methods present', () => {
       const methods = parseAuthMethods([
         { id: 'api-key', type: 'api-key' },
-        { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+        { id: 'google-api-key', type: 'api-key', providerId: 'google' },
       ]);
 
       const oauthMethods = getOAuthMethods(methods);
@@ -1542,7 +1536,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
     it('should handle authMethods with only invalid entries', () => {
       const raw = [
         { id: 'invalid-1', type: 'unknown-type' },
-        { id: '', type: 'oauth2', providerId: 'openai' },
+        { id: '', type: 'oauth2', providerId: 'google' },
         { type: 'api-key' },  // Missing id
       ];
 
@@ -1554,7 +1548,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       const raw = [
         { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
         { id: 'api-key', type: 'api-key' },
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       ];
 
       const result = parseAuthMethods(raw);
@@ -1562,7 +1556,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       expect(result).toHaveLength(3);
       expect(result[0].id).toBe('oauth2-github');
       expect(result[1].id).toBe('api-key');
-      expect(result[2].id).toBe('oauth2-openai');
+      expect(result[2].id).toBe('oauth2-google');
     });
 
     it('should handle concurrent state changes safely', async () => {
@@ -1613,7 +1607,7 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
       const router = new MessageRouter(registry, runtimeManager, writeCallback);
 
       // Set OAuth requirement for the agent
-      router.setAgentOAuthRequirement('oauth-required-agent', 'openai');
+      router.setAgentOAuthRequirement('oauth-required-agent', 'github');
 
       // Auth state is 'none' (not authenticated)
       expect(router.getAuthState('oauth-required-agent')).toBe('none');
@@ -1723,7 +1717,7 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
       const router = new MessageRouter(registry, runtimeManager, writeCallback);
 
       // Set OAuth requirement and mark as authenticated
-      router.setAgentOAuthRequirement('authenticated-agent', 'openai');
+      router.setAgentOAuthRequirement('authenticated-agent', 'github');
       router.setAuthState('authenticated-agent', 'authenticated');
 
       // Route a request - should proceed normally
@@ -1755,7 +1749,7 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
       const router = new MessageRouter(registry, runtimeManager, writeCallback);
 
       // Set OAuth requirement and mark as pending
-      router.setAgentOAuthRequirement('pending-auth-agent', 'anthropic');
+      router.setAgentOAuthRequirement('pending-auth-agent', 'github');
       router.setAuthState('pending-auth-agent', 'pending');
 
       // Queue a request while auth is pending
@@ -1825,11 +1819,11 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
 
       const router = new MessageRouter(registry, runtimeManager, writeCallback);
 
-      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-openai');
+      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-google');
 
       expect(errorResponse.error.data).toBeDefined();
       const data = errorResponse.error.data as Record<string, unknown>;
-      expect(data.requiredMethod).toBe('oauth2-openai');
+      expect(data.requiredMethod).toBe('oauth2-google');
     });
 
     it('should include supportedMethods array in AUTH_REQUIRED error', () => {
@@ -1934,15 +1928,14 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
 
       const router = new MessageRouter(registry, runtimeManager, writeCallback);
 
-      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-openai');
+      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-google');
 
       const data = errorResponse.error.data as Record<string, unknown>;
       const supportedMethods = data.supportedMethods as string[];
 
       // Should include at least the basic api-key methods
       expect(supportedMethods).toContain('api-key');
-      expect(supportedMethods).toContain('openai-api-key');
-      expect(supportedMethods).toContain('anthropic-api-key');
+      expect(supportedMethods).toContain('google-api-key');
     });
 
     it('should handle null request ID in error response', () => {
@@ -1952,7 +1945,7 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
 
       const router = new MessageRouter(registry, runtimeManager, writeCallback);
 
-      const errorResponse = router.createAuthRequiredError(null, 'test-agent', 'oauth2-openai');
+      const errorResponse = router.createAuthRequiredError(null, 'test-agent', 'oauth2-google');
 
       expect(errorResponse.jsonrpc).toBe('2.0');
       expect(errorResponse.id).toBeNull();
@@ -2004,7 +1997,7 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
       expect(result1).toBeUndefined();
 
       // Set OAuth requirement
-      router.setAgentOAuthRequirement('dynamic-auth-agent', 'openai');
+      router.setAgentOAuthRequirement('dynamic-auth-agent', 'github');
 
       // Second request should fail with AUTH_REQUIRED
       const result2 = await router.route({
@@ -2062,11 +2055,11 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
 
     it('should handle multiple agents with different OAuth requirements', async () => {
       const agents = new Map<string, RegistryAgent>();
-      agents.set('agent-openai', {
-        id: 'agent-openai',
-        name: 'OpenAI Agent',
+      agents.set('agent-google', {
+        id: 'agent-google',
+        name: 'Google Agent',
         version: '1.0.0',
-        distribution: { npx: { package: 'agent-openai' } },
+        distribution: { npx: { package: 'agent-google' } },
       });
       agents.set('agent-github', {
         id: 'agent-github',
@@ -2088,19 +2081,19 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
       const router = new MessageRouter(registry, runtimeManager, writeCallback);
 
       // Set different OAuth requirements
-      router.setAgentOAuthRequirement('agent-openai', 'openai');
+      router.setAgentOAuthRequirement('agent-google', 'google');
       router.setAgentOAuthRequirement('agent-github', 'github');
       // agent-no-auth has no OAuth requirement
 
-      // Authenticate only agent-openai
-      router.setAuthState('agent-openai', 'authenticated');
+      // Authenticate only agent-google
+      router.setAuthState('agent-google', 'authenticated');
 
-      // agent-openai should succeed
+      // agent-google should succeed
       const result1 = await router.route({
         jsonrpc: '2.0',
         id: 1,
         method: 'session/new',
-        agentId: 'agent-openai',
+        agentId: 'agent-google',
         params: {},
       });
       expect(result1).toBeUndefined();
@@ -2138,7 +2131,7 @@ describe('getAgentAuthMethods', () => {
   it('should filter only agent auth methods', () => {
     const methods = parseAuthMethods([
       { id: 'my-agent-auth', type: 'agent' },
-      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       { id: 'api-key', type: 'api-key' },
       { id: 'another-agent', type: 'agent', providerId: 'github' },
     ]);
@@ -2152,7 +2145,7 @@ describe('getAgentAuthMethods', () => {
 
   it('should return empty array when no agent auth methods', () => {
     const methods = parseAuthMethods([
-      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       { id: 'api-key', type: 'api-key' },
     ]);
 
@@ -2444,7 +2437,7 @@ describe('Agent Auth Flow (Task 35)', () => {
       // Agent Auth should be used (agent handles OAuth internally)
       const methods = parseAuthMethods([
         { id: 'my-agent-auth', type: 'agent', name: 'Agent Auth' },
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       ]);
 
       const agentMethods = getAgentAuthMethods(methods);
@@ -2489,7 +2482,7 @@ describe('Agent Auth Flow (Task 35)', () => {
         result: {
           protocolVersion: '1.0',
           authMethods: [
-            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+            { id: 'agent-google', type: 'agent', providerId: 'google' },
           ],
         },
       };
@@ -2519,7 +2512,7 @@ describe('Agent Auth Flow (Task 35)', () => {
       expect(authenticateRequest.jsonrpc).toBe('2.0');
       expect(authenticateRequest.method).toBe('authenticate');
       expect(authenticateRequest.params).toBeDefined();
-      expect(authenticateRequest.params.id).toBe('agent-openai');
+      expect(authenticateRequest.params.id).toBe('agent-google');
       expect(authenticateRequest.id).toMatch(/^agent-auth-test-agent-/);
     });
 
@@ -2603,7 +2596,7 @@ describe('Agent Auth Flow (Task 35)', () => {
         result: {
           protocolVersion: '1.0',
           authMethods: [
-            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+            { id: 'agent-google', type: 'agent', providerId: 'google' },
           ],
         },
       });
@@ -2664,7 +2657,7 @@ describe('Agent Auth Flow (Task 35)', () => {
         result: {
           protocolVersion: '1.0',
           authMethods: [
-            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+            { id: 'agent-google', type: 'agent', providerId: 'google' },
           ],
         },
       });
@@ -2805,7 +2798,7 @@ describe('Agent Auth Flow (Task 35)', () => {
         result: {
           protocolVersion: '1.0',
           authMethods: [
-            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+            { id: 'agent-google', type: 'agent', providerId: 'google' },
           ],
         },
       });
@@ -2876,7 +2869,7 @@ describe('Agent Auth Flow (Task 35)', () => {
         result: {
           protocolVersion: '1.0',
           authMethods: [
-            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+            { id: 'agent-google', type: 'agent', providerId: 'google' },
           ],
         },
       });
@@ -2938,7 +2931,7 @@ describe('Agent Auth Flow (Task 35)', () => {
         result: {
           protocolVersion: '1.0',
           authMethods: [
-            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+            { id: 'agent-google', type: 'agent', providerId: 'google' },
           ],
         },
       });
@@ -2970,7 +2963,7 @@ describe('Agent Auth Flow (Task 35)', () => {
   describe('getAgentAuthMethods', () => {
     it('should filter only agent auth methods', () => {
       const methods = parseAuthMethods([
-        { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+        { id: 'agent-google', type: 'agent', providerId: 'google' },
         { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
         { id: 'my-agent-auth', type: 'agent' },
         { id: 'api-key', type: 'api-key' },
@@ -2980,12 +2973,12 @@ describe('Agent Auth Flow (Task 35)', () => {
 
       expect(agentMethods).toHaveLength(2);
       expect(agentMethods.every(m => m.kind === 'agent')).toBe(true);
-      expect(agentMethods.map(m => m.id)).toEqual(['agent-openai', 'my-agent-auth']);
+      expect(agentMethods.map(m => m.id)).toEqual(['agent-google', 'my-agent-auth']);
     });
 
     it('should return empty array when no agent auth methods', () => {
       const methods = parseAuthMethods([
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'api-key', type: 'api-key' },
       ]);
 
@@ -3024,7 +3017,7 @@ describe('Terminal Auth Flow (Task 36)', () => {
     it('should filter only terminal auth methods', () => {
       const methods = parseAuthMethods([
         { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'terminal-login', type: 'terminal', args: ['--login'], env: { DEBUG: 'true' } },
         { id: 'api-key', type: 'api-key' },
       ]);
@@ -3038,7 +3031,7 @@ describe('Terminal Auth Flow (Task 36)', () => {
 
     it('should return empty array when no terminal auth methods', () => {
       const methods = parseAuthMethods([
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'api-key', type: 'api-key' },
       ]);
 
@@ -3052,7 +3045,7 @@ describe('Terminal Auth Flow (Task 36)', () => {
         {
           id: 'terminal-setup',
           type: 'terminal',
-          args: ['--setup', '--provider', 'openai'],
+          args: ['--setup', '--provider', 'github'],
           env: { API_KEY: 'test', DEBUG: 'true' },
         },
       ]);
@@ -3060,7 +3053,7 @@ describe('Terminal Auth Flow (Task 36)', () => {
       expect(methods).toHaveLength(1);
       expect(methods[0].kind).toBe('terminal');
       if (methods[0].kind === 'terminal') {
-        expect(methods[0].args).toEqual(['--setup', '--provider', 'openai']);
+        expect(methods[0].args).toEqual(['--setup', '--provider', 'github']);
         expect(methods[0].env).toEqual({ API_KEY: 'test', DEBUG: 'true' });
       }
     });
@@ -3467,7 +3460,7 @@ describe('Terminal Auth Flow (Task 36)', () => {
             {
               id: 'terminal-setup',
               type: 'terminal',
-              args: ['--setup', '--provider', 'openai'],
+              args: ['--setup', '--provider', 'github'],
             },
           ],
         },
@@ -3478,7 +3471,7 @@ describe('Terminal Auth Flow (Task 36)', () => {
       // Check spawn was called with correct args
       expect(mockSpawn).toHaveBeenCalledWith(
         'node',  // command from registry
-        ['--setup', '--provider', 'openai'],  // args from authMethod (replacement)
+        ['--setup', '--provider', 'github'],  // args from authMethod (replacement)
         expect.objectContaining({
           stdio: 'inherit',
           shell: false,
@@ -3703,7 +3696,7 @@ describe('Terminal Auth Flow (Task 36)', () => {
   describe('Terminal Auth precedence', () => {
     it('should prefer Agent Auth over Terminal Auth when both are present', () => {
       const methods = parseAuthMethods([
-        { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+        { id: 'agent-google', type: 'agent', providerId: 'google' },
         { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
       ]);
 
@@ -3715,13 +3708,13 @@ describe('Terminal Auth Flow (Task 36)', () => {
       expect(terminalMethods).toHaveLength(1);
 
       // Agent Auth should be first in precedence (checked first in attemptAuthentication)
-      expect(agentMethods[0].id).toBe('agent-openai');
+      expect(agentMethods[0].id).toBe('agent-google');
     });
 
     it('should prefer Terminal Auth over OAuth when both are present', () => {
       const methods = parseAuthMethods([
         { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
       ]);
 
       const terminalMethods = getTerminalAuthMethods(methods);

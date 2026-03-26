@@ -13,11 +13,12 @@ import type { AuthorizationParams } from '../types.js';
 
 /**
  * Concrete implementation for testing.
+ * Note: Uses 'github' as the test provider ID since OpenAI is not an OAuth provider.
  */
 class TestProvider extends BaseAuthProvider {
   constructor(config: Partial<BaseProviderConfig> = {}) {
     super({
-      id: 'openai',
+      id: 'github',
       name: 'Test Provider',
       authorizationEndpoint: 'https://auth.example.com/authorize',
       tokenEndpoint: 'https://auth.example.com/token',
@@ -33,7 +34,7 @@ describe('BaseAuthProvider', () => {
     it('should initialize with provided config', () => {
       const provider = new TestProvider();
 
-      expect(provider.id).toBe('openai');
+      expect(provider.id).toBe('github');
       expect(provider.name).toBe('Test Provider');
       expect(provider.defaultScopes).toEqual(['openid', 'profile']);
     });

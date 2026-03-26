@@ -30,7 +30,7 @@ describe('AuthSession', () => {
   const createTestSession = (timeoutMs?: number) => {
     const { verifier, challenge } = generatePKCEPair();
     const state = generateState();
-    return new AuthSession('openai', verifier, challenge, state, timeoutMs);
+    return new AuthSession('github', verifier, challenge, state, timeoutMs);
   };
 
   describe('constructor', () => {
@@ -71,7 +71,7 @@ describe('AuthSession', () => {
     });
 
     it('should support all valid provider IDs', () => {
-      const providers = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'] as const;
+      const providers = ['github', 'google', 'cognito', 'azure'] as const;
       const { verifier, challenge } = generatePKCEPair();
       const state = generateState();
 
@@ -159,7 +159,7 @@ describe('AuthSession', () => {
     it('should return true for matching state', () => {
       const { verifier, challenge } = generatePKCEPair();
       const state = generateState();
-      const session = new AuthSession('openai', verifier, challenge, state);
+      const session = new AuthSession('github', verifier, challenge, state);
 
       expect(session.validateState(state)).toBe(true);
     });
@@ -179,7 +179,7 @@ describe('AuthSession', () => {
     it('should return false for partial state match', () => {
       const { verifier, challenge } = generatePKCEPair();
       const state = 'abcdefghijklmnopqrstuvwxyz123456789012345678';
-      const session = new AuthSession('openai', verifier, challenge, state);
+      const session = new AuthSession('github', verifier, challenge, state);
 
       // Try with partial state
       expect(session.validateState('abcdefghijklmnopqrstuvwxyz')).toBe(false);
@@ -188,7 +188,7 @@ describe('AuthSession', () => {
     it('should be case-sensitive', () => {
       const { verifier, challenge } = generatePKCEPair();
       const state = 'AbCdEfGhIjKlMnOpQrStUvWxYz123456789012345678';
-      const session = new AuthSession('openai', verifier, challenge, state);
+      const session = new AuthSession('github', verifier, challenge, state);
 
       expect(session.validateState(state.toLowerCase())).toBe(false);
       expect(session.validateState(state.toUpperCase())).toBe(false);
@@ -215,10 +215,10 @@ describe('createSession', () => {
   });
 
   it('should create a session with generated PKCE and state parameters', () => {
-    const session = createSession('openai');
+    const session = createSession('github');
 
     expect(session.sessionId).toBeDefined();
-    expect(session.providerId).toBe('openai');
+    expect(session.providerId).toBe('github');
     expect(session.codeVerifier).toBeDefined();
     expect(session.codeVerifier.length).toBeGreaterThanOrEqual(43);
     expect(session.codeChallenge).toBeDefined();
@@ -234,8 +234,8 @@ describe('createSession', () => {
   });
 
   it('should generate unique sessions', () => {
-    const session1 = createSession('openai');
-    const session2 = createSession('openai');
+    const session1 = createSession('github');
+    const session2 = createSession('github');
 
     expect(session1.sessionId).not.toBe(session2.sessionId);
     expect(session1.codeVerifier).not.toBe(session2.codeVerifier);
@@ -276,10 +276,10 @@ describe('SessionManager', () => {
 
   describe('create', () => {
     it('should create and register a new session', () => {
-      const session = manager.create('openai');
+      const session = manager.create('github');
 
       expect(session).toBeDefined();
-      expect(session.providerId).toBe('openai');
+      expect(session.providerId).toBe('github');
       expect(session.sessionId).toBeDefined();
       expect(manager.size()).toBe(1);
     });
@@ -292,9 +292,9 @@ describe('SessionManager', () => {
     });
 
     it('should create multiple unique sessions', () => {
-      const session1 = manager.create('openai');
+      const session1 = manager.create('github');
       const session2 = manager.create('github');
-      const session3 = manager.create('openai');
+      const session3 = manager.create('github');
 
       expect(manager.size()).toBe(3);
       expect(session1.sessionId).not.toBe(session2.sessionId);
@@ -305,7 +305,7 @@ describe('SessionManager', () => {
 
   describe('get', () => {
     it('should return session by session ID', () => {
-      const created = manager.create('openai');
+      const created = manager.create('github');
       const retrieved = manager.get(created.sessionId);
 
       expect(retrieved).toBe(created);
@@ -317,7 +317,7 @@ describe('SessionManager', () => {
     });
 
     it('should return undefined and remove expired session', async () => {
-      const session = manager.create('openai', 1); // 1ms timeout
+      const session = manager.create('github', 1); // 1ms timeout
 
       // Wait for expiration
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -330,7 +330,7 @@ describe('SessionManager', () => {
 
   describe('getByState', () => {
     it('should return session by state parameter', () => {
-      const created = manager.create('openai');
+      const created = manager.create('github');
       const retrieved = manager.getByState(created.state);
 
       expect(retrieved).toBe(created);
@@ -342,7 +342,7 @@ describe('SessionManager', () => {
     });
 
     it('should return undefined and remove expired session', async () => {
-      const session = manager.create('openai', 1); // 1ms timeout
+      const session = manager.create('github', 1); // 1ms timeout
       const state = session.state;
 
       // Wait for expiration
@@ -356,7 +356,7 @@ describe('SessionManager', () => {
 
   describe('remove', () => {
     it('should remove session by session ID', () => {
-      const session = manager.create('openai');
+      const session = manager.create('github');
       const removed = manager.remove(session.sessionId);
 
       expect(removed).toBe(true);
@@ -370,7 +370,7 @@ describe('SessionManager', () => {
     });
 
     it('should also remove state mapping', () => {
-      const session = manager.create('openai');
+      const session = manager.create('github');
       manager.remove(session.sessionId);
 
       expect(manager.getByState(session.state)).toBeUndefined();
@@ -379,7 +379,7 @@ describe('SessionManager', () => {
 
   describe('removeByState', () => {
     it('should remove session by state parameter', () => {
-      const session = manager.create('openai');
+      const session = manager.create('github');
       const removed = manager.removeByState(session.state);
 
       expect(removed).toBe(true);
@@ -394,7 +394,7 @@ describe('SessionManager', () => {
 
   describe('list', () => {
     it('should return all active sessions', () => {
-      manager.create('openai');
+      manager.create('github');
       manager.create('github');
       manager.create('google');
 
@@ -408,7 +408,7 @@ describe('SessionManager', () => {
     });
 
     it('should filter out and remove expired sessions', async () => {
-      manager.create('openai', 1); // Will expire
+      manager.create('github', 1); // Will expire
       manager.create('github', 60000); // Won't expire
 
       // Wait for first session to expire
@@ -427,7 +427,7 @@ describe('SessionManager', () => {
     });
 
     it('should return correct count', () => {
-      manager.create('openai');
+      manager.create('github');
       manager.create('github');
       expect(manager.size()).toBe(2);
     });
@@ -435,7 +435,7 @@ describe('SessionManager', () => {
 
   describe('has', () => {
     it('should return true for existing session', () => {
-      const session = manager.create('openai');
+      const session = manager.create('github');
       expect(manager.has(session.sessionId)).toBe(true);
     });
 
@@ -444,7 +444,7 @@ describe('SessionManager', () => {
     });
 
     it('should return false for expired session', async () => {
-      const session = manager.create('openai', 1);
+      const session = manager.create('github', 1);
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -454,7 +454,7 @@ describe('SessionManager', () => {
 
   describe('hasByState', () => {
     it('should return true for existing state', () => {
-      const session = manager.create('openai');
+      const session = manager.create('github');
       expect(manager.hasByState(session.state)).toBe(true);
     });
 
@@ -465,7 +465,7 @@ describe('SessionManager', () => {
 
   describe('cleanup', () => {
     it('should remove expired sessions', async () => {
-      manager.create('openai', 1); // Will expire
+      manager.create('github', 1); // Will expire
       manager.create('github', 1); // Will expire
       manager.create('google', 60000); // Won't expire
 
@@ -478,7 +478,7 @@ describe('SessionManager', () => {
     });
 
     it('should return 0 when no expired sessions', () => {
-      manager.create('openai', 60000);
+      manager.create('github', 60000);
       manager.create('github', 60000);
 
       const removed = manager.cleanup();
@@ -523,7 +523,7 @@ describe('SessionManager', () => {
 
   describe('clear', () => {
     it('should remove all sessions', () => {
-      manager.create('openai');
+      manager.create('github');
       manager.create('github');
       manager.create('google');
 
@@ -545,7 +545,7 @@ describe('SessionManager', () => {
       // Create manager with very short cleanup interval
       const autoManager = new SessionManager(50, true);
 
-      autoManager.create('openai', 1); // Will expire immediately
+      autoManager.create('github', 1); // Will expire immediately
       autoManager.create('github', 60000); // Won't expire
 
       // Wait for cleanup to run

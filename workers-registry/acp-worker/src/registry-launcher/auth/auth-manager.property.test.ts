@@ -218,14 +218,13 @@ class MockAuthProvider implements IAuthProvider {
 
 /**
  * Valid provider IDs for testing.
+ * Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
  */
 const VALID_PROVIDER_IDS: AuthProviderId[] = [
-  'openai',
   'github',
   'google',
   'cognito',
   'azure',
-  'anthropic',
 ];
 
 /**
@@ -249,11 +248,10 @@ const agentIdArb = fc.string({ minLength: 1, maxLength: 50 })
 /**
  * Generate an agent ID that maps to a specific provider.
  * This is needed because AuthManager.getProviderForAgent() uses keyword matching.
+ * Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
  */
 function agentIdForProvider(providerId: AuthProviderId): string {
   const prefixes: Record<AuthProviderId, string> = {
-    openai: 'openai-agent',
-    anthropic: 'claude-agent',
     github: 'github-copilot',
     google: 'gemini-agent',
     azure: 'azure-agent',

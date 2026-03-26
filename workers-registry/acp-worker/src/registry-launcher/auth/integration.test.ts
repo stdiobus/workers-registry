@@ -390,7 +390,7 @@ describe('Registry Launcher Auth Integration Tests', () => {
         authManager
       );
 
-      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-openai');
+      const errorResponse = router.createAuthRequiredError(1, 'test-agent', 'oauth2-github');
 
       expect(errorResponse.jsonrpc).toBe('2.0');
       expect(errorResponse.id).toBe(1);
@@ -441,13 +441,13 @@ describe('Registry Launcher Auth Integration Tests', () => {
 
       // Store OAuth credentials
       const oauthCredentials: StoredCredentials = {
-        providerId: 'openai',
+        providerId: 'github',
         accessToken: 'oauth-access-token-12345',
         refreshToken: 'oauth-refresh-token',
         expiresAt: Date.now() + 3600000, // 1 hour from now
         storedAt: Date.now(),
       };
-      await credentialStore.store('openai', oauthCredentials);
+      await credentialStore.store('github', oauthCredentials);
 
       // Create AuthManager with both OAuth and legacy credentials
       const legacyApiKeys = {
@@ -469,7 +469,7 @@ describe('Registry Launcher Auth Integration Tests', () => {
       });
 
       // Get token for agent - should return OAuth token, not legacy
-      const token = await authManager.getTokenForAgent('openai-agent', 'openai');
+      const token = await authManager.getTokenForAgent('openai-agent', 'github');
 
       expect(token).toBe('oauth-access-token-12345');
       expect(token).not.toBe('sk-legacy-key-should-not-be-used');
@@ -684,14 +684,14 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
         tokenType: 'Bearer',
       };
 
-      await tokenManager.storeTokens('openai', tokenResponse);
+      await tokenManager.storeTokens('github', tokenResponse);
 
       // Verify tokens can be retrieved
-      const retrievedToken = await tokenManager.getAccessToken('openai');
+      const retrievedToken = await tokenManager.getAccessToken('github');
       expect(retrievedToken).toBe('new-oauth-access-token');
 
       // Verify tokens are valid
-      const hasValid = await tokenManager.hasValidTokens('openai');
+      const hasValid = await tokenManager.hasValidTokens('github');
       expect(hasValid).toBe(true);
     });
 
@@ -728,7 +728,7 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Initial token storage with refresh token
-      await tokenManager.storeTokens('openai', {
+      await tokenManager.storeTokens('github', {
         accessToken: 'initial-access-token',
         refreshToken: 'original-refresh-token',
         expiresIn: 3600,
@@ -736,7 +736,7 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Simulate refresh response without refresh token (some providers do this)
-      await tokenManager.storeTokens('openai', {
+      await tokenManager.storeTokens('github', {
         accessToken: 'refreshed-access-token',
         expiresIn: 3600,
         tokenType: 'Bearer',
@@ -744,7 +744,7 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Verify refresh token was preserved
-      const credentials = await credentialStore.retrieve('openai');
+      const credentials = await credentialStore.retrieve('github');
       expect(credentials?.refreshToken).toBe('original-refresh-token');
       expect(credentials?.accessToken).toBe('refreshed-access-token');
     });
@@ -756,12 +756,12 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
 
       // Pre-store OAuth credentials
       const oauthCredentials: StoredCredentials = {
-        providerId: 'openai',
+        providerId: 'github',
         accessToken: 'stored-oauth-token-for-reuse',
         expiresAt: Date.now() + 3600000,
         storedAt: Date.now(),
       };
-      await credentialStore.store('openai', oauthCredentials);
+      await credentialStore.store('github', oauthCredentials);
 
       const tokenManager = new TokenManager({
         credentialStore,
@@ -775,11 +775,11 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // First request - should use stored token
-      const token1 = await authManager.getTokenForAgent('openai-agent', 'openai');
+      const token1 = await authManager.getTokenForAgent('openai-agent', 'github');
       expect(token1).toBe('stored-oauth-token-for-reuse');
 
       // Second request - should reuse same token (no new browser flow)
-      const token2 = await authManager.getTokenForAgent('openai-agent', 'openai');
+      const token2 = await authManager.getTokenForAgent('openai-agent', 'github');
       expect(token2).toBe('stored-oauth-token-for-reuse');
     });
 
@@ -816,25 +816,25 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Store tokens for different providers
-      await tokenManager.storeTokens('openai', {
-        accessToken: 'openai-specific-token',
-        expiresIn: 3600,
-        tokenType: 'Bearer',
-      });
-
       await tokenManager.storeTokens('github', {
         accessToken: 'github-specific-token',
         expiresIn: 3600,
         tokenType: 'Bearer',
       });
 
-      // Verify isolation
-      const openaiToken = await tokenManager.getAccessToken('openai');
-      const githubToken = await tokenManager.getAccessToken('github');
+      await tokenManager.storeTokens('google', {
+        accessToken: 'google-specific-token',
+        expiresIn: 3600,
+        tokenType: 'Bearer',
+      });
 
-      expect(openaiToken).toBe('openai-specific-token');
+      // Verify isolation
+      const githubToken = await tokenManager.getAccessToken('github');
+      const googleToken = await tokenManager.getAccessToken('google');
+
       expect(githubToken).toBe('github-specific-token');
-      expect(openaiToken).not.toBe(githubToken);
+      expect(googleToken).toBe('google-specific-token');
+      expect(githubToken).not.toBe(googleToken);
     });
   });
 
@@ -847,20 +847,20 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Store expired token
-      await credentialStore.store('openai', {
-        providerId: 'openai',
+      await credentialStore.store('github', {
+        providerId: 'github',
         accessToken: 'expired-token',
         expiresAt: Date.now() - 1000, // Already expired
         storedAt: Date.now() - 3600000,
       });
 
       // Token should not be valid
-      const hasValid = await tokenManager.hasValidTokens('openai');
+      const hasValid = await tokenManager.hasValidTokens('github');
       expect(hasValid).toBe(false);
 
       // getAccessToken returns the token even if expired (caller should check hasValidTokens first)
       // This is by design - the token manager doesn't block retrieval, it just reports validity
-      await tokenManager.getAccessToken('openai');
+      await tokenManager.getAccessToken('github');
       // Token is returned but hasValidTokens correctly reports false
       expect(hasValid).toBe(false);
     });
@@ -873,29 +873,29 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Store token
-      await tokenManager.storeTokens('openai', {
+      await tokenManager.storeTokens('github', {
         accessToken: 'token-to-be-cleared',
         expiresIn: 3600,
         tokenType: 'Bearer',
       });
 
       // Verify token exists
-      expect(await tokenManager.hasValidTokens('openai')).toBe(true);
+      expect(await tokenManager.hasValidTokens('github')).toBe(true);
 
       // Clear tokens
-      await tokenManager.clearTokens('openai');
+      await tokenManager.clearTokens('github');
 
       // Verify token is cleared
-      expect(await tokenManager.hasValidTokens('openai')).toBe(false);
-      expect(await tokenManager.getAccessToken('openai')).toBeNull();
+      expect(await tokenManager.hasValidTokens('github')).toBe(false);
+      expect(await tokenManager.getAccessToken('github')).toBeNull();
     });
 
     it('should return AUTH_REQUIRED when token refresh fails', async () => {
       const credentialStore = createMockCredentialStore();
 
       // Store token that needs refresh but has no refresh token
-      await credentialStore.store('openai', {
-        providerId: 'openai',
+      await credentialStore.store('github', {
+        providerId: 'github',
         accessToken: 'needs-refresh-token',
         expiresAt: Date.now() + 60000, // Expires in 1 minute (within refresh threshold)
         storedAt: Date.now() - 3600000,
@@ -909,7 +909,7 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
 
       // Token should still be returned if not fully expired
       // (proactive refresh fails but token is still valid)
-      const token = await tokenManager.getAccessToken('openai');
+      const token = await tokenManager.getAccessToken('github');
       expect(token).toBe('needs-refresh-token');
     });
 
@@ -921,15 +921,15 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Store credentials with no expiry (considered valid indefinitely)
-      await credentialStore.store('openai', {
-        providerId: 'openai',
+      await credentialStore.store('github', {
+        providerId: 'github',
         accessToken: 'token-without-expiry',
         storedAt: Date.now(),
         // No expiresAt - token is valid indefinitely
       } as StoredCredentials);
 
       // Token without expiry is considered valid
-      const hasValid = await tokenManager.hasValidTokens('openai');
+      const hasValid = await tokenManager.hasValidTokens('github');
       expect(hasValid).toBe(true);
 
       // But if we store with past expiry, it should be invalid
@@ -952,7 +952,7 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
       });
 
       // Store valid token
-      await tokenManager.storeTokens('openai', {
+      await tokenManager.storeTokens('github', {
         accessToken: 'concurrent-access-token',
         expiresIn: 3600,
         tokenType: 'Bearer',
@@ -960,9 +960,9 @@ describe('Token Persistence and Lifecycle (Task 29)', () => {
 
       // Make concurrent requests
       const [token1, token2, token3] = await Promise.all([
-        tokenManager.getAccessToken('openai'),
-        tokenManager.getAccessToken('openai'),
-        tokenManager.getAccessToken('openai'),
+        tokenManager.getAccessToken('github'),
+        tokenManager.getAccessToken('github'),
+        tokenManager.getAccessToken('github'),
       ]);
 
       // All should return the same token

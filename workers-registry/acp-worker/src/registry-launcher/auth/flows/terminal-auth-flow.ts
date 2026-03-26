@@ -94,17 +94,17 @@ interface ProviderInfo {
 
 /**
  * Provider information for display and configuration.
- * Per ACP Registry spec: OpenAI, Anthropic support API key alternative,
- * GitHub supports Personal Access Token alternative.
+ * Per ACP Registry spec: GitHub supports Personal Access Token alternative.
  * All providers support browser-based OAuth flow.
+ *
+ * Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys only.
+ * OpenAI and Anthropic API key support will be handled by the model-credentials module.
  */
 const PROVIDER_INFO: readonly ProviderInfo[] = [
-  { id: 'openai', name: 'OpenAI', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, supportsOAuth: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'OPENAI_API_KEY' },
   { id: 'github', name: 'GitHub', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: true, supportsOAuth: true, apiKeyLabel: 'Personal Access Token', apiKeyEnvVar: 'GITHUB_TOKEN' },
   { id: 'google', name: 'Google', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: false, supportsOAuth: true },
   { id: 'cognito', name: 'AWS Cognito', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
   { id: 'azure', name: 'Azure AD', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
-  { id: 'anthropic', name: 'Anthropic', requiresClientSecret: false, requiresCustomEndpoints: false, supportsApiKey: true, supportsOAuth: true, apiKeyLabel: 'API Key', apiKeyEnvVar: 'ANTHROPIC_API_KEY' },
 ] as const;
 
 
@@ -230,11 +230,14 @@ export class TerminalAuthFlow {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[TerminalAuthFlow] Error: ${errorMessage}`);
 
+      // Use the provided providerId or default to 'github' for error reporting
+      // Note: OpenAI is NOT an OAuth provider - it uses API keys
+      const errorProviderId = providerId || 'github';
       return {
         useBrowserOAuth: false,
         authResult: {
           success: false,
-          providerId: providerId || 'openai',
+          providerId: errorProviderId,
           error: {
             code: 'PROVIDER_ERROR',
             message: `Terminal auth flow failed: ${errorMessage}`,

@@ -126,18 +126,18 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: true,
-          providerId: 'openai',
+          providerId: 'github',
         },
       });
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
 
       expect(exitCode).toBe(0);
-      expect(mockTerminalAuthFlowExecute).toHaveBeenCalledWith('openai');
+      expect(mockTerminalAuthFlowExecute).toHaveBeenCalledWith('github');
       mockOutput.stream.end();
     });
 
@@ -171,7 +171,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: true,
-          providerId: 'openai',
+          providerId: 'github',
         },
       });
 
@@ -197,23 +197,23 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
       // Terminal auth flow returns browser OAuth indicator
       mockTerminalAuthFlowExecute.mockResolvedValue({
         useBrowserOAuth: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       // Browser auth flow succeeds
       mockAgentAuthFlowExecute.mockResolvedValue({
         success: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
 
       expect(exitCode).toBe(0);
-      expect(mockAgentAuthFlowExecute).toHaveBeenCalledWith('openai');
+      expect(mockAgentAuthFlowExecute).toHaveBeenCalledWith('github');
       mockOutput.stream.end();
     });
 
@@ -283,12 +283,12 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: true,
-          providerId: 'openai',
+          providerId: 'github',
         },
       });
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -306,12 +306,12 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: true,
-          providerId: 'anthropic',
+          providerId: 'github',
         },
       });
 
       const exitCode = await runSetupCommand({
-        providerId: 'anthropic',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -328,7 +328,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: false,
-          providerId: 'openai',
+          providerId: 'github',
           error: {
             code: 'INVALID_CREDENTIALS',
             message: 'Invalid API key',
@@ -337,7 +337,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
       });
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -358,16 +358,16 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
 
       mockTerminalAuthFlowExecute.mockResolvedValue({
         useBrowserOAuth: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       mockAgentAuthFlowExecute.mockResolvedValue({
         success: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -414,12 +414,12 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
 
       mockTerminalAuthFlowExecute.mockResolvedValue({
         useBrowserOAuth: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       mockAgentAuthFlowExecute.mockResolvedValue({
         success: false,
-        providerId: 'openai',
+        providerId: 'github',
         error: {
           code: 'TIMEOUT',
           message: 'Authentication timed out',
@@ -427,7 +427,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
       });
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -536,16 +536,16 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
 
       mockTerminalAuthFlowExecute.mockResolvedValue({
         useBrowserOAuth: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       mockAgentAuthFlowExecute.mockResolvedValue({
         success: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -568,12 +568,12 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: true,
-          providerId: 'openai',
+          providerId: 'github',
         },
       });
 
       await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -655,7 +655,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
       mockTerminalAuthFlowExecute.mockRejectedValue(new Error('Unexpected error'));
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -673,13 +673,13 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
 
       mockTerminalAuthFlowExecute.mockResolvedValue({
         useBrowserOAuth: true,
-        providerId: 'openai',
+        providerId: 'github',
       });
 
       mockAgentAuthFlowExecute.mockRejectedValue(new Error('Browser launch failed'));
 
       const exitCode = await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -700,12 +700,12 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: true,
-          providerId: 'openai',
+          providerId: 'github',
         },
       });
 
       await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
@@ -721,7 +721,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
         useBrowserOAuth: false,
         authResult: {
           success: true,
-          providerId: 'openai',
+          providerId: 'github',
         },
       });
 
@@ -729,7 +729,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
       const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
       try {
-        const exitCode = await runSetupCommand({ providerId: 'openai' });
+        const exitCode = await runSetupCommand({ providerId: 'github' });
         expect(exitCode).toBe(0);
       } finally {
         stderrSpy.mockRestore();
@@ -738,7 +738,7 @@ describe('Setup Command Unit Tests (Updated Wizard)', () => {
   });
 
   describe('All Valid Providers', () => {
-    const validProviders: AuthProviderId[] = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+    const validProviders: AuthProviderId[] = ['github', 'google', 'cognito', 'azure'];
 
     it.each(validProviders)('should accept valid provider: %s for browser OAuth', async (providerId) => {
       const mockOutput = createMockOutput();

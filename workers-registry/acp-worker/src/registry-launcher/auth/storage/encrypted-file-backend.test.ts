@@ -87,10 +87,10 @@ describe('EncryptedFileBackend', () => {
 
   describe('store and retrieve', () => {
     it('should store and retrieve credentials for a provider', async () => {
-      const credentials = createTestCredentials('openai');
+      const credentials = createTestCredentials('github');
 
-      await backend.store('openai', credentials);
-      const retrieved = await backend.retrieve('openai');
+      await backend.store('github', credentials);
+      const retrieved = await backend.retrieve('github');
 
       expect(retrieved).toEqual(credentials);
     });
@@ -101,41 +101,41 @@ describe('EncryptedFileBackend', () => {
     });
 
     it('should store credentials for multiple providers', async () => {
-      const openaiCreds = createTestCredentials('openai');
       const githubCreds = createTestCredentials('github');
       const googleCreds = createTestCredentials('google');
+      const azureCreds = createTestCredentials('azure');
 
-      await backend.store('openai', openaiCreds);
       await backend.store('github', githubCreds);
       await backend.store('google', googleCreds);
+      await backend.store('azure', azureCreds);
 
-      expect(await backend.retrieve('openai')).toEqual(openaiCreds);
       expect(await backend.retrieve('github')).toEqual(githubCreds);
       expect(await backend.retrieve('google')).toEqual(googleCreds);
+      expect(await backend.retrieve('azure')).toEqual(azureCreds);
     });
 
     it('should overwrite existing credentials for the same provider', async () => {
-      const oldCreds = createTestCredentials('openai');
+      const oldCreds = createTestCredentials('github');
       const newCreds = {
-        ...createTestCredentials('openai'),
+        ...createTestCredentials('github'),
         accessToken: 'new-access-token',
       };
 
-      await backend.store('openai', oldCreds);
-      await backend.store('openai', newCreds);
+      await backend.store('github', oldCreds);
+      await backend.store('github', newCreds);
 
-      const retrieved = await backend.retrieve('openai');
+      const retrieved = await backend.retrieve('github');
       expect(retrieved?.accessToken).toBe('new-access-token');
     });
 
     it('should persist credentials across backend instances', async () => {
-      const credentials = createTestCredentials('openai');
+      const credentials = createTestCredentials('github');
 
-      await backend.store('openai', credentials);
+      await backend.store('github', credentials);
 
       // Create a new backend instance with the same file path
       const newBackend = new EncryptedFileBackend(testFilePath);
-      const retrieved = await newBackend.retrieve('openai');
+      const retrieved = await newBackend.retrieve('github');
 
       expect(retrieved).toEqual(credentials);
     });
@@ -143,32 +143,32 @@ describe('EncryptedFileBackend', () => {
 
   describe('delete', () => {
     it('should delete credentials for a specific provider', async () => {
-      const openaiCreds = createTestCredentials('openai');
       const githubCreds = createTestCredentials('github');
+      const googleCreds = createTestCredentials('google');
 
-      await backend.store('openai', openaiCreds);
       await backend.store('github', githubCreds);
+      await backend.store('google', googleCreds);
 
-      await backend.delete('openai');
+      await backend.delete('github');
 
-      expect(await backend.retrieve('openai')).toBeNull();
-      expect(await backend.retrieve('github')).toEqual(githubCreds);
+      expect(await backend.retrieve('github')).toBeNull();
+      expect(await backend.retrieve('google')).toEqual(googleCreds);
     });
 
     it('should not throw when deleting non-existent provider', async () => {
-      await expect(backend.delete('openai')).resolves.not.toThrow();
+      await expect(backend.delete('github')).resolves.not.toThrow();
     });
   });
 
   describe('deleteAll', () => {
     it('should delete all stored credentials', async () => {
-      await backend.store('openai', createTestCredentials('openai'));
       await backend.store('github', createTestCredentials('github'));
+      await backend.store('google', createTestCredentials('google'));
 
       await backend.deleteAll();
 
-      expect(await backend.retrieve('openai')).toBeNull();
       expect(await backend.retrieve('github')).toBeNull();
+      expect(await backend.retrieve('google')).toBeNull();
     });
 
     it('should not throw when no credentials exist', async () => {
@@ -176,7 +176,7 @@ describe('EncryptedFileBackend', () => {
     });
 
     it('should remove the credentials file', async () => {
-      await backend.store('openai', createTestCredentials('openai'));
+      await backend.store('github', createTestCredentials('github'));
       await backend.deleteAll();
 
       await expect(fs.access(testFilePath)).rejects.toThrow();
@@ -190,21 +190,21 @@ describe('EncryptedFileBackend', () => {
     });
 
     it('should return all providers with stored credentials', async () => {
-      await backend.store('openai', createTestCredentials('openai'));
       await backend.store('github', createTestCredentials('github'));
       await backend.store('google', createTestCredentials('google'));
+      await backend.store('azure', createTestCredentials('azure'));
 
       const providers = await backend.listProviders();
       expect(providers).toHaveLength(3);
-      expect(providers).toContain('openai');
       expect(providers).toContain('github');
       expect(providers).toContain('google');
+      expect(providers).toContain('azure');
     });
   });
 
   describe('encryption', () => {
     it('should store data in encrypted format', async () => {
-      await backend.store('openai', createTestCredentials('openai'));
+      await backend.store('github', createTestCredentials('github'));
 
       // Read the raw file content
       const rawContent = await fs.readFile(testFilePath);
@@ -216,7 +216,7 @@ describe('EncryptedFileBackend', () => {
     });
 
     it('should have correct file format (Salt + IV + AuthTag + Ciphertext)', async () => {
-      await backend.store('openai', createTestCredentials('openai'));
+      await backend.store('github', createTestCredentials('github'));
 
       const rawContent = await fs.readFile(testFilePath);
 
@@ -229,7 +229,7 @@ describe('EncryptedFileBackend', () => {
       await fs.writeFile(testFilePath, 'corrupted data that is long enough to pass minimum length check but is still invalid');
 
       // Should throw CredentialStoreCorruptedError
-      await expect(backend.retrieve('openai')).rejects.toThrow(CredentialStoreCorruptedError);
+      await expect(backend.retrieve('github')).rejects.toThrow(CredentialStoreCorruptedError);
     });
 
     it('should throw CredentialStoreCorruptedError for truncated file', async () => {
@@ -237,7 +237,7 @@ describe('EncryptedFileBackend', () => {
       await fs.writeFile(testFilePath, Buffer.alloc(10));
 
       // Should throw CredentialStoreCorruptedError
-      await expect(backend.retrieve('openai')).rejects.toThrow(CredentialStoreCorruptedError);
+      await expect(backend.retrieve('github')).rejects.toThrow(CredentialStoreCorruptedError);
     });
 
     it('should include descriptive message in CredentialStoreCorruptedError', async () => {
@@ -245,7 +245,7 @@ describe('EncryptedFileBackend', () => {
       await fs.writeFile(testFilePath, Buffer.alloc(10));
 
       try {
-        await backend.retrieve('openai');
+        await backend.retrieve('github');
         fail('Expected CredentialStoreCorruptedError to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(CredentialStoreCorruptedError);
@@ -256,7 +256,7 @@ describe('EncryptedFileBackend', () => {
 
   describe('atomic writes', () => {
     it('should write atomically using temporary file', async () => {
-      await backend.store('openai', createTestCredentials('openai'));
+      await backend.store('github', createTestCredentials('github'));
 
       // Verify no temp file remains
       const files = await fs.readdir(testDir);
@@ -267,16 +267,16 @@ describe('EncryptedFileBackend', () => {
 
   describe('provider isolation (Property 13)', () => {
     it('should not return credentials for a different provider', async () => {
-      const openaiCreds = createTestCredentials('openai');
-      await backend.store('openai', openaiCreds);
+      const githubCreds = createTestCredentials('github');
+      await backend.store('github', githubCreds);
 
-      // Retrieving a different provider should not return openai's credentials
-      const githubCreds = await backend.retrieve('github');
-      expect(githubCreds).toBeNull();
+      // Retrieving a different provider should not return github's credentials
+      const googleCreds = await backend.retrieve('google');
+      expect(googleCreds).toBeNull();
 
-      // Verify openai credentials are still intact
-      const retrievedOpenai = await backend.retrieve('openai');
-      expect(retrievedOpenai).toEqual(openaiCreds);
+      // Verify github credentials are still intact
+      const retrievedGithub = await backend.retrieve('github');
+      expect(retrievedGithub).toEqual(githubCreds);
     });
   });
 });

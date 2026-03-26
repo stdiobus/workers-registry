@@ -6,6 +6,9 @@
 
 /**
  * Unit tests for provider registry.
+ *
+ * Note: OpenAI is NOT included - it uses API keys, not OAuth.
+ * See model-credentials module for API key handling.
  */
 
 import {
@@ -28,7 +31,7 @@ import { BaseAuthProvider } from './base-provider.js';
 class MockProvider extends BaseAuthProvider {
   constructor() {
     super({
-      id: 'openai',
+      id: 'github',
       name: 'Mock Provider',
       authorizationEndpoint: 'https://auth.example.com/authorize',
       tokenEndpoint: 'https://auth.example.com/token',
@@ -45,19 +48,19 @@ describe('Provider Registry', () => {
 
   describe('registerProvider', () => {
     it('should register a provider factory', () => {
-      registerProvider('openai', () => new MockProvider());
+      registerProvider('github', () => new MockProvider());
 
-      expect(hasProvider('openai')).toBe(true);
+      expect(hasProvider('github')).toBe(true);
     });
 
     it('should allow overwriting existing provider', () => {
       const factory1 = jest.fn(() => new MockProvider());
       const factory2 = jest.fn(() => new MockProvider());
 
-      registerProvider('openai', factory1);
-      registerProvider('openai', factory2);
+      registerProvider('github', factory1);
+      registerProvider('github', factory2);
 
-      getProvider('openai');
+      getProvider('github');
 
       expect(factory1).not.toHaveBeenCalled();
       expect(factory2).toHaveBeenCalled();
@@ -66,16 +69,16 @@ describe('Provider Registry', () => {
 
   describe('unregisterProvider', () => {
     it('should unregister a provider', () => {
-      registerProvider('openai', () => new MockProvider());
+      registerProvider('github', () => new MockProvider());
 
-      const result = unregisterProvider('openai');
+      const result = unregisterProvider('github');
 
       expect(result).toBe(true);
-      expect(hasProvider('openai')).toBe(false);
+      expect(hasProvider('github')).toBe(false);
     });
 
     it('should return false for non-existent provider', () => {
-      const result = unregisterProvider('openai');
+      const result = unregisterProvider('github');
 
       expect(result).toBe(false);
     });
@@ -83,8 +86,8 @@ describe('Provider Registry', () => {
 
   describe('clearProviders', () => {
     it('should clear all registered providers', () => {
-      registerProvider('openai', () => new MockProvider());
       registerProvider('github', () => new MockProvider());
+      registerProvider('google', () => new MockProvider());
 
       clearProviders();
 
@@ -94,48 +97,48 @@ describe('Provider Registry', () => {
 
   describe('getProvider', () => {
     it('should return provider instance from factory', () => {
-      registerProvider('openai', () => new MockProvider());
+      registerProvider('github', () => new MockProvider());
 
-      const provider = getProvider('openai');
+      const provider = getProvider('github');
 
       expect(provider).toBeInstanceOf(MockProvider);
-      expect(provider.id).toBe('openai');
+      expect(provider.id).toBe('github');
     });
 
     it('should call factory each time', () => {
       const factory = jest.fn(() => new MockProvider());
-      registerProvider('openai', factory);
+      registerProvider('github', factory);
 
-      getProvider('openai');
-      getProvider('openai');
+      getProvider('github');
+      getProvider('github');
 
       expect(factory).toHaveBeenCalledTimes(2);
     });
 
     it('should throw for unregistered provider', () => {
-      expect(() => getProvider('openai')).toThrow(
-        "Provider 'openai' is not registered. Registered providers: none"
+      expect(() => getProvider('github')).toThrow(
+        "Provider 'github' is not registered. Registered providers: none"
       );
     });
 
     it('should list registered providers in error message', () => {
-      registerProvider('github', () => new MockProvider());
+      registerProvider('google', () => new MockProvider());
 
-      expect(() => getProvider('openai')).toThrow(
-        "Provider 'openai' is not registered. Registered providers: github"
+      expect(() => getProvider('github')).toThrow(
+        "Provider 'github' is not registered. Registered providers: google"
       );
     });
   });
 
   describe('hasProvider', () => {
     it('should return true for registered provider', () => {
-      registerProvider('openai', () => new MockProvider());
+      registerProvider('github', () => new MockProvider());
 
-      expect(hasProvider('openai')).toBe(true);
+      expect(hasProvider('github')).toBe(true);
     });
 
     it('should return false for unregistered provider', () => {
-      expect(hasProvider('openai')).toBe(false);
+      expect(hasProvider('github')).toBe(false);
     });
   });
 
@@ -145,13 +148,13 @@ describe('Provider Registry', () => {
     });
 
     it('should return all registered provider IDs', () => {
-      registerProvider('openai', () => new MockProvider());
       registerProvider('github', () => new MockProvider());
+      registerProvider('google', () => new MockProvider());
 
       const providers = getRegisteredProviders();
 
-      expect(providers).toContain('openai');
       expect(providers).toContain('github');
+      expect(providers).toContain('google');
       expect(providers).toHaveLength(2);
     });
   });
@@ -161,12 +164,11 @@ describe('Provider Registry', () => {
       const supported = getSupportedProviders();
 
       expect(supported).toEqual(SUPPORTED_PROVIDERS);
-      expect(supported).toContain('openai');
+      // Note: OpenAI and Anthropic are NOT included - they use API keys, not OAuth
       expect(supported).toContain('github');
       expect(supported).toContain('google');
       expect(supported).toContain('cognito');
       expect(supported).toContain('azure');
-      expect(supported).toContain('anthropic');
     });
 
     it('should return readonly array', () => {
@@ -179,47 +181,50 @@ describe('Provider Registry', () => {
 
   describe('isValidProviderId', () => {
     it('should return true for supported provider IDs', () => {
-      expect(isValidProviderId('openai')).toBe(true);
+      // Note: OpenAI and Anthropic are NOT valid OAuth providers - they use API keys
       expect(isValidProviderId('github')).toBe(true);
       expect(isValidProviderId('google')).toBe(true);
       expect(isValidProviderId('cognito')).toBe(true);
       expect(isValidProviderId('azure')).toBe(true);
-      expect(isValidProviderId('anthropic')).toBe(true);
     });
 
     it('should return false for unsupported provider IDs', () => {
       expect(isValidProviderId('invalid')).toBe(false);
       expect(isValidProviderId('')).toBe(false);
-      expect(isValidProviderId('OPENAI')).toBe(false);
+      expect(isValidProviderId('GITHUB')).toBe(false);
+      // OpenAI and Anthropic are not valid OAuth providers
+      expect(isValidProviderId('openai')).toBe(false);
+      expect(isValidProviderId('anthropic')).toBe(false);
     });
   });
 
   describe('isProviderAvailable', () => {
     it('should return true for registered and valid provider', () => {
-      registerProvider('openai', () => new MockProvider());
+      registerProvider('github', () => new MockProvider());
 
-      expect(isProviderAvailable('openai')).toBe(true);
+      expect(isProviderAvailable('github')).toBe(true);
     });
 
     it('should return false for valid but unregistered provider', () => {
-      expect(isProviderAvailable('openai')).toBe(false);
+      expect(isProviderAvailable('github')).toBe(false);
     });
 
     it('should return false for invalid provider ID', () => {
       expect(isProviderAvailable('invalid')).toBe(false);
+      // OpenAI is not a valid OAuth provider
+      expect(isProviderAvailable('github')).toBe(false);
     });
   });
 
   describe('SUPPORTED_PROVIDERS', () => {
     it('should contain all expected providers', () => {
-      expect(SUPPORTED_PROVIDERS).toHaveLength(6);
+      // Note: OpenAI and Anthropic are NOT included - they use API keys, not OAuth
+      expect(SUPPORTED_PROVIDERS).toHaveLength(4);
       expect(SUPPORTED_PROVIDERS).toEqual([
-        'openai',
         'github',
         'google',
         'cognito',
         'azure',
-        'anthropic',
       ]);
     });
   });

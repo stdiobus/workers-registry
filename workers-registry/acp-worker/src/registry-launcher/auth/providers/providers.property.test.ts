@@ -19,11 +19,12 @@ import type { AuthorizationParams } from '../types.js';
 
 /**
  * Concrete test provider for property testing.
+ * Note: Uses 'github' as the test provider ID since OpenAI is not an OAuth provider.
  */
 class TestProvider extends BaseAuthProvider {
   constructor(config: Partial<BaseProviderConfig> = {}) {
     super({
-      id: 'openai',
+      id: 'github',
       name: 'Test Provider',
       authorizationEndpoint: config.authorizationEndpoint ?? 'https://auth.example.com/authorize',
       tokenEndpoint: config.tokenEndpoint ?? 'https://auth.example.com/token',

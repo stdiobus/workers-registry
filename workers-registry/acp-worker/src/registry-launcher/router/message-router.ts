@@ -89,22 +89,19 @@ export type ParsedAuthMethod =
  */
 export const AUTH_METHOD_ID_TO_PROVIDER: Readonly<Record<string, AuthProviderId>> = {
   // OAuth2 method IDs
-  'oauth2-openai': 'openai',
+  // Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
   'oauth2-github': 'github',
   'oauth2-google': 'google',
   'oauth2-cognito': 'cognito',
   'oauth2-azure': 'azure',
-  'oauth2-anthropic': 'anthropic',
   // Agent auth method IDs (legacy format)
-  'agent-openai': 'openai',
+  // Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
   'agent-github': 'github',
   'agent-google': 'google',
   'agent-cognito': 'cognito',
   'agent-azure': 'azure',
-  'agent-anthropic': 'anthropic',
-  // API key method IDs
-  'openai-api-key': 'openai',
-  'anthropic-api-key': 'anthropic',
+  // API key method IDs - these map to providers that support API key auth
+  // Note: OpenAI and Anthropic API key mappings will be handled by model-credentials module
   'github-api-key': 'github',
   'google-api-key': 'google',
   'azure-api-key': 'azure',
@@ -693,20 +690,18 @@ export class MessageRouter {
   getSupportedAuthMethods(): AcpAuthMethod[] {
     const methods: AcpAuthMethod[] = [
       // Legacy API key authentication
+      // Note: OpenAI and Anthropic API key support will be handled by model-credentials module
       { id: 'api-key', type: 'api-key' },
-      { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
-      { id: 'anthropic-api-key', type: 'api-key', providerId: 'anthropic' },
     ];
 
     // Add OAuth methods if AuthManager is available
+    // Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
     if (this.authManager) {
       methods.push(
-        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
         { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
         { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'oauth2-cognito', type: 'oauth2', providerId: 'cognito' },
         { id: 'oauth2-azure', type: 'oauth2', providerId: 'azure' },
-        { id: 'oauth2-anthropic', type: 'oauth2', providerId: 'anthropic' },
       );
     }
 
@@ -2175,10 +2170,10 @@ export class MessageRouter {
 
     // Allowlist of safe method IDs for API key authentication
     // Only send API keys to methods we explicitly trust
+    // Note: OpenAI and Anthropic API key methods will be handled by model-credentials module
     const SAFE_API_KEY_METHODS = [
       'api-key',
       'openai-api-key',
-      'anthropic-api-key',
       'github-api-key',
       'google-api-key',
       'azure-api-key',

@@ -462,7 +462,7 @@ describe('CLI Property Tests', () => {
             const { runLogoutCommand } = await import('./logout-command.js');
 
             // Run logout on empty credential store
-            const providerId = useSpecificProvider ? 'openai' : undefined;
+            const providerId = useSpecificProvider ? 'github' : undefined;
             const exitCode = await runLogoutCommand(providerId, { output: mockOutput.stream });
 
             // Should still return 0 (nothing to do is not an error)

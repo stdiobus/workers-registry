@@ -164,21 +164,20 @@ describe('Terminal Auth Flow Unit Tests', () => {
         const executePromise = flow.execute();
 
         // Send inputs
-        await sendInput(mockInput, '1');           // Select OpenAI
+        await sendInput(mockInput, '1');           // Select GitHub
         await sendInput(mockInput, '2');           // Select Manual API Key
         await sendInput(mockInput, 'test_client'); // Client ID
+        await sendInput(mockInput, 'test_secret'); // Client Secret
         mockInput.end();
 
         await executePromise;
 
         const output = mockOutput.getOutput();
         expect(output).toContain('Select an OAuth provider');
-        expect(output).toContain('1. OpenAI');
-        expect(output).toContain('2. GitHub');
-        expect(output).toContain('3. Google');
-        expect(output).toContain('4. AWS Cognito');
-        expect(output).toContain('5. Azure AD');
-        expect(output).toContain('6. Anthropic');
+        expect(output).toContain('1. GitHub');
+        expect(output).toContain('2. Google');
+        expect(output).toContain('3. AWS Cognito');
+        expect(output).toContain('4. Azure AD');
       });
 
       /**
@@ -196,7 +195,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');           // Select Manual API Key
         await sendInput(mockInput, 'test_client'); // Client ID
@@ -224,7 +223,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '1');           // Select Browser OAuth (default)
         mockInput.end();
@@ -233,7 +232,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
 
         expect(result.useBrowserOAuth).toBe(true);
         if (result.useBrowserOAuth) {
-          expect(result.providerId).toBe('openai');
+          expect(result.providerId).toBe('github');
         }
       });
 
@@ -252,7 +251,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '');            // Press Enter (default to Browser OAuth)
         mockInput.end();
@@ -277,10 +276,10 @@ describe('Terminal Auth Flow Unit Tests', () => {
 
         const executePromise = flow.execute();
 
-        await sendInput(mockInput, '2');              // Select GitHub
+        await sendInput(mockInput, '1');              // Select GitHub
         await sendInput(mockInput, '2');              // Select Manual API Key
         await sendInput(mockInput, 'github_client');  // Client ID
-        await sendInput(mockInput, 'github_secret');  // Client Secret
+        await sendInput(mockInput, 'github_secret');  // Client Secret (GitHub requires it)
         mockInput.end();
 
         const result = await executePromise;
@@ -303,9 +302,10 @@ describe('Terminal Auth Flow Unit Tests', () => {
         const executePromise = flow.execute();
 
         await sendInput(mockInput, '99');          // Invalid selection
-        await sendInput(mockInput, '1');           // Valid selection (OpenAI)
+        await sendInput(mockInput, '1');           // Valid selection (GitHub)
         await sendInput(mockInput, '2');           // Select Manual API Key
         await sendInput(mockInput, 'test_client'); // Client ID
+        await sendInput(mockInput, 'test_secret'); // Client Secret
         mockInput.end();
 
         const result = await executePromise;
@@ -326,18 +326,19 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');           // Select Manual API Key
-        await sendInput(mockInput, 'test_client'); // Client ID only, no provider selection
+        await sendInput(mockInput, 'test_client'); // Client ID
+        await sendInput(mockInput, 'test_secret'); // Client Secret
         mockInput.end();
 
         const result = await executePromise;
 
         const output = mockOutput.getOutput();
         expect(output).not.toContain('Select an OAuth provider');
-        expect(output).toContain('Configuring OpenAI');
-        expect(getResultProviderId(result)).toBe('openai');
+        expect(output).toContain('Configuring GitHub');
+        expect(getResultProviderId(result)).toBe('github');
       });
     });
 
@@ -346,7 +347,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
        * **Validates: Requirement 4.3**
        * Prompt for required credentials based on provider
        */
-      it('should collect only client ID for OpenAI (no secret required)', async () => {
+      it('should collect client ID and secret for GitHub', async () => {
         const mockOutput = createMockOutput();
         const mockInput = createMockInput();
 
@@ -359,16 +360,16 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');                // Select Manual API Key
-        await sendInput(mockInput, 'openai_client_id');
+        await sendInput(mockInput, 'github_pat_token');
         mockInput.end();
 
         await executePromise;
 
-        expect(validateCredentials).toHaveBeenCalledWith('openai', {
-          clientId: 'openai_client_id',
+        expect(validateCredentials).toHaveBeenCalledWith('github', {
+          clientId: 'github_pat_token',
         });
       });
 
@@ -426,32 +427,6 @@ describe('Terminal Auth Flow Unit Tests', () => {
           clientSecret: 'google_client_secret',
         });
       });
-
-      it('should collect only client ID for Anthropic (no secret required)', async () => {
-        const mockOutput = createMockOutput();
-        const mockInput = createMockInput();
-
-        const validateCredentials = createMockValidateCredentials();
-
-        const flow = new TerminalAuthFlow({
-          credentialStore: createMockCredentialStore(),
-          validateCredentials,
-          input: mockInput,
-          output: mockOutput,
-        });
-
-        const executePromise = flow.execute('anthropic');
-
-        await sendInput(mockInput, '2');                    // Select Manual API Key
-        await sendInput(mockInput, 'anthropic_client_id');
-        mockInput.end();
-
-        await executePromise;
-
-        expect(validateCredentials).toHaveBeenCalledWith('anthropic', {
-          clientId: 'anthropic_client_id',
-        });
-      });
     });
 
     describe('3. Successful credential validation and storage', () => {
@@ -476,7 +451,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');               // Select Manual API Key
         await sendInput(mockInput, 'test_client_id');
@@ -486,9 +461,9 @@ describe('Terminal Auth Flow Unit Tests', () => {
 
         expect(isSuccessResult(result)).toBe(true);
         expect(credentialStore.store).toHaveBeenCalledWith(
-          'openai',
+          'github',
           expect.objectContaining({
-            providerId: 'openai',
+            providerId: 'github',
             accessToken: 'validated_token',
             clientId: 'test_client_id',
           })
@@ -506,7 +481,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');               // Select Manual API Key
         await sendInput(mockInput, 'test_client_id');
@@ -544,7 +519,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');               // Select Manual API Key
         await sendInput(mockInput, 'invalid_client');  // First attempt
@@ -577,7 +552,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');               // Select Manual API Key
         await sendInput(mockInput, 'invalid_client');  // First attempt
@@ -614,7 +589,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');          // Select Manual API Key
         await sendInput(mockInput, 'invalid_1');  // First attempt
@@ -840,7 +815,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');               // Select Manual API Key
         await sendInput(mockInput, 'test_client_id');
@@ -866,7 +841,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');               // Select Manual API Key
         await sendInput(mockInput, 'test_client_id');
@@ -894,7 +869,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
           output: mockOutput,
         });
 
-        const executePromise = flow.execute('openai');
+        const executePromise = flow.execute('github');
 
         await sendInput(mockInput, '2');              // Select Manual API Key
         await sendInput(mockInput, '');               // Empty first attempt
@@ -923,12 +898,12 @@ describe('Terminal Auth Flow Unit Tests', () => {
 
   describe('getProviderInfo', () => {
     it('should return provider info for valid provider ID', () => {
-      const info = getProviderInfo('openai');
+      const info = getProviderInfo('github');
 
       expect(info).toBeDefined();
-      expect(info?.id).toBe('openai');
-      expect(info?.name).toBe('OpenAI');
-      expect(info?.requiresClientSecret).toBe(false);
+      expect(info?.id).toBe('github');
+      expect(info?.name).toBe('GitHub');
+      expect(info?.requiresClientSecret).toBe(true);
       expect(info?.requiresCustomEndpoints).toBe(false);
     });
 
@@ -970,14 +945,12 @@ describe('Terminal Auth Flow Unit Tests', () => {
     it('should return all supported providers', () => {
       const providers = getAllProviderInfo();
 
-      expect(providers).toHaveLength(6);
+      expect(providers).toHaveLength(4);
       expect(providers.map(p => p.id)).toEqual([
-        'openai',
         'github',
         'google',
         'cognito',
         'azure',
-        'anthropic',
       ]);
     });
 

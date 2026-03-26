@@ -302,11 +302,11 @@ describe('Error Handling Unit Tests', () => {
       });
 
       it('should parse string error response', () => {
-        const result = parseProviderErrorResponse('Something went wrong', 'openai');
+        const result = parseProviderErrorResponse('Something went wrong', 'github');
 
         expect(result.code).toBe('PROVIDER_ERROR');
         expect(result.message).toBe('Something went wrong');
-        expect(result.details?.providerId).toBe('openai');
+        expect(result.details?.providerId).toBe('github');
       });
 
       it('should parse JSON string error response', () => {

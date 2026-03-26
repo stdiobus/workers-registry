@@ -81,7 +81,7 @@ describe('CLI Commands Unit Tests', () => {
 
     it('should accept options parameter', async () => {
       const mockOutput = createMockOutput();
-      const mockInput = createMockInput(['1', 'test-client-id', 'n']); // Select OpenAI, enter client ID, don't retry
+      const mockInput = createMockInput(['1', 'test-client-id', 'n']); // Select GitHub, enter client ID, don't retry
 
       // The setup command will fail because we're not providing valid credentials
       // but it should still run without throwing
@@ -115,14 +115,14 @@ describe('CLI Commands Unit Tests', () => {
       const mockInput = createMockInput(['test-client-id', 'n']);
 
       await runSetupCommand({
-        providerId: 'openai',
+        providerId: 'github',
         output: mockOutput.stream,
         input: mockInput,
       });
 
       // Output should mention configuring the provider
       const output = mockOutput.getOutput();
-      expect(output).toContain('OpenAI');
+      expect(output).toContain('Github');
       mockOutput.stream.end();
     });
 
@@ -248,7 +248,7 @@ describe('CLI Commands Unit Tests', () => {
     it('should return exit code 0 for specific provider with no credentials', async () => {
       const mockOutput = createMockOutput();
 
-      const exitCode = await runLogoutCommand('openai', { output: mockOutput.stream });
+      const exitCode = await runLogoutCommand('github', { output: mockOutput.stream });
 
       expect(exitCode).toBe(0);
       mockOutput.stream.end();
@@ -361,7 +361,7 @@ describe('CLI Commands Unit Tests', () => {
     it('logout command returns 0 for valid provider (no credentials)', async () => {
       const mockOutput = createMockOutput();
 
-      const exitCode = await runLogoutCommand('openai', { output: mockOutput.stream });
+      const exitCode = await runLogoutCommand('github', { output: mockOutput.stream });
 
       expect(exitCode).toBe(0);
       mockOutput.stream.end();
@@ -400,7 +400,6 @@ describe('CLI Commands Unit Tests', () => {
 
       const output = mockOutput.getOutput();
       // Provider names should be capitalized
-      expect(output).toContain('Openai');
       expect(output).toContain('Github');
       expect(output).toContain('Google');
       mockOutput.stream.end();

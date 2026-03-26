@@ -45,14 +45,15 @@ const providerRegistry = new Map<AuthProviderId, ProviderFactory>();
 
 /**
  * List of supported OAuth provider IDs.
+ *
+ * Note: OpenAI and Anthropic are NOT included - they use API keys, not OAuth.
+ * See model-credentials module for API key handling.
  */
 export const SUPPORTED_PROVIDERS: readonly AuthProviderId[] = [
-  'openai',
   'github',
   'google',
   'cognito',
   'azure',
-  'anthropic',
 ] as const;
 
 /**
@@ -163,22 +164,18 @@ export { BaseAuthProvider } from './base-provider.js';
 export type { BaseProviderConfig } from './base-provider.js';
 
 // Re-export concrete providers
-export { OpenAIProvider } from './openai-provider.js';
 export { GitHubProvider } from './github-provider.js';
 export { GoogleProvider } from './google-provider.js';
 export { CognitoProvider } from './cognito-provider.js';
 export type { CognitoProviderConfig } from './cognito-provider.js';
 export { AzureProvider } from './azure-provider.js';
 export type { AzureProviderConfig } from './azure-provider.js';
-export { AnthropicProvider } from './anthropic-provider.js';
 
 // Import providers for registration
-import { OpenAIProvider } from './openai-provider.js';
 import { GitHubProvider } from './github-provider.js';
 import { GoogleProvider } from './google-provider.js';
 import { CognitoProvider } from './cognito-provider.js';
 import { AzureProvider } from './azure-provider.js';
-import { AnthropicProvider } from './anthropic-provider.js';
 
 /**
  * Initialize all OAuth providers.
@@ -187,22 +184,19 @@ import { AnthropicProvider } from './anthropic-provider.js';
  * This registers all supported OAuth provider implementations
  * in the provider registry.
  *
+ * Note: OpenAI and Anthropic are NOT registered here - they use API keys, not OAuth.
+ * See model-credentials module for API key handling.
+ *
  * Note: Cognito and Azure require environment-specific configuration
  * and are only registered if their config is available via env vars.
  */
 export function initializeProviders(): void {
   // Only register if not already registered (idempotent)
-  if (!providerRegistry.has('openai')) {
-    registerProvider('openai', () => new OpenAIProvider());
-  }
   if (!providerRegistry.has('github')) {
     registerProvider('github', () => new GitHubProvider());
   }
   if (!providerRegistry.has('google')) {
     registerProvider('google', () => new GoogleProvider());
-  }
-  if (!providerRegistry.has('anthropic')) {
-    registerProvider('anthropic', () => new AnthropicProvider());
   }
 
   // Cognito requires userPoolDomain and region from environment

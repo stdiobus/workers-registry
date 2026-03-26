@@ -219,7 +219,8 @@ describe('Auth Manager Unit Tests', () => {
     mockProviders = new Map();
 
     // Set up default providers
-    const providers: AuthProviderId[] = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+    // Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
+    const providers: AuthProviderId[] = ['github', 'google', 'cognito', 'azure'];
     for (const id of providers) {
       mockProviders.set(id, new MockAuthProvider(id));
     }
@@ -263,12 +264,12 @@ describe('Auth Manager Unit Tests', () => {
   describe('getTokenForAgent - Credential Precedence (Requirement 10.3)', () => {
     it('should return OAuth token when both OAuth and legacy credentials exist', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'oauth-token',
         storedAt: now,
       });
-      tokenManager.setToken('openai', 'oauth-token');
+      tokenManager.setToken('github', 'oauth-token');
 
       const legacyApiKeys: Record<string, AgentApiKeys> = {
         'test-agent': { apiKey: 'legacy-api-key', env: {} },
@@ -280,7 +281,7 @@ describe('Auth Manager Unit Tests', () => {
         legacyApiKeys,
       });
 
-      const result = await authManager.getTokenForAgent('test-agent', 'openai');
+      const result = await authManager.getTokenForAgent('test-agent', 'github');
 
       expect(result).toBe('oauth-token');
     });
@@ -339,19 +340,19 @@ describe('Auth Manager Unit Tests', () => {
   describe('injectAuth - Token Injection (Requirement 11.4)', () => {
     it('should inject token into header with Bearer format', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'test-token',
         storedAt: now,
       });
-      tokenManager.setToken('openai', 'test-token');
+      tokenManager.setToken('github', 'test-token');
 
-      const provider = new MockAuthProvider('openai', 'OpenAI', {
+      const provider = new MockAuthProvider('github', 'OpenAI', {
         type: 'header',
         key: 'Authorization',
         format: 'Bearer {token}',
       });
-      mockProviders.set('openai', provider);
+      mockProviders.set('github', provider);
 
       const authManager = new AuthManager({
         credentialStore,
@@ -362,7 +363,7 @@ describe('Auth Manager Unit Tests', () => {
 
       const request = { method: 'POST', url: 'https://api.openai.com' };
       // Use agent ID that maps to openai provider
-      const result = await authManager.injectAuth('openai-agent', request) as Record<string, unknown>;
+      const result = await authManager.injectAuth('github-test-agent', request) as Record<string, unknown>;
 
       expect(result.headers).toBeDefined();
       const headers = result.headers as Record<string, string>;
@@ -433,19 +434,19 @@ describe('Auth Manager Unit Tests', () => {
 
     it('should preserve existing request properties', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'test-token',
         storedAt: now,
       });
-      tokenManager.setToken('openai', 'test-token');
+      tokenManager.setToken('github', 'test-token');
 
-      const provider = new MockAuthProvider('openai', 'OpenAI', {
+      const provider = new MockAuthProvider('github', 'OpenAI', {
         type: 'header',
         key: 'Authorization',
         format: 'Bearer {token}',
       });
-      mockProviders.set('openai', provider);
+      mockProviders.set('github', provider);
 
       const authManager = new AuthManager({
         credentialStore,
@@ -461,7 +462,7 @@ describe('Auth Manager Unit Tests', () => {
         body: { data: 'test' },
       };
       // Use agent ID that maps to openai provider
-      const result = await authManager.injectAuth('openai-agent', request) as Record<string, unknown>;
+      const result = await authManager.injectAuth('github-test-agent', request) as Record<string, unknown>;
 
       expect(result.method).toBe('POST');
       expect(result.url).toBe('https://api.openai.com');
@@ -516,12 +517,11 @@ describe('Auth Manager Unit Tests', () => {
       const status = await authManager.getStatus();
 
       // Should include all valid provider IDs
-      expect(status.has('openai')).toBe(true);
+      expect(status.has('github')).toBe(true);
       expect(status.has('github')).toBe(true);
       expect(status.has('google')).toBe(true);
       expect(status.has('cognito')).toBe(true);
       expect(status.has('azure')).toBe(true);
-      expect(status.has('anthropic')).toBe(true);
     });
 
     it('should return not-configured for providers without credentials', async () => {
@@ -540,13 +540,13 @@ describe('Auth Manager Unit Tests', () => {
 
     it('should return authenticated status for providers with valid tokens', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-token',
         expiresAt: now + 3600000,
         storedAt: now,
       });
-      tokenManager.setTokenStatus('openai', 'authenticated');
+      tokenManager.setTokenStatus('github', 'authenticated');
 
       const authManager = new AuthManager({
         credentialStore,
@@ -556,7 +556,7 @@ describe('Auth Manager Unit Tests', () => {
 
       const status = await authManager.getStatus();
 
-      const openaiStatus = status.get('openai');
+      const openaiStatus = status.get('github');
       expect(openaiStatus).toBeDefined();
       expect(openaiStatus!.status).toBe('authenticated');
     });
@@ -564,14 +564,14 @@ describe('Auth Manager Unit Tests', () => {
     it('should include expiration and scope information', async () => {
       const now = Date.now();
       const expiresAt = now + 3600000;
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-token',
         expiresAt,
         scope: 'openid profile',
         storedAt: now,
       });
-      tokenManager.setTokenStatus('openai', 'authenticated');
+      tokenManager.setTokenStatus('github', 'authenticated');
 
       const authManager = new AuthManager({
         credentialStore,
@@ -581,7 +581,7 @@ describe('Auth Manager Unit Tests', () => {
 
       const status = await authManager.getStatus();
 
-      const openaiStatus = status.get('openai');
+      const openaiStatus = status.get('github');
       expect(openaiStatus).toBeDefined();
       expect(openaiStatus!.expiresAt).toBe(expiresAt);
       expect(openaiStatus!.scope).toBe('openid profile');
@@ -597,19 +597,19 @@ describe('Auth Manager Unit Tests', () => {
         legacyApiKeys: {},
       });
 
-      const result = await authManager.requiresReauth('openai');
+      const result = await authManager.requiresReauth('github');
 
       expect(result).toBe(true);
     });
 
     it('should return false when valid tokens exist', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-token',
         storedAt: now,
       });
-      tokenManager.setValidTokens('openai', true);
+      tokenManager.setValidTokens('github', true);
 
       const authManager = new AuthManager({
         credentialStore,
@@ -617,19 +617,19 @@ describe('Auth Manager Unit Tests', () => {
         legacyApiKeys: {},
       });
 
-      const result = await authManager.requiresReauth('openai');
+      const result = await authManager.requiresReauth('github');
 
       expect(result).toBe(false);
     });
 
     it('should return true when tokens are invalid and refresh fails', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expired-token',
         storedAt: now,
       });
-      tokenManager.setValidTokens('openai', false);
+      tokenManager.setValidTokens('github', false);
       // forceRefresh returns null (simulating failure)
 
       const authManager = new AuthManager({
@@ -638,7 +638,7 @@ describe('Auth Manager Unit Tests', () => {
         legacyApiKeys: {},
       });
 
-      const result = await authManager.requiresReauth('openai');
+      const result = await authManager.requiresReauth('github');
 
       expect(result).toBe(true);
     });
@@ -648,18 +648,18 @@ describe('Auth Manager Unit Tests', () => {
   describe('logout', () => {
     it('should clear tokens and credentials for specific provider', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
-        accessToken: 'openai-token',
-        storedAt: now,
-      });
       credentialStore.setCredentials('github', {
         providerId: 'github',
         accessToken: 'github-token',
         storedAt: now,
       });
-      tokenManager.setToken('openai', 'openai-token');
+      credentialStore.setCredentials('google', {
+        providerId: 'google',
+        accessToken: 'google-token',
+        storedAt: now,
+      });
       tokenManager.setToken('github', 'github-token');
+      tokenManager.setToken('google', 'google-token');
 
       const authManager = new AuthManager({
         credentialStore,
@@ -667,27 +667,27 @@ describe('Auth Manager Unit Tests', () => {
         legacyApiKeys: {},
       });
 
-      await authManager.logout('openai');
+      await authManager.logout('github');
 
       expect(tokenManager.clearTokensCallCount).toBe(1);
-      expect(credentialStore.hasCredentials('openai')).toBe(false);
-      expect(credentialStore.hasCredentials('github')).toBe(true);
+      expect(credentialStore.hasCredentials('github')).toBe(false);
+      expect(credentialStore.hasCredentials('google')).toBe(true);
     });
 
     it('should clear all tokens and credentials when no provider specified', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
-        accessToken: 'openai-token',
-        storedAt: now,
-      });
       credentialStore.setCredentials('github', {
         providerId: 'github',
         accessToken: 'github-token',
         storedAt: now,
       });
-      tokenManager.setToken('openai', 'openai-token');
+      credentialStore.setCredentials('google', {
+        providerId: 'google',
+        accessToken: 'google-token',
+        storedAt: now,
+      });
       tokenManager.setToken('github', 'github-token');
+      tokenManager.setToken('google', 'google-token');
 
       const authManager = new AuthManager({
         credentialStore,
@@ -698,8 +698,8 @@ describe('Auth Manager Unit Tests', () => {
       await authManager.logout();
 
       expect(tokenManager.clearTokensCallCount).toBe(2);
-      expect(credentialStore.hasCredentials('openai')).toBe(false);
       expect(credentialStore.hasCredentials('github')).toBe(false);
+      expect(credentialStore.hasCredentials('google')).toBe(false);
     });
   });
 
@@ -735,7 +735,7 @@ describe('Auth Manager Unit Tests', () => {
           legacyApiKeys: {},
         });
 
-        const result = await authManager.authenticateAgent('openai');
+        const result = await authManager.authenticateAgent('github');
 
         // The provider is valid but not registered (we cleared providers)
         expect(result.success).toBe(false);
@@ -770,27 +770,30 @@ describe('Auth Manager Unit Tests', () => {
 
 
   describe('getProviderForAgent', () => {
-    it('should return openai for agent IDs containing openai', () => {
+    // Note: OpenAI is NOT an OAuth provider - it uses API keys
+    // The getProviderForAgent function no longer maps to 'github'
+    it('should return undefined for agent IDs containing openai or gpt (not OAuth providers)', () => {
       const authManager = new AuthManager({
         credentialStore,
         tokenManager,
         legacyApiKeys: {},
       });
 
-      expect(authManager.getProviderForAgent('openai-agent')).toBe('openai');
-      expect(authManager.getProviderForAgent('my-openai-bot')).toBe('openai');
-      expect(authManager.getProviderForAgent('gpt-4-agent')).toBe('openai');
+      // OpenAI is not an OAuth provider, so these should return undefined
+      expect(authManager.getProviderForAgent('openai-agent')).toBeUndefined();
+      expect(authManager.getProviderForAgent('my-openai-bot')).toBeUndefined();
+      expect(authManager.getProviderForAgent('gpt-4-agent')).toBeUndefined();
     });
 
-    it('should return anthropic for agent IDs containing anthropic or claude', () => {
+    it('should return github for agent IDs containing github or copilot', () => {
       const authManager = new AuthManager({
         credentialStore,
         tokenManager,
         legacyApiKeys: {},
       });
 
-      expect(authManager.getProviderForAgent('anthropic-agent')).toBe('anthropic');
-      expect(authManager.getProviderForAgent('claude-3-bot')).toBe('anthropic');
+      expect(authManager.getProviderForAgent('github-agent')).toBe('github');
+      expect(authManager.getProviderForAgent('copilot-bot')).toBe('github');
     });
 
     it('should return github for agent IDs containing github or copilot', () => {
@@ -914,7 +917,7 @@ describe('Auth Manager Unit Tests', () => {
   describe('Security - Marker Token Filtering', () => {
     it('should filter out marker tokens in getTokenForAgent', async () => {
       // Set up a marker token (simulating terminal auth flow)
-      tokenManager.setToken('openai', '__CLIENT_CREDENTIALS_CONFIGURED__');
+      tokenManager.setToken('github', '__CLIENT_CREDENTIALS_CONFIGURED__');
 
       const authManager = new AuthManager({
         credentialStore,
@@ -923,21 +926,21 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       // Should return null because marker token is not a real token
-      const result = await authManager.getTokenForAgent('openai-agent', 'openai');
+      const result = await authManager.getTokenForAgent('github-test-agent', 'github');
 
       expect(result).toBeNull();
     });
 
     it('should filter out marker tokens in injectAuth', async () => {
       // Set up a marker token
-      tokenManager.setToken('openai', '__CLIENT_CREDENTIALS_CONFIGURED__');
+      tokenManager.setToken('github', '__CLIENT_CREDENTIALS_CONFIGURED__');
 
-      const provider = new MockAuthProvider('openai', 'OpenAI', {
+      const provider = new MockAuthProvider('github', 'OpenAI', {
         type: 'header',
         key: 'Authorization',
         format: 'Bearer {token}',
       });
-      mockProviders.set('openai', provider);
+      mockProviders.set('github', provider);
 
       const authManager = new AuthManager({
         credentialStore,
@@ -947,7 +950,7 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       const request = { method: 'POST', url: 'https://api.openai.com' };
-      const result = await authManager.injectAuth('openai-agent', request);
+      const result = await authManager.injectAuth('github-test-agent', request);
 
       // Request should be unchanged (no auth injected)
       expect(result).toEqual(request);
@@ -956,10 +959,10 @@ describe('Auth Manager Unit Tests', () => {
 
     it('should fall back to legacy key when marker token is present', async () => {
       // Set up a marker token
-      tokenManager.setToken('openai', '__CLIENT_CREDENTIALS_CONFIGURED__');
+      tokenManager.setToken('github', '__CLIENT_CREDENTIALS_CONFIGURED__');
 
       const legacyApiKeys: Record<string, AgentApiKeys> = {
-        'openai-agent': { apiKey: 'sk-legacy-key', env: {} },
+        'github-test-agent': { apiKey: 'sk-legacy-key', env: {} },
       };
 
       const authManager = new AuthManager({
@@ -969,7 +972,7 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       // Should fall back to legacy key
-      const result = await authManager.getTokenForAgent('openai-agent', 'openai');
+      const result = await authManager.getTokenForAgent('github-test-agent', 'github');
 
       expect(result).toBe('sk-legacy-key');
     });
@@ -979,14 +982,14 @@ describe('Auth Manager Unit Tests', () => {
   describe('Security - Control Character Rejection', () => {
     it('should reject tokens with control characters in injectAuth', async () => {
       // Set up a token with control characters
-      tokenManager.setToken('openai', 'token-with\r\ncontrol-chars');
+      tokenManager.setToken('github', 'token-with\r\ncontrol-chars');
 
-      const provider = new MockAuthProvider('openai', 'OpenAI', {
+      const provider = new MockAuthProvider('github', 'OpenAI', {
         type: 'header',
         key: 'Authorization',
         format: 'Bearer {token}',
       });
-      mockProviders.set('openai', provider);
+      mockProviders.set('github', provider);
 
       const authManager = new AuthManager({
         credentialStore,
@@ -996,7 +999,7 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       const request = { method: 'POST', url: 'https://api.openai.com' };
-      const result = await authManager.injectAuth('openai-agent', request);
+      const result = await authManager.injectAuth('github-test-agent', request);
 
       // Request should be unchanged (no auth injected due to control chars)
       expect(result).toEqual(request);
@@ -1038,12 +1041,12 @@ describe('Auth Manager Unit Tests', () => {
 
     it('should not throw for valid provider ID in logout', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'test-token',
         storedAt: now,
       });
-      tokenManager.setToken('openai', 'test-token');
+      tokenManager.setToken('github', 'test-token');
 
       const authManager = new AuthManager({
         credentialStore,
@@ -1052,7 +1055,7 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       // Should not throw
-      await expect(authManager.logout('openai')).resolves.toBeUndefined();
+      await expect(authManager.logout('github')).resolves.toBeUndefined();
     });
   });
 
@@ -1061,11 +1064,11 @@ describe('Auth Manager Unit Tests', () => {
     describe('Default Precedence: oauth2 > api-key', () => {
       it('should select oauth2 when both OAuth and API key are available', async () => {
         // Set up OAuth token
-        tokenManager.setToken('openai', 'oauth-token');
+        tokenManager.setToken('github', 'oauth-token');
 
         // Set up legacy API key
         const legacyApiKeys: Record<string, AgentApiKeys> = {
-          'openai-agent': { apiKey: 'legacy-api-key', env: {} },
+          'github-test-agent': { apiKey: 'legacy-api-key', env: {} },
         };
 
         const authManager = new AuthManager({
@@ -1074,10 +1077,10 @@ describe('Auth Manager Unit Tests', () => {
           legacyApiKeys,
         });
 
-        const result = await authManager.selectAuthMethod('openai-agent');
+        const result = await authManager.selectAuthMethod('github-test-agent');
 
         expect(result.methodType).toBe('oauth2');
-        expect(result.providerId).toBe('openai');
+        expect(result.providerId).toBe('github');
         expect(result.hasCredential).toBe(true);
       });
 
@@ -1119,11 +1122,11 @@ describe('Auth Manager Unit Tests', () => {
     describe('Configuration Override via AuthConfig', () => {
       it('should respect custom method precedence (api-key > oauth2)', async () => {
         // Set up OAuth token
-        tokenManager.setToken('openai', 'oauth-token');
+        tokenManager.setToken('github', 'oauth-token');
 
         // Set up legacy API key
         const legacyApiKeys: Record<string, AgentApiKeys> = {
-          'openai-agent': { apiKey: 'legacy-api-key', env: {} },
+          'github-test-agent': { apiKey: 'legacy-api-key', env: {} },
         };
 
         const authManager = new AuthManager({
@@ -1135,7 +1138,7 @@ describe('Auth Manager Unit Tests', () => {
           },
         });
 
-        const result = await authManager.selectAuthMethod('openai-agent');
+        const result = await authManager.selectAuthMethod('github-test-agent');
 
         // Should select api-key first due to custom precedence
         expect(result.methodType).toBe('api-key');
@@ -1226,7 +1229,7 @@ describe('Auth Manager Unit Tests', () => {
 
         // Agent ID that matches multiple providers (azure and openai)
         await expect(
-          authManager.selectAuthMethod('azure-openai-agent')
+          authManager.selectAuthMethod('azure-github-test-agent')
         ).rejects.toThrow('Ambiguous provider mapping');
       });
 
@@ -1241,7 +1244,7 @@ describe('Auth Manager Unit Tests', () => {
         });
 
         // Should not throw, will use first matching provider
-        const result = await authManager.selectAuthMethod('azure-openai-agent');
+        const result = await authManager.selectAuthMethod('azure-github-test-agent');
 
         // Result will indicate no credentials (since none are set up)
         expect(result.hasCredential).toBe(false);
@@ -1268,7 +1271,7 @@ describe('Auth Manager Unit Tests', () => {
       });
 
       it('should not check ambiguity when explicit providerId is specified', async () => {
-        tokenManager.setToken('openai', 'oauth-token');
+        tokenManager.setToken('github', 'oauth-token');
 
         const authManager = new AuthManager({
           credentialStore,
@@ -1281,13 +1284,13 @@ describe('Auth Manager Unit Tests', () => {
 
         // Even with ambiguous agent ID, explicit providerId should work
         const result = await authManager.selectAuthMethod(
-          'azure-openai-agent',
+          'azure-github-test-agent',
           undefined,
-          'openai'
+          'github'
         );
 
         expect(result.methodType).toBe('oauth2');
-        expect(result.providerId).toBe('openai');
+        expect(result.providerId).toBe('github');
         expect(result.hasCredential).toBe(true);
       });
     });
@@ -1296,11 +1299,11 @@ describe('Auth Manager Unit Tests', () => {
     describe('Available Methods Filtering', () => {
       it('should only consider methods in availableMethods list', async () => {
         // Set up OAuth token
-        tokenManager.setToken('openai', 'oauth-token');
+        tokenManager.setToken('github', 'oauth-token');
 
         // Set up legacy API key
         const legacyApiKeys: Record<string, AgentApiKeys> = {
-          'openai-agent': { apiKey: 'legacy-api-key', env: {} },
+          'github-test-agent': { apiKey: 'legacy-api-key', env: {} },
         };
 
         const authManager = new AuthManager({
@@ -1310,7 +1313,7 @@ describe('Auth Manager Unit Tests', () => {
         });
 
         // Only allow api-key method
-        const result = await authManager.selectAuthMethod('openai-agent', ['api-key']);
+        const result = await authManager.selectAuthMethod('github-test-agent', ['api-key']);
 
         // Should select api-key even though OAuth is available
         expect(result.methodType).toBe('api-key');
@@ -1368,7 +1371,7 @@ describe('Auth Manager Unit Tests', () => {
 
     beforeEach(() => {
       // Register mock providers for concurrency tests
-      const providers: AuthProviderId[] = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+      const providers: AuthProviderId[] = ['github', 'github', 'google', 'cognito', 'azure'];
       for (const id of providers) {
         const mockProvider = new MockAuthProvider(id);
         registerProvider(id, () => mockProvider);
@@ -1377,7 +1380,7 @@ describe('Auth Manager Unit Tests', () => {
 
     afterEach(() => {
       // Unregister mock providers after each test
-      const providers: AuthProviderId[] = ['openai', 'github', 'google', 'cognito', 'azure', 'anthropic'];
+      const providers: AuthProviderId[] = ['github', 'github', 'google', 'cognito', 'azure'];
       for (const id of providers) {
         unregisterProvider(id);
       }
@@ -1398,12 +1401,12 @@ describe('Auth Manager Unit Tests', () => {
         const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
           .mockImplementation(async () => {
             await gate;
-            return { success: true, providerId: 'openai' };
+            return { success: true, providerId: 'github' };
           });
 
         // Start two parallel calls for the same provider
-        const promise1 = authManager.authenticateAgent('openai');
-        const promise2 = authManager.authenticateAgent('openai');
+        const promise1 = authManager.authenticateAgent('github');
+        const promise2 = authManager.authenticateAgent('github');
 
         // Before resolving gate, verify executeAuthFlow was called exactly once
         expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(1);
@@ -1424,7 +1427,7 @@ describe('Auth Manager Unit Tests', () => {
 
         const expectedResult = {
           success: true,
-          providerId: 'openai' as AuthProviderId,
+          providerId: 'github' as AuthProviderId,
         };
 
         const authManager = new AuthManager({
@@ -1440,8 +1443,8 @@ describe('Auth Manager Unit Tests', () => {
           });
 
         // Start two parallel calls
-        const promise1 = authManager.authenticateAgent('openai');
-        const promise2 = authManager.authenticateAgent('openai');
+        const promise1 = authManager.authenticateAgent('github');
+        const promise2 = authManager.authenticateAgent('github');
 
         // Resolve gate
         resolveGate!();
@@ -1462,7 +1465,7 @@ describe('Auth Manager Unit Tests', () => {
 
         const expectedResult = {
           success: false,
-          providerId: 'openai' as AuthProviderId,
+          providerId: 'github' as AuthProviderId,
           error: {
             code: 'PROVIDER_ERROR' as const,
             message: 'Authentication failed: User cancelled',
@@ -1482,8 +1485,8 @@ describe('Auth Manager Unit Tests', () => {
           });
 
         // Start two parallel calls
-        const promise1 = authManager.authenticateAgent('openai');
-        const promise2 = authManager.authenticateAgent('openai');
+        const promise1 = authManager.authenticateAgent('github');
+        const promise2 = authManager.authenticateAgent('github');
 
         // Resolve gate
         resolveGate!();
@@ -1516,15 +1519,15 @@ describe('Auth Manager Unit Tests', () => {
         const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
           .mockImplementation(async () => {
             callCount++;
-            return { success: true, providerId: 'openai' };
+            return { success: true, providerId: 'github' };
           });
 
         // First flow
-        await authManager.authenticateAgent('openai');
+        await authManager.authenticateAgent('github');
         expect(callCount).toBe(1);
 
         // After completion, new call should start fresh flow
-        await authManager.authenticateAgent('openai');
+        await authManager.authenticateAgent('github');
         expect(callCount).toBe(2);
 
         // Total calls should be 2
@@ -1547,18 +1550,18 @@ describe('Auth Manager Unit Tests', () => {
             callCount++;
             return {
               success: false,
-              providerId: 'openai',
+              providerId: 'github',
               error: { code: 'TIMEOUT', message: 'Flow timed out' },
             };
           });
 
         // First flow (fails)
-        const result1 = await authManager.authenticateAgent('openai');
+        const result1 = await authManager.authenticateAgent('github');
         expect(result1.success).toBe(false);
         expect(callCount).toBe(1);
 
         // After failure, new call should start fresh flow
-        const result2 = await authManager.authenticateAgent('openai');
+        const result2 = await authManager.authenticateAgent('github');
         expect(result2.success).toBe(false);
         expect(callCount).toBe(2);
 
@@ -1580,15 +1583,15 @@ describe('Auth Manager Unit Tests', () => {
             if (callCount === 1) {
               throw new Error('Unexpected error');
             }
-            return { success: true, providerId: 'openai' };
+            return { success: true, providerId: 'github' };
           });
 
         // First flow throws - exception propagates to caller
-        await expect(authManager.authenticateAgent('openai')).rejects.toThrow('Unexpected error');
+        await expect(authManager.authenticateAgent('github')).rejects.toThrow('Unexpected error');
         expect(callCount).toBe(1);
 
         // After exception, mutex should be released, allowing new flow
-        const result2 = await authManager.authenticateAgent('openai');
+        const result2 = await authManager.authenticateAgent('github');
         expect(result2.success).toBe(true);
         expect(callCount).toBe(2);
 
@@ -1599,9 +1602,56 @@ describe('Auth Manager Unit Tests', () => {
 
     describe('Different providers work independently', () => {
       it('should allow parallel flows for different providers', async () => {
-        let openaiGateResolve: () => void;
         let githubGateResolve: () => void;
-        const openaiGate = new Promise<void>(resolve => { openaiGateResolve = resolve; });
+        let googleGateResolve: () => void;
+        const githubGate = new Promise<void>(resolve => { githubGateResolve = resolve; });
+        const googleGate = new Promise<void>(resolve => { googleGateResolve = resolve; });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
+          .mockImplementation(async (...args: unknown[]) => {
+            const providerId = args[0] as string;
+            if (providerId === 'github') {
+              await githubGate;
+              return { success: true, providerId: 'github' };
+            } else if (providerId === 'google') {
+              await googleGate;
+              return { success: true, providerId: 'google' };
+            }
+            return { success: false, providerId };
+          });
+
+        // Start parallel calls for different providers
+        const githubPromise = authManager.authenticateAgent('github');
+        const googlePromise = authManager.authenticateAgent('google');
+
+        // Both flows should have started (one call per provider)
+        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(2);
+        expect(mockExecuteAuthFlow).toHaveBeenCalledWith('github', undefined);
+        expect(mockExecuteAuthFlow).toHaveBeenCalledWith('google', undefined);
+
+        // Resolve both gates
+        githubGateResolve!();
+        googleGateResolve!();
+
+        const [githubResult, googleResult] = await Promise.all([githubPromise, googlePromise]);
+
+        // Both should succeed with their respective provider IDs
+        expect(githubResult.success).toBe(true);
+        expect(githubResult.providerId).toBe('github');
+        expect(googleResult.success).toBe(true);
+        expect(googleResult.providerId).toBe('google');
+
+        mockExecuteAuthFlow.mockRestore();
+      });
+
+      it('should not block one provider when another is in progress', async () => {
+        let githubGateResolve: () => void;
         const githubGate = new Promise<void>(resolve => { githubGateResolve = resolve; });
 
         const authManager = new AuthManager({
@@ -1613,77 +1663,30 @@ describe('Auth Manager Unit Tests', () => {
         const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
           .mockImplementation(async (...args: unknown[]) => {
             const providerId = args[0] as string;
-            if (providerId === 'openai') {
-              await openaiGate;
-              return { success: true, providerId: 'openai' };
-            } else if (providerId === 'github') {
+            if (providerId === 'github') {
               await githubGate;
               return { success: true, providerId: 'github' };
             }
-            return { success: false, providerId };
+            // Google completes immediately
+            return { success: true, providerId: 'google' };
           });
 
-        // Start parallel calls for different providers
-        const openaiPromise = authManager.authenticateAgent('openai');
+        // Start github flow (will be blocked)
         const githubPromise = authManager.authenticateAgent('github');
 
-        // Both flows should have started (one call per provider)
-        expect(mockExecuteAuthFlow).toHaveBeenCalledTimes(2);
-        expect(mockExecuteAuthFlow).toHaveBeenCalledWith('openai', undefined);
-        expect(mockExecuteAuthFlow).toHaveBeenCalledWith('github', undefined);
+        // Start google flow (should complete immediately)
+        const googleResult = await authManager.authenticateAgent('google');
 
-        // Resolve both gates
-        openaiGateResolve!();
+        // Google should complete even though github is still pending
+        expect(googleResult.success).toBe(true);
+        expect(googleResult.providerId).toBe('google');
+
+        // Now resolve github
         githubGateResolve!();
+        const githubResult = await githubPromise;
 
-        const [openaiResult, githubResult] = await Promise.all([openaiPromise, githubPromise]);
-
-        // Both should succeed with their respective provider IDs
-        expect(openaiResult.success).toBe(true);
-        expect(openaiResult.providerId).toBe('openai');
         expect(githubResult.success).toBe(true);
         expect(githubResult.providerId).toBe('github');
-
-        mockExecuteAuthFlow.mockRestore();
-      });
-
-      it('should not block one provider when another is in progress', async () => {
-        let openaiGateResolve: () => void;
-        const openaiGate = new Promise<void>(resolve => { openaiGateResolve = resolve; });
-
-        const authManager = new AuthManager({
-          credentialStore,
-          tokenManager,
-          legacyApiKeys: {},
-        });
-
-        const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
-          .mockImplementation(async (...args: unknown[]) => {
-            const providerId = args[0] as string;
-            if (providerId === 'openai') {
-              await openaiGate;
-              return { success: true, providerId: 'openai' };
-            }
-            // GitHub completes immediately
-            return { success: true, providerId: 'github' };
-          });
-
-        // Start openai flow (will be blocked)
-        const openaiPromise = authManager.authenticateAgent('openai');
-
-        // Start github flow (should complete immediately)
-        const githubResult = await authManager.authenticateAgent('github');
-
-        // GitHub should complete even though openai is still pending
-        expect(githubResult.success).toBe(true);
-        expect(githubResult.providerId).toBe('github');
-
-        // Now resolve openai
-        openaiGateResolve!();
-        const openaiResult = await openaiPromise;
-
-        expect(openaiResult.success).toBe(true);
-        expect(openaiResult.providerId).toBe('openai');
 
         mockExecuteAuthFlow.mockRestore();
       });
@@ -1704,12 +1707,12 @@ describe('Auth Manager Unit Tests', () => {
         const mockExecuteAuthFlow = jest.spyOn(authManager as any, 'executeAuthFlow')
           .mockImplementation(async () => {
             await gate;
-            return { success: true, providerId: 'openai' };
+            return { success: true, providerId: 'github' };
           });
 
         // Start 10 parallel calls
         const promises = Array.from({ length: 10 }, () =>
-          authManager.authenticateAgent('openai')
+          authManager.authenticateAgent('github')
         );
 
         // Should still only call executeAuthFlow once
@@ -1723,7 +1726,7 @@ describe('Auth Manager Unit Tests', () => {
         // All 10 callers should receive the same result
         for (const result of results) {
           expect(result.success).toBe(true);
-          expect(result.providerId).toBe('openai');
+          expect(result.providerId).toBe('github');
         }
 
         // Still only one call

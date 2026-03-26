@@ -57,11 +57,11 @@ import {
  */
 function createMockProvider(overrides: Partial<IAuthProvider> = {}): IAuthProvider {
   return {
-    id: 'openai' as AuthProviderId,
-    name: 'OpenAI',
-    defaultScopes: ['openid', 'profile'],
+    id: 'github' as AuthProviderId,
+    name: 'GitHub',
+    defaultScopes: ['read:user'],
     buildAuthorizationUrl: jest.fn((params: AuthorizationParams) => {
-      const url = new URL('https://auth.openai.com/authorize');
+      const url = new URL('https://github.com/login/oauth/authorize');
       url.searchParams.set('client_id', params.clientId);
       url.searchParams.set('redirect_uri', params.redirectUri);
       url.searchParams.set('response_type', params.responseType);
@@ -134,7 +134,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         });
 
         // Set up environment variable for client ID
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // We need to mock the callback server behavior
         // Since the actual flow waits for callback, we'll test the components
@@ -156,10 +156,10 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // The flow will timeout, but we can verify the URL was built
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         // Flow times out but buildAuthorizationUrl should have been called
         expect(result.success).toBe(false);
@@ -177,9 +177,9 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
-        const result = await flow.execute('openai', {
+        const result = await flow.execute('github', {
           timeoutMs: 100,
           scopes: ['custom_scope'],
         });
@@ -199,7 +199,7 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        const result = await flow.execute('openai', {
+        const result = await flow.execute('github', {
           timeoutMs: 100,
           clientId: 'custom_client_id',
         });
@@ -227,13 +227,13 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // The flow will timeout, but we verify the structure
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
-        expect(result.providerId).toBe('openai');
+        expect(result.providerId).toBe('github');
         if (!result.success) {
           expect(result.error).toBeDefined();
           expect(result.error.code).toBe('TIMEOUT');
@@ -256,10 +256,10 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // Verify the flow handles errors appropriately
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
         if (!result.success) {
@@ -284,12 +284,12 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
-        expect(result.providerId).toBe('openai');
+        expect(result.providerId).toBe('github');
       });
     });
 
@@ -309,10 +309,10 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // The flow will timeout before reaching token exchange
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
       });
@@ -332,10 +332,10 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // Use minimum valid timeout (1000ms) for callback server
-        const result = await flow.execute('openai', { timeoutMs: 1000 });
+        const result = await flow.execute('github', { timeoutMs: 1000 });
 
         expect(result.success).toBe(false);
         if (!result.success) {
@@ -358,10 +358,10 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // Use a timeout slightly above minimum (1500ms) for callback server
-        await flow.execute('openai', { timeoutMs: 1500 });
+        await flow.execute('github', { timeoutMs: 1500 });
 
         const elapsed = Date.now() - startTime;
         // Should timeout around 1500ms (with some tolerance)
@@ -386,11 +386,11 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // Flow will timeout, but network error handling is tested
         // Use minimum valid timeout (1000ms) for callback server
-        const result = await flow.execute('openai', { timeoutMs: 1000 });
+        const result = await flow.execute('github', { timeoutMs: 1000 });
 
         expect(result.success).toBe(false);
       }, 5000);
@@ -406,9 +406,9 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
       });
@@ -428,10 +428,10 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
         // Execute flow with short timeout
-        await flow.execute('openai', { timeoutMs: 100 });
+        await flow.execute('github', { timeoutMs: 100 });
 
         // If we get here without hanging, cleanup was successful
         expect(true).toBe(true);
@@ -447,7 +447,7 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
         if (!result.success) {
@@ -470,9 +470,9 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        // Don't set OAUTH_OPENAI_CLIENT_ID
+        // Don't set OAUTH_GITHUB_CLIENT_ID
 
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
         if (!result.success) {
@@ -514,9 +514,9 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: async () => { },
         });
 
-        process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+        process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
-        const result = await flow.execute('openai', { timeoutMs: 100 });
+        const result = await flow.execute('github', { timeoutMs: 100 });
 
         expect(result.success).toBe(false);
         expect(mockProvider.buildAuthorizationUrl).toHaveBeenCalled();
@@ -700,7 +700,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -729,7 +729,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -755,7 +755,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -781,7 +781,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -807,10 +807,10 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+      process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
       // Should proceed past headless check (will timeout, but that's expected)
-      const result = await flow.execute('openai', { timeoutMs: 100 });
+      const result = await flow.execute('github', { timeoutMs: 100 });
 
       // Should NOT be HEADLESS_ENVIRONMENT error
       expect(result.success).toBe(false);
@@ -1153,7 +1153,7 @@ describe('Agent Auth Flow Unit Tests', () => {
           launchBrowser: launchBrowserMock,
         });
 
-        const result = await flow.execute('openai');
+        const result = await flow.execute('github');
 
         expect(result.success).toBe(false);
         if (!result.success) {
@@ -1176,7 +1176,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: launchBrowserMock,
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1198,7 +1198,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: launchBrowserMock,
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1220,7 +1220,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: launchBrowserMock,
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1242,7 +1242,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: launchBrowserMock,
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1266,10 +1266,10 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: launchBrowserMock,
       });
 
-      process.env.OAUTH_OPENAI_CLIENT_ID = 'test_client_id';
+      process.env.OAUTH_GITHUB_CLIENT_ID = 'test_client_id';
 
       // Will timeout, but browser should be called
-      const result = await flow.execute('openai', { timeoutMs: 100 });
+      const result = await flow.execute('github', { timeoutMs: 100 });
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1312,7 +1312,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1329,7 +1329,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {
@@ -1346,7 +1346,7 @@ describe('Agent Auth Flow Unit Tests', () => {
         launchBrowser: async () => { },
       });
 
-      const result = await flow.execute('openai');
+      const result = await flow.execute('github');
 
       expect(result.success).toBe(false);
       if (!result.success) {

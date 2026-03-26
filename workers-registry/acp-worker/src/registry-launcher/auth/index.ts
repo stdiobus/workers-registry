@@ -25,7 +25,7 @@
  * OAuth 2.1 Authentication Module
  *
  * This module provides OAuth 2.1 authentication for the Registry Launcher worker.
- * It supports multiple OAuth providers (OpenAI, GitHub, Google, AWS Cognito, Azure AD, Anthropic)
+ * It supports multiple OAuth providers (GitHub, Google, AWS Cognito, Azure AD)
  * and two authentication modes:
  * - Agent Auth: Browser-based OAuth 2.1 Authorization Code flow with PKCE
  * - Terminal Auth: Interactive CLI setup flow for headless environments

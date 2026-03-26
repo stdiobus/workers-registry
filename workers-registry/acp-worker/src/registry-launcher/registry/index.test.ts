@@ -297,8 +297,8 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
             version: '1.0.0',
             distribution: { npx: { package: 'oauth-agent' } },
             authMethods: [
-              { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
               { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+              { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
             ],
           },
         ],
@@ -309,9 +309,9 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
       expect(registry.agents[0].authMethods).toBeDefined();
       expect(registry.agents[0].authMethods!.length).toBe(2);
       expect(registry.agents[0].authMethods![0]).toEqual({
-        id: 'oauth2-openai',
+        id: 'oauth2-github',
         type: 'oauth2',
-        providerId: 'openai',
+        providerId: 'github',
       });
       expect(registry.agents[0].authMethods![1]).toEqual({
         id: 'oauth2-github',
@@ -330,7 +330,7 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
             version: '1.0.0',
             distribution: { npx: { package: 'api-key-agent' } },
             authMethods: [
-              { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+              { id: 'github-api-key', type: 'api-key', providerId: 'github' },
             ],
           },
         ],
@@ -341,9 +341,9 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
       expect(registry.agents[0].authMethods).toBeDefined();
       expect(registry.agents[0].authMethods!.length).toBe(1);
       expect(registry.agents[0].authMethods![0]).toEqual({
-        id: 'openai-api-key',
+        id: 'github-api-key',
         type: 'api-key',
-        providerId: 'openai',
+        providerId: 'github',
       });
     });
 
@@ -357,8 +357,8 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
             version: '1.0.0',
             distribution: { npx: { package: 'mixed-auth-agent' } },
             authMethods: [
-              { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
-              { id: 'openai-api-key', type: 'api-key', providerId: 'openai' },
+              { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+              { id: 'github-api-key', type: 'api-key', providerId: 'github' },
             ],
           },
         ],
@@ -406,7 +406,7 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
             version: '1.0.0',
             distribution: { npx: { package: 'test-agent' } },
             authMethods: [
-              { type: 'oauth2', providerId: 'openai' }, // missing id
+              { type: 'oauth2', providerId: 'github' }, // missing id
               { id: 'valid', type: 'api-key' },
             ],
           },
@@ -429,7 +429,7 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
             version: '1.0.0',
             distribution: { npx: { package: 'test-agent' } },
             authMethods: [
-              { id: 'invalid', providerId: 'openai' }, // missing type
+              { id: 'invalid', providerId: 'github' }, // missing type
               { id: 'valid', type: 'api-key' },
             ],
           },
@@ -522,7 +522,7 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
             distribution: { npx: { package: 'full-auth-agent' } },
             authRequired: true,
             authMethods: [
-              { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+              { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
             ],
           },
         ],
@@ -582,8 +582,8 @@ describe('RegistryIndex - getAuthRequirements', () => {
         version: '1.0.0',
         distribution: { npx: { package: 'oauth-agent' } },
         authMethods: [
-          { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
           { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+          { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         ],
       },
     ]);
@@ -593,7 +593,7 @@ describe('RegistryIndex - getAuthRequirements', () => {
     expect(requirements).toBeDefined();
     expect(requirements!.authRequired).toBe(true); // Implicitly required due to oauth2 methods
     expect(requirements!.authMethods.length).toBe(2);
-    expect(requirements!.primaryOAuthProviderId).toBe('openai'); // First oauth2 provider
+    expect(requirements!.primaryOAuthProviderId).toBe('github'); // First oauth2 provider
   });
 
   it('should return authRequired: false for agent without auth fields', () => {
@@ -671,7 +671,7 @@ describe('RegistryIndex - getAuthRequirements', () => {
         authMethods: [
           { id: 'api-key', type: 'api-key' }, // No providerId
           { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
-          { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+          { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         ],
       },
     ]);
@@ -691,7 +691,7 @@ describe('RegistryIndex - getAuthRequirements', () => {
         distribution: { npx: { package: 'optional-oauth-agent' } },
         authRequired: false,
         authMethods: [
-          { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+          { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
         ],
       },
     ]);

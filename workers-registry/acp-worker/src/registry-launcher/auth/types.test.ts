@@ -61,14 +61,12 @@ describe('isValidProviderId', () => {
       expect(isValidProviderId(providerId)).toBe(true);
     });
 
-    it('should accept all supported providers: openai, github, google, cognito, azure, anthropic', () => {
+    it('should accept all supported providers: github, google, cognito, azure', () => {
       const expectedProviders: AuthProviderId[] = [
-        'openai',
         'github',
         'google',
         'cognito',
         'azure',
-        'anthropic',
       ];
       expectedProviders.forEach((provider) => {
         expect(isValidProviderId(provider)).toBe(true);
@@ -98,11 +96,11 @@ describe('isValidProviderId', () => {
     });
 
     it('should return false for object', () => {
-      expect(isValidProviderId({ id: 'openai' })).toBe(false);
+      expect(isValidProviderId({ id: 'github' })).toBe(false);
     });
 
     it('should return false for array', () => {
-      expect(isValidProviderId(['openai'])).toBe(false);
+      expect(isValidProviderId(['github'])).toBe(false);
     });
 
     it('should return false for boolean', () => {
@@ -110,25 +108,25 @@ describe('isValidProviderId', () => {
     });
 
     it('should return false for case-sensitive mismatch', () => {
-      expect(isValidProviderId('OpenAI')).toBe(false);
+      expect(isValidProviderId('GitHub')).toBe(false);
       expect(isValidProviderId('GITHUB')).toBe(false);
       expect(isValidProviderId('Google')).toBe(false);
     });
 
     it('should return false for provider with extra whitespace', () => {
-      expect(isValidProviderId(' openai')).toBe(false);
-      expect(isValidProviderId('openai ')).toBe(false);
-      expect(isValidProviderId(' openai ')).toBe(false);
+      expect(isValidProviderId(' github')).toBe(false);
+      expect(isValidProviderId('github ')).toBe(false);
+      expect(isValidProviderId(' github ')).toBe(false);
     });
   });
 
   describe('type narrowing', () => {
     it('should narrow type to AuthProviderId when guard returns true', () => {
-      const value: unknown = 'openai';
+      const value: unknown = 'github';
       if (isValidProviderId(value)) {
         // TypeScript should recognize value as AuthProviderId here
         const providerId: AuthProviderId = value;
-        expect(providerId).toBe('openai');
+        expect(providerId).toBe('github');
       }
     });
   });
@@ -445,18 +443,16 @@ describe('constant arrays', () => {
    * Validates: Requirements 7.1 - Ensure constant arrays are properly defined
    */
   describe('VALID_PROVIDER_IDS', () => {
-    it('should contain exactly 6 providers', () => {
-      expect(VALID_PROVIDER_IDS).toHaveLength(6);
+    it('should contain exactly 4 providers', () => {
+      expect(VALID_PROVIDER_IDS).toHaveLength(4);
     });
 
     it('should contain the exact expected providers', () => {
       expect([...VALID_PROVIDER_IDS].sort()).toEqual([
-        'anthropic',
         'azure',
         'cognito',
         'github',
         'google',
-        'openai',
       ]);
     });
 
@@ -530,12 +526,11 @@ describe('AUTH_METHOD_ID_TO_PROVIDER_ID', () => {
   describe('mapping table structure', () => {
     it('should contain oauth2-prefixed mappings for all providers', () => {
       const oauth2Mappings = [
-        'oauth2-openai',
+        'oauth2-github',
         'oauth2-github',
         'oauth2-google',
         'oauth2-cognito',
         'oauth2-azure',
-        'oauth2-anthropic',
       ];
 
       oauth2Mappings.forEach((methodId) => {
@@ -550,16 +545,14 @@ describe('AUTH_METHOD_ID_TO_PROVIDER_ID', () => {
     });
 
     it('should map oauth2-prefixed IDs to correct providers', () => {
-      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-openai']).toBe('openai');
       expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-github']).toBe('github');
       expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-google']).toBe('google');
       expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-cognito']).toBe('cognito');
       expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-azure']).toBe('azure');
-      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-anthropic']).toBe('anthropic');
     });
 
-    it('should have exactly 12 mappings (6 oauth2 + 6 direct)', () => {
-      expect(Object.keys(AUTH_METHOD_ID_TO_PROVIDER_ID)).toHaveLength(12);
+    it('should have exactly 8 mappings (4 oauth2 + 4 direct)', () => {
+      expect(Object.keys(AUTH_METHOD_ID_TO_PROVIDER_ID)).toHaveLength(8);
     });
   });
 });
@@ -570,12 +563,10 @@ describe('VALID_AUTH_METHOD_IDS', () => {
    * Tests the list of valid authMethod.id values.
    */
   it('should contain all oauth2-prefixed method IDs', () => {
-    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-openai');
     expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-github');
     expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-google');
     expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-cognito');
     expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-azure');
-    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-anthropic');
   });
 
   it('should contain all direct provider IDs', () => {
@@ -584,8 +575,8 @@ describe('VALID_AUTH_METHOD_IDS', () => {
     });
   });
 
-  it('should have exactly 12 valid method IDs', () => {
-    expect(VALID_AUTH_METHOD_IDS).toHaveLength(12);
+  it('should have exactly 8 valid method IDs', () => {
+    expect(VALID_AUTH_METHOD_IDS).toHaveLength(8);
   });
 });
 
@@ -622,25 +613,25 @@ describe('isValidAuthMethodId', () => {
     });
 
     it('should return false for object', () => {
-      expect(isValidAuthMethodId({ id: 'oauth2-openai' })).toBe(false);
+      expect(isValidAuthMethodId({ id: 'oauth2-github' })).toBe(false);
     });
 
     it('should return false for case-sensitive mismatch', () => {
-      expect(isValidAuthMethodId('OAuth2-OpenAI')).toBe(false);
+      expect(isValidAuthMethodId('OAuth2-GitHub')).toBe(false);
       expect(isValidAuthMethodId('OAUTH2-GITHUB')).toBe(false);
-      expect(isValidAuthMethodId('OpenAI')).toBe(false);
+      expect(isValidAuthMethodId('GitHub')).toBe(false);
     });
 
     it('should return false for wrong format (no substring matching)', () => {
-      expect(isValidAuthMethodId('openai-oauth2')).toBe(false);
-      expect(isValidAuthMethodId('oauth-openai')).toBe(false);
-      expect(isValidAuthMethodId('oauth2openai')).toBe(false);
+      expect(isValidAuthMethodId('github-oauth2')).toBe(false);
+      expect(isValidAuthMethodId('oauth-github')).toBe(false);
+      expect(isValidAuthMethodId('oauth2github')).toBe(false);
     });
 
     it('should return false for partial matches (security requirement)', () => {
       expect(isValidAuthMethodId('oauth2')).toBe(false);
       expect(isValidAuthMethodId('oauth2-')).toBe(false);
-      expect(isValidAuthMethodId('-openai')).toBe(false);
+      expect(isValidAuthMethodId('-github')).toBe(false);
     });
   });
 });
@@ -651,8 +642,8 @@ describe('resolveAuthMethodIdToProviderId', () => {
    * Tests the explicit mapping resolution function.
    */
   describe('valid mappings', () => {
-    it('should resolve oauth2-openai to openai', () => {
-      expect(resolveAuthMethodIdToProviderId('oauth2-openai')).toBe('openai');
+    it('should resolve oauth2-github to github', () => {
+      expect(resolveAuthMethodIdToProviderId('oauth2-github')).toBe('github');
     });
 
     it('should resolve oauth2-github to github', () => {
@@ -671,17 +662,11 @@ describe('resolveAuthMethodIdToProviderId', () => {
       expect(resolveAuthMethodIdToProviderId('oauth2-azure')).toBe('azure');
     });
 
-    it('should resolve oauth2-anthropic to anthropic', () => {
-      expect(resolveAuthMethodIdToProviderId('oauth2-anthropic')).toBe('anthropic');
-    });
-
     it('should resolve direct provider IDs for backward compatibility', () => {
-      expect(resolveAuthMethodIdToProviderId('openai')).toBe('openai');
       expect(resolveAuthMethodIdToProviderId('github')).toBe('github');
       expect(resolveAuthMethodIdToProviderId('google')).toBe('google');
       expect(resolveAuthMethodIdToProviderId('cognito')).toBe('cognito');
       expect(resolveAuthMethodIdToProviderId('azure')).toBe('azure');
-      expect(resolveAuthMethodIdToProviderId('anthropic')).toBe('anthropic');
     });
   });
 
@@ -693,16 +678,16 @@ describe('resolveAuthMethodIdToProviderId', () => {
     });
 
     it('should throw for wrong format', () => {
-      expect(() => resolveAuthMethodIdToProviderId('openai-oauth2')).toThrow(
+      expect(() => resolveAuthMethodIdToProviderId('github-oauth2')).toThrow(
         UnknownAuthMethodIdError
       );
     });
 
     it('should throw for case mismatch (no heuristic matching)', () => {
-      expect(() => resolveAuthMethodIdToProviderId('OPENAI')).toThrow(
+      expect(() => resolveAuthMethodIdToProviderId('GITHUB')).toThrow(
         UnknownAuthMethodIdError
       );
-      expect(() => resolveAuthMethodIdToProviderId('OAuth2-OpenAI')).toThrow(
+      expect(() => resolveAuthMethodIdToProviderId('OAuth2-GitHub')).toThrow(
         UnknownAuthMethodIdError
       );
     });
@@ -731,12 +716,10 @@ describe('tryResolveAuthMethodIdToProviderId', () => {
    */
   describe('valid mappings', () => {
     it('should return providerId for valid oauth2-prefixed method IDs', () => {
-      expect(tryResolveAuthMethodIdToProviderId('oauth2-openai')).toBe('openai');
       expect(tryResolveAuthMethodIdToProviderId('oauth2-github')).toBe('github');
       expect(tryResolveAuthMethodIdToProviderId('oauth2-google')).toBe('google');
       expect(tryResolveAuthMethodIdToProviderId('oauth2-cognito')).toBe('cognito');
       expect(tryResolveAuthMethodIdToProviderId('oauth2-azure')).toBe('azure');
-      expect(tryResolveAuthMethodIdToProviderId('oauth2-anthropic')).toBe('anthropic');
     });
 
     it('should return providerId for direct provider IDs', () => {
@@ -752,12 +735,12 @@ describe('tryResolveAuthMethodIdToProviderId', () => {
     });
 
     it('should return null for wrong format', () => {
-      expect(tryResolveAuthMethodIdToProviderId('openai-oauth2')).toBeNull();
+      expect(tryResolveAuthMethodIdToProviderId('github-oauth2')).toBeNull();
     });
 
     it('should return null for case mismatch', () => {
-      expect(tryResolveAuthMethodIdToProviderId('OPENAI')).toBeNull();
-      expect(tryResolveAuthMethodIdToProviderId('OAuth2-OpenAI')).toBeNull();
+      expect(tryResolveAuthMethodIdToProviderId('GITHUB')).toBeNull();
+      expect(tryResolveAuthMethodIdToProviderId('OAuth2-GitHub')).toBeNull();
     });
 
     it('should return null for empty string', () => {
@@ -811,18 +794,16 @@ describe('UnknownAuthMethodIdError', () => {
 
     it('should list supported method IDs in the message', () => {
       const error = new UnknownAuthMethodIdError('oauth2-unknown');
-      expect(error.message).toContain('oauth2-openai');
+      expect(error.message).toContain('oauth2-github');
       expect(error.message).toContain('oauth2-github');
     });
 
     it('should list supported providers in the message', () => {
       const error = new UnknownAuthMethodIdError('oauth2-unknown');
-      expect(error.message).toContain('openai');
       expect(error.message).toContain('github');
       expect(error.message).toContain('google');
       expect(error.message).toContain('cognito');
       expect(error.message).toContain('azure');
-      expect(error.message).toContain('anthropic');
     });
   });
 
@@ -853,15 +834,15 @@ describe('security: no substring/heuristic matching', () => {
     // These should all fail - no partial matching
     expect(isValidAuthMethodId('oauth2-open')).toBe(false);
     expect(isValidAuthMethodId('oauth2-git')).toBe(false);
-    expect(isValidAuthMethodId('auth2-openai')).toBe(false);
-    expect(isValidAuthMethodId('2-openai')).toBe(false);
+    expect(isValidAuthMethodId('auth2-github')).toBe(false);
+    expect(isValidAuthMethodId('2-github')).toBe(false);
   });
 
   it('should not match method IDs with extra characters', () => {
-    expect(isValidAuthMethodId('oauth2-openai-extra')).toBe(false);
-    expect(isValidAuthMethodId('prefix-oauth2-openai')).toBe(false);
-    expect(isValidAuthMethodId('oauth2-openai ')).toBe(false);
-    expect(isValidAuthMethodId(' oauth2-openai')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-github-extra')).toBe(false);
+    expect(isValidAuthMethodId('prefix-oauth2-github')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-github ')).toBe(false);
+    expect(isValidAuthMethodId(' oauth2-github')).toBe(false);
   });
 
   it('should not match similar-looking method IDs', () => {
@@ -876,10 +857,10 @@ describe('security: no substring/heuristic matching', () => {
 
   it('should be case-sensitive (no case-insensitive matching)', () => {
     // All case variations should fail
-    expect(isValidAuthMethodId('OAuth2-OpenAI')).toBe(false);
-    expect(isValidAuthMethodId('OAUTH2-OPENAI')).toBe(false);
-    expect(isValidAuthMethodId('oauth2-OPENAI')).toBe(false);
-    expect(isValidAuthMethodId('OAuth2-openai')).toBe(false);
+    expect(isValidAuthMethodId('OAuth2-GitHub')).toBe(false);
+    expect(isValidAuthMethodId('OAUTH2-GITHUB')).toBe(false);
+    expect(isValidAuthMethodId('oauth2-GITHUB')).toBe(false);
+    expect(isValidAuthMethodId('OAuth2-github')).toBe(false);
   });
 
   it('should not use regex or pattern matching', () => {

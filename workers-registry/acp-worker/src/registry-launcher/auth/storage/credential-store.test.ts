@@ -25,7 +25,7 @@ describe('CredentialStore', () => {
   let mockMemoryBackend: jest.Mocked<MemoryBackend>;
 
   const testCredentials: StoredCredentials = {
-    providerId: 'openai',
+    providerId: 'github',
     accessToken: 'test-access-token',
     refreshToken: 'test-refresh-token',
     expiresAt: Date.now() + 3600000,
@@ -80,9 +80,9 @@ describe('CredentialStore', () => {
       mockKeychainBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
-      expect(mockKeychainBackend.store).toHaveBeenCalledWith('openai', testCredentials);
+      expect(mockKeychainBackend.store).toHaveBeenCalledWith('github', testCredentials);
       expect(store.getBackendType()).toBe('keychain');
     });
 
@@ -91,9 +91,9 @@ describe('CredentialStore', () => {
       mockEncryptedFileBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
-      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('openai', testCredentials);
+      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('github', testCredentials);
       expect(store.getBackendType()).toBe('encrypted-file');
     });
 
@@ -103,9 +103,9 @@ describe('CredentialStore', () => {
       mockMemoryBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
-      expect(mockMemoryBackend.store).toHaveBeenCalledWith('openai', testCredentials);
+      expect(mockMemoryBackend.store).toHaveBeenCalledWith('github', testCredentials);
       expect(store.getBackendType()).toBe('memory');
     });
 
@@ -114,9 +114,9 @@ describe('CredentialStore', () => {
       mockKeychainBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore({ preferredBackend: 'encrypted-file' });
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
-      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('openai', testCredentials);
+      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('github', testCredentials);
       expect(store.getBackendType()).toBe('encrypted-file');
     });
 
@@ -125,9 +125,9 @@ describe('CredentialStore', () => {
       mockEncryptedFileBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore({ preferredBackend: 'keychain' });
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
-      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('openai', testCredentials);
+      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('github', testCredentials);
       expect(store.getBackendType()).toBe('encrypted-file');
     });
 
@@ -136,16 +136,16 @@ describe('CredentialStore', () => {
       mockEncryptedFileBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
-      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('openai', testCredentials);
+      expect(mockEncryptedFileBackend.store).toHaveBeenCalledWith('github', testCredentials);
     });
 
     it('should initialize backend only once', async () => {
       mockMemoryBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
       await store.store('github', testCredentials);
 
       // Memory backend constructor should only be called once for the actual backend
@@ -159,9 +159,9 @@ describe('CredentialStore', () => {
       mockMemoryBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
-      expect(mockMemoryBackend.store).toHaveBeenCalledWith('openai', testCredentials);
+      expect(mockMemoryBackend.store).toHaveBeenCalledWith('github', testCredentials);
     });
   });
 
@@ -171,10 +171,10 @@ describe('CredentialStore', () => {
       mockMemoryBackend.retrieve.mockResolvedValue(testCredentials);
 
       const store = new CredentialStore();
-      const result = await store.retrieve('openai');
+      const result = await store.retrieve('github');
 
       expect(result).toEqual(testCredentials);
-      expect(mockMemoryBackend.retrieve).toHaveBeenCalledWith('openai');
+      expect(mockMemoryBackend.retrieve).toHaveBeenCalledWith('github');
     });
 
     it('should return null when not found', async () => {
@@ -182,7 +182,7 @@ describe('CredentialStore', () => {
       mockMemoryBackend.retrieve.mockResolvedValue(null);
 
       const store = new CredentialStore();
-      const result = await store.retrieve('openai');
+      const result = await store.retrieve('github');
 
       expect(result).toBeNull();
     });
@@ -193,9 +193,9 @@ describe('CredentialStore', () => {
       mockMemoryBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.delete('openai');
+      await store.delete('github');
 
-      expect(mockMemoryBackend.delete).toHaveBeenCalledWith('openai');
+      expect(mockMemoryBackend.delete).toHaveBeenCalledWith('github');
     });
   });
 
@@ -213,12 +213,12 @@ describe('CredentialStore', () => {
   describe('listProviders', () => {
     it('should delegate to backend', async () => {
       mockMemoryBackend.isAvailable.mockResolvedValue(true);
-      mockMemoryBackend.listProviders.mockResolvedValue(['openai', 'github']);
+      mockMemoryBackend.listProviders.mockResolvedValue(['github', 'github']);
 
       const store = new CredentialStore();
       const result = await store.listProviders();
 
-      expect(result).toEqual(['openai', 'github']);
+      expect(result).toEqual(['github', 'github']);
       expect(mockMemoryBackend.listProviders).toHaveBeenCalled();
     });
   });
@@ -233,7 +233,7 @@ describe('CredentialStore', () => {
       mockEncryptedFileBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
       expect(store.getBackendType()).toBe('encrypted-file');
     });
@@ -249,7 +249,7 @@ describe('CredentialStore', () => {
       mockMemoryBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
       expect(store.isInitialized()).toBe(true);
     });
@@ -260,7 +260,7 @@ describe('CredentialStore', () => {
       mockMemoryBackend.isAvailable.mockResolvedValue(true);
 
       const store = new CredentialStore();
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
       expect(store.isInitialized()).toBe(true);
 
@@ -293,7 +293,7 @@ describe('CredentialStore', () => {
         preferredBackend: 'encrypted-file',
         encryptedFilePath: '/custom/path/credentials.enc'
       });
-      await store.store('openai', testCredentials);
+      await store.store('github', testCredentials);
 
       expect(EncryptedFileBackend).toHaveBeenCalledWith('/custom/path/credentials.enc');
     });

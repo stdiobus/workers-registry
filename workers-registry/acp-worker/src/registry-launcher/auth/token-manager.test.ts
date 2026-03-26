@@ -159,10 +159,10 @@ describe('Token Manager Unit Tests', () => {
 
   beforeEach(() => {
     credentialStore = new MockCredentialStore();
-    mockProvider = new MockAuthProvider('openai');
+    mockProvider = new MockAuthProvider('github');
     tokenManager = new TokenManager({
       credentialStore,
-      providerResolver: (id) => (id === 'openai' ? mockProvider : null),
+      providerResolver: (id) => (id === 'github' ? mockProvider : null),
       refreshThresholdMs: DEFAULT_REFRESH_THRESHOLD_MS,
     });
   });
@@ -177,7 +177,7 @@ describe('Token Manager Unit Tests', () => {
      * Test case 1: getAccessToken returns null when no credentials exist
      */
     it('should return null when no credentials exist', async () => {
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
       expect(result).toBeNull();
     });
 
@@ -186,15 +186,15 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should return token when valid credentials exist', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-access-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000, // 1 hour from now
         storedAt: now,
       });
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
       expect(result).toBe('valid-access-token');
     });
 
@@ -203,8 +203,8 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should trigger refresh when token is near expiration', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expiring-access-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 2 * 60 * 1000, // 2 minutes from now (within 5 min threshold)
@@ -213,7 +213,7 @@ describe('Token Manager Unit Tests', () => {
 
       mockProvider.newAccessToken = 'refreshed-access-token';
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
 
       expect(mockProvider.refreshCallCount).toBe(1);
       expect(result).toBe('refreshed-access-token');
@@ -225,15 +225,15 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should return token when expired but no refresh token available', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expired-access-token',
         // No refreshToken - can't trigger refresh
         expiresAt: now - 1000, // Already expired
         storedAt: now - 60 * 60 * 1000,
       });
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
       // Implementation returns the token since shouldRefresh returns false (no refresh token)
       // The token is returned even if expired - caller should use hasValidTokens to check
       expect(result).toBe('expired-access-token');
@@ -241,15 +241,15 @@ describe('Token Manager Unit Tests', () => {
 
     it('should return original token if not near expiration', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-access-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 30 * 60 * 1000, // 30 minutes from now (beyond threshold)
         storedAt: now,
       });
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
 
       expect(mockProvider.refreshCallCount).toBe(0);
       expect(result).toBe('valid-access-token');
@@ -257,15 +257,15 @@ describe('Token Manager Unit Tests', () => {
 
     it('should return token without expiration info without triggering refresh', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'no-expiry-token',
         refreshToken: 'refresh-token',
         // No expiresAt
         storedAt: now,
       });
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
 
       expect(mockProvider.refreshCallCount).toBe(0);
       expect(result).toBe('no-expiry-token');
@@ -285,14 +285,14 @@ describe('Token Manager Unit Tests', () => {
         scope: 'openid profile',
       };
 
-      await tokenManager.storeTokens('openai', tokens);
+      await tokenManager.storeTokens('github', tokens);
 
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
       expect(stored).toBeDefined();
       expect(stored!.accessToken).toBe('new-access-token');
       expect(stored!.refreshToken).toBe('new-refresh-token');
       expect(stored!.scope).toBe('openid profile');
-      expect(stored!.providerId).toBe('openai');
+      expect(stored!.providerId).toBe('github');
     });
 
     /**
@@ -307,10 +307,10 @@ describe('Token Manager Unit Tests', () => {
         expiresIn: 3600, // 1 hour in seconds
       };
 
-      await tokenManager.storeTokens('openai', tokens);
+      await tokenManager.storeTokens('github', tokens);
 
       const afterStore = Date.now();
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
 
       expect(stored).toBeDefined();
       expect(stored!.expiresAt).toBeDefined();
@@ -329,8 +329,8 @@ describe('Token Manager Unit Tests', () => {
     it('should preserve client info from existing credentials', async () => {
       // Set up existing credentials with client info
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'old-access-token',
         refreshToken: 'old-refresh-token',
         clientId: 'my-client-id',
@@ -349,9 +349,9 @@ describe('Token Manager Unit Tests', () => {
         refreshToken: 'new-refresh-token',
       };
 
-      await tokenManager.storeTokens('openai', tokens);
+      await tokenManager.storeTokens('github', tokens);
 
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
       expect(stored).toBeDefined();
       expect(stored!.accessToken).toBe('new-access-token');
       expect(stored!.refreshToken).toBe('new-refresh-token');
@@ -371,9 +371,9 @@ describe('Token Manager Unit Tests', () => {
         // No expiresIn
       };
 
-      await tokenManager.storeTokens('openai', tokens);
+      await tokenManager.storeTokens('github', tokens);
 
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
       expect(stored).toBeDefined();
       expect(stored!.accessToken).toBe('new-access-token');
       expect(stored!.expiresAt).toBeUndefined();
@@ -387,10 +387,10 @@ describe('Token Manager Unit Tests', () => {
         tokenType: 'Bearer',
       };
 
-      await tokenManager.storeTokens('openai', tokens);
+      await tokenManager.storeTokens('github', tokens);
 
       const afterStore = Date.now();
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
 
       expect(stored).toBeDefined();
       expect(stored!.storedAt).toBeGreaterThanOrEqual(beforeStore);
@@ -405,15 +405,15 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should return true for valid tokens', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-access-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000, // 1 hour from now
         storedAt: now,
       });
 
-      const result = await tokenManager.hasValidTokens('openai');
+      const result = await tokenManager.hasValidTokens('github');
       expect(result).toBe(true);
     });
 
@@ -422,15 +422,15 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should return false for expired tokens', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expired-access-token',
         refreshToken: 'refresh-token',
         expiresAt: now - 1000, // Already expired
         storedAt: now - 60 * 60 * 1000,
       });
 
-      const result = await tokenManager.hasValidTokens('openai');
+      const result = await tokenManager.hasValidTokens('github');
       expect(result).toBe(false);
     });
 
@@ -438,27 +438,27 @@ describe('Token Manager Unit Tests', () => {
      * Test case 10: hasValidTokens returns false when no credentials exist
      */
     it('should return false when no credentials exist', async () => {
-      const result = await tokenManager.hasValidTokens('openai');
+      const result = await tokenManager.hasValidTokens('github');
       expect(result).toBe(false);
     });
 
     it('should return true for tokens without expiration info', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'no-expiry-token',
         // No expiresAt - assumed valid
         storedAt: now,
       });
 
-      const result = await tokenManager.hasValidTokens('openai');
+      const result = await tokenManager.hasValidTokens('github');
       expect(result).toBe(true);
     });
 
     it('should return false for different provider', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-access-token',
         expiresAt: now + 60 * 60 * 1000,
         storedAt: now,
@@ -475,8 +475,8 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should trigger refresh regardless of expiration', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-access-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000, // 1 hour from now (not near expiration)
@@ -485,7 +485,7 @@ describe('Token Manager Unit Tests', () => {
 
       mockProvider.newAccessToken = 'force-refreshed-token';
 
-      const result = await tokenManager.forceRefresh('openai');
+      const result = await tokenManager.forceRefresh('github');
 
       expect(mockProvider.refreshCallCount).toBe(1);
       expect(result).toBe('force-refreshed-token');
@@ -495,30 +495,30 @@ describe('Token Manager Unit Tests', () => {
      * Test case 12: forceRefresh returns null when no credentials exist
      */
     it('should return null when no credentials exist', async () => {
-      const result = await tokenManager.forceRefresh('openai');
+      const result = await tokenManager.forceRefresh('github');
       expect(result).toBeNull();
       expect(mockProvider.refreshCallCount).toBe(0);
     });
 
     it('should return null when no refresh token exists', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-access-token',
         // No refreshToken
         expiresAt: now + 60 * 60 * 1000,
         storedAt: now,
       });
 
-      const result = await tokenManager.forceRefresh('openai');
+      const result = await tokenManager.forceRefresh('github');
       expect(result).toBeNull();
       expect(mockProvider.refreshCallCount).toBe(0);
     });
 
     it('should update stored credentials after force refresh', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'old-access-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000,
@@ -528,9 +528,9 @@ describe('Token Manager Unit Tests', () => {
       mockProvider.newAccessToken = 'force-refreshed-token';
       mockProvider.newRefreshToken = 'new-refresh-token';
 
-      await tokenManager.forceRefresh('openai');
+      await tokenManager.forceRefresh('github');
 
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
       expect(stored).toBeDefined();
       expect(stored!.accessToken).toBe('force-refreshed-token');
       expect(stored!.refreshToken).toBe('new-refresh-token');
@@ -544,42 +544,42 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should remove credentials', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000,
         storedAt: now,
       });
 
-      expect(credentialStore.hasCredentials('openai')).toBe(true);
+      expect(credentialStore.hasCredentials('github')).toBe(true);
 
-      await tokenManager.clearTokens('openai');
+      await tokenManager.clearTokens('github');
 
-      expect(credentialStore.hasCredentials('openai')).toBe(false);
+      expect(credentialStore.hasCredentials('github')).toBe(false);
     });
 
     it('should not throw when clearing non-existent credentials', async () => {
-      await expect(tokenManager.clearTokens('openai')).resolves.not.toThrow();
+      await expect(tokenManager.clearTokens('github')).resolves.not.toThrow();
     });
 
     it('should only clear specified provider credentials', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
-        accessToken: 'openai-token',
-        storedAt: now,
-      });
       credentialStore.setCredentials('github', {
         providerId: 'github',
         accessToken: 'github-token',
         storedAt: now,
       });
+      credentialStore.setCredentials('google', {
+        providerId: 'google',
+        accessToken: 'google-token',
+        storedAt: now,
+      });
 
-      await tokenManager.clearTokens('openai');
+      await tokenManager.clearTokens('github');
 
-      expect(credentialStore.hasCredentials('openai')).toBe(false);
-      expect(credentialStore.hasCredentials('github')).toBe(true);
+      expect(credentialStore.hasCredentials('github')).toBe(false);
+      expect(credentialStore.hasCredentials('google')).toBe(true);
     });
   });
 
@@ -591,8 +591,8 @@ describe('Token Manager Unit Tests', () => {
       const now = Date.now();
 
       // Set up different credential states
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000, // Valid
@@ -617,7 +617,7 @@ describe('Token Manager Unit Tests', () => {
 
       const status = await tokenManager.getStatus();
 
-      expect(status.get('openai')).toBe('authenticated');
+      expect(status.get('github')).toBe('authenticated');
       expect(status.get('github')).toBe('expired');
       expect(status.get('google')).toBe('refresh-failed');
     });
@@ -629,15 +629,15 @@ describe('Token Manager Unit Tests', () => {
 
     it('should return authenticated for tokens without expiration', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'no-expiry-token',
         // No expiresAt
         storedAt: now,
       });
 
       const status = await tokenManager.getStatus();
-      expect(status.get('openai')).toBe('authenticated');
+      expect(status.get('github')).toBe('authenticated');
     });
   });
 
@@ -648,8 +648,8 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should clear credentials when refresh fails', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expiring-token',
         refreshToken: 'invalid-refresh-token',
         expiresAt: now + 2 * 60 * 1000, // Within refresh threshold
@@ -658,19 +658,19 @@ describe('Token Manager Unit Tests', () => {
 
       mockProvider.shouldFail = true;
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
 
       // Implementation returns the original token if it's still valid (not expired)
       // even when refresh fails - this is the proactive refresh behavior
       expect(result).toBe('expiring-token');
       // Credentials should be cleared due to refresh failure
-      expect(credentialStore.hasCredentials('openai')).toBe(false);
+      expect(credentialStore.hasCredentials('github')).toBe(false);
     });
 
     it('should clear credentials when forceRefresh fails', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-token',
         refreshToken: 'invalid-refresh-token',
         expiresAt: now + 60 * 60 * 1000,
@@ -679,17 +679,17 @@ describe('Token Manager Unit Tests', () => {
 
       mockProvider.shouldFail = true;
 
-      const result = await tokenManager.forceRefresh('openai');
+      const result = await tokenManager.forceRefresh('github');
 
       expect(result).toBeNull();
-      expect(credentialStore.hasCredentials('openai')).toBe(false);
+      expect(credentialStore.hasCredentials('github')).toBe(false);
     });
 
     it('should return valid token if refresh fails but token not yet expired', async () => {
       const now = Date.now();
       // Token expiring within threshold but not yet expired
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'still-valid-token',
         refreshToken: 'invalid-refresh-token',
         expiresAt: now + 3 * 60 * 1000, // 3 minutes - within threshold but not expired
@@ -698,7 +698,7 @@ describe('Token Manager Unit Tests', () => {
 
       mockProvider.shouldFail = true;
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
 
       // Should return the still-valid token even though refresh failed
       expect(result).toBe('still-valid-token');
@@ -706,8 +706,8 @@ describe('Token Manager Unit Tests', () => {
 
     it('should return null when refresh fails and token is already expired', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expired-token',
         refreshToken: 'invalid-refresh-token',
         expiresAt: now - 1000, // Already expired
@@ -716,12 +716,12 @@ describe('Token Manager Unit Tests', () => {
 
       mockProvider.shouldFail = true;
 
-      const result = await tokenManager.getAccessToken('openai');
+      const result = await tokenManager.getAccessToken('github');
 
       // Should return null since token is expired and refresh failed
       expect(result).toBeNull();
       // Credentials should be cleared
-      expect(credentialStore.hasCredentials('openai')).toBe(false);
+      expect(credentialStore.hasCredentials('github')).toBe(false);
     });
   });
 
@@ -731,8 +731,8 @@ describe('Token Manager Unit Tests', () => {
      */
     it('should store new refresh token when provider returns one (rotation)', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'old-access-token',
         refreshToken: 'old-refresh-token',
         expiresAt: now + 2 * 60 * 1000, // Within refresh threshold
@@ -742,9 +742,9 @@ describe('Token Manager Unit Tests', () => {
       mockProvider.newAccessToken = 'new-access-token';
       mockProvider.newRefreshToken = 'rotated-refresh-token';
 
-      await tokenManager.getAccessToken('openai');
+      await tokenManager.getAccessToken('github');
 
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
       expect(stored).toBeDefined();
       expect(stored!.accessToken).toBe('new-access-token');
       expect(stored!.refreshToken).toBe('rotated-refresh-token');
@@ -752,8 +752,8 @@ describe('Token Manager Unit Tests', () => {
 
     it('should preserve old refresh token when provider does not return new one', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'old-access-token',
         refreshToken: 'original-refresh-token',
         expiresAt: now + 2 * 60 * 1000, // Within refresh threshold
@@ -763,9 +763,9 @@ describe('Token Manager Unit Tests', () => {
       mockProvider.newAccessToken = 'new-access-token';
       mockProvider.newRefreshToken = undefined; // Provider doesn't return new refresh token
 
-      await tokenManager.getAccessToken('openai');
+      await tokenManager.getAccessToken('github');
 
-      const stored = credentialStore.getCredentials('openai');
+      const stored = credentialStore.getCredentials('github');
       expect(stored).toBeDefined();
       expect(stored!.accessToken).toBe('new-access-token');
       // Note: Current implementation stores undefined when provider returns undefined
@@ -777,8 +777,8 @@ describe('Token Manager Unit Tests', () => {
   describe('Concurrent refresh serialization (Requirement 6.5)', () => {
     it('should serialize concurrent refresh requests', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expiring-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 2 * 60 * 1000, // Within refresh threshold
@@ -789,9 +789,9 @@ describe('Token Manager Unit Tests', () => {
 
       // Make multiple concurrent requests
       const [result1, result2, result3] = await Promise.all([
-        tokenManager.getAccessToken('openai'),
-        tokenManager.getAccessToken('openai'),
-        tokenManager.getAccessToken('openai'),
+        tokenManager.getAccessToken('github'),
+        tokenManager.getAccessToken('github'),
+        tokenManager.getAccessToken('github'),
       ]);
 
       // All should return the same refreshed token
@@ -805,8 +805,8 @@ describe('Token Manager Unit Tests', () => {
 
     it('should serialize concurrent forceRefresh requests', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'valid-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000, // Not near expiration
@@ -817,8 +817,8 @@ describe('Token Manager Unit Tests', () => {
 
       // Make multiple concurrent force refresh requests
       const [result1, result2] = await Promise.all([
-        tokenManager.forceRefresh('openai'),
-        tokenManager.forceRefresh('openai'),
+        tokenManager.forceRefresh('github'),
+        tokenManager.forceRefresh('github'),
       ]);
 
       // All should return the same refreshed token
@@ -841,7 +841,7 @@ describe('Token Manager Unit Tests', () => {
         storedAt: now,
       });
 
-      // Provider resolver only returns provider for 'openai'
+      // Provider resolver only returns provider for 'github'
       const result = await tokenManager.getAccessToken('github');
 
       // Should return the token since it's still valid even though refresh failed
@@ -859,7 +859,7 @@ describe('Token Manager Unit Tests', () => {
         storedAt: now - 60 * 60 * 1000,
       });
 
-      // Provider resolver only returns provider for 'openai'
+      // Provider resolver only returns provider for 'github'
       const result = await tokenManager.getAccessToken('github');
 
       // Should return null since token is expired and refresh failed (no provider)
@@ -894,20 +894,20 @@ describe('Token Manager Unit Tests', () => {
     it('should use default refresh threshold when not specified', async () => {
       const manager = createTokenManager({
         credentialStore,
-        providerResolver: (id) => (id === 'openai' ? mockProvider : null),
+        providerResolver: (id) => (id === 'github' ? mockProvider : null),
       });
 
       const now = Date.now();
       // Token expiring in 4 minutes (within default 5 min threshold)
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expiring-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 4 * 60 * 1000,
         storedAt: now,
       });
 
-      await manager.getAccessToken('openai');
+      await manager.getAccessToken('github');
 
       // Should trigger refresh since within default threshold
       expect(mockProvider.refreshCallCount).toBe(1);
@@ -917,21 +917,21 @@ describe('Token Manager Unit Tests', () => {
       const customThreshold = 10 * 60 * 1000; // 10 minutes
       const manager = createTokenManager({
         credentialStore,
-        providerResolver: (id) => (id === 'openai' ? mockProvider : null),
+        providerResolver: (id) => (id === 'github' ? mockProvider : null),
         refreshThresholdMs: customThreshold,
       });
 
       const now = Date.now();
       // Token expiring in 8 minutes (within custom 10 min threshold)
-      credentialStore.setCredentials('openai', {
-        providerId: 'openai',
+      credentialStore.setCredentials('github', {
+        providerId: 'github',
         accessToken: 'expiring-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 8 * 60 * 1000,
         storedAt: now,
       });
 
-      await manager.getAccessToken('openai');
+      await manager.getAccessToken('github');
 
       // Should trigger refresh since within custom threshold
       expect(mockProvider.refreshCallCount).toBe(1);

@@ -32,14 +32,30 @@
 // =============================================================================
 
 /**
- * Supported OAuth provider identifiers.
+ * Supported OAuth/OIDC provider identifiers for user identity.
+ *
+ * Note: OpenAI and Anthropic are NOT public OAuth IdPs for third-party login.
+ * They use API keys instead. See ModelProviderId and model-credentials module.
+ *
+ * Requirements: 7.1, 7a.1
  */
 export type AuthProviderId =
-  | 'openai'
-  | 'github'
   | 'google'
-  | 'cognito'
   | 'azure'
+  | 'cognito'
+  | 'github'
+  | 'oidc';
+
+/**
+ * Model API providers that use API keys (NOT OAuth).
+ *
+ * These providers do not offer public OAuth IdP for third-party login.
+ * Use API key authentication instead.
+ *
+ * Requirements: 7b.1, 7b.2
+ */
+export type ModelProviderId =
+  | 'openai'
   | 'anthropic';
 
 /**
@@ -345,14 +361,16 @@ export interface AcpAuthMethod {
 
 /**
  * Valid provider IDs for runtime validation.
+ *
+ * Note: OpenAI and Anthropic are NOT included - they use API keys, not OAuth.
+ * See model-credentials module for API key handling.
  */
 export const VALID_PROVIDER_IDS: readonly AuthProviderId[] = [
-  'openai',
   'github',
   'google',
   'cognito',
   'azure',
-  'anthropic',
+  'oidc',
 ] as const;
 
 /**
@@ -439,24 +457,25 @@ export function isValidErrorCode(value: unknown): value is AuthErrorCode {
  * SECURITY: No substring or heuristic matching is used.
  * Only exact matches in this table are accepted.
  *
+ * Note: OpenAI and Anthropic are NOT included - they use API keys, not OAuth.
+ * See model-credentials module for API key handling.
+ *
  * Requirements: 7.1, 13.4
  */
 export const AUTH_METHOD_ID_TO_PROVIDER_ID: Readonly<Record<string, AuthProviderId>> = {
   // OAuth2 method IDs
-  'oauth2-openai': 'openai',
   'oauth2-github': 'github',
   'oauth2-google': 'google',
   'oauth2-cognito': 'cognito',
   'oauth2-azure': 'azure',
-  'oauth2-anthropic': 'anthropic',
+  'oauth2-oidc': 'oidc',
 
   // Direct provider IDs (for backward compatibility)
-  'openai': 'openai',
   'github': 'github',
   'google': 'google',
   'cognito': 'cognito',
   'azure': 'azure',
-  'anthropic': 'anthropic',
+  'oidc': 'oidc',
 } as const;
 
 /**

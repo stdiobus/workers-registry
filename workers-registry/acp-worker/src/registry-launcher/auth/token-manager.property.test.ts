@@ -168,12 +168,12 @@ class MockAuthProvider implements IAuthProvider {
  * Valid provider IDs for testing.
  */
 const VALID_PROVIDER_IDS: AuthProviderId[] = [
-  'openai',
+  'github',
   'github',
   'google',
   'cognito',
   'azure',
-  'anthropic',
+  'github',
 ];
 
 /**
@@ -203,7 +203,7 @@ describe('Token Manager Property Tests', () => {
 
     beforeEach(() => {
       credentialStore = new MockCredentialStore();
-      mockProvider = new MockAuthProvider('openai');
+      mockProvider = new MockAuthProvider('github');
     });
 
     test('tokens expiring within threshold trigger refresh', async () => {
@@ -517,7 +517,7 @@ describe('Token Manager Property Tests', () => {
 
     beforeEach(() => {
       credentialStore = new MockCredentialStore();
-      mockProvider = new MockAuthProvider('openai');
+      mockProvider = new MockAuthProvider('github');
     });
 
     test('after successful refresh, the new access token is stored', async () => {
@@ -840,7 +840,7 @@ describe('Token Manager Property Tests', () => {
 
     beforeEach(() => {
       credentialStore = new MockCredentialStore();
-      mockProvider = new MockAuthProvider('openai');
+      mockProvider = new MockAuthProvider('github');
     });
 
     test('multiple concurrent getAccessToken calls result in only one refresh operation', async () => {

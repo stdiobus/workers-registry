@@ -790,12 +790,7 @@ export class AuthManager {
 
     // Check for provider keywords in order of specificity
     // More specific keywords first to avoid ambiguity
-    if (agentLower.includes('openai') || agentLower.includes('gpt')) {
-      return 'openai';
-    }
-    if (agentLower.includes('anthropic') || agentLower.includes('claude')) {
-      return 'anthropic';
-    }
+    // Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
     if (agentLower.includes('github') || agentLower.includes('copilot')) {
       return 'github';
     }
@@ -988,13 +983,14 @@ export class AuthManager {
     const matchingProviders: AuthProviderId[] = [];
 
     // Check each provider's keywords
+    // Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
+    // Note: oidc is checked last as a fallback for generic OIDC providers
     const providerKeywords: Record<AuthProviderId, string[]> = {
-      openai: ['openai', 'gpt'],
-      anthropic: ['anthropic', 'claude'],
       github: ['github', 'copilot'],
       google: ['google', 'gemini'],
       azure: ['azure'],
       cognito: ['cognito', 'aws'],
+      oidc: ['oidc', 'openid', 'auth0', 'okta', 'keycloak', 'onelogin', 'ping'],
     };
 
     for (const [provider, keywords] of Object.entries(providerKeywords)) {

@@ -120,15 +120,15 @@ describe('Login Command Unit Tests', () => {
       const mockOutput = createMockOutput();
       const successResult: AuthResult = {
         success: true,
-        providerId: 'openai',
+        providerId: 'github',
       };
       mockAuthenticateAgent.mockResolvedValue(successResult);
 
-      await runLoginCommand('openai', { output: mockOutput.stream });
+      await runLoginCommand('github', { output: mockOutput.stream });
 
       const output = mockOutput.getOutput();
       expect(output).toContain('Successfully authenticated');
-      expect(output).toContain('Openai');
+      expect(output).toContain('Github');
       expect(output).toContain('✓');
       mockOutput.stream.end();
     });
@@ -169,13 +169,13 @@ describe('Login Command Unit Tests', () => {
       const mockOutput = createMockOutput();
       const successResult: AuthResult = {
         success: true,
-        providerId: 'anthropic',
+        providerId: 'github',
       };
       mockAuthenticateAgent.mockResolvedValue(successResult);
 
-      await runLoginCommand('anthropic', { output: mockOutput.stream });
+      await runLoginCommand('github', { output: mockOutput.stream });
 
-      expect(mockAuthenticateAgent).toHaveBeenCalledWith('anthropic', expect.objectContaining({
+      expect(mockAuthenticateAgent).toHaveBeenCalledWith('github', expect.objectContaining({
         timeoutMs: expect.any(Number),
       }));
       mockOutput.stream.end();
@@ -225,7 +225,7 @@ describe('Login Command Unit Tests', () => {
       const mockOutput = createMockOutput();
       const timeoutResult: AuthResult = {
         success: false,
-        providerId: 'openai',
+        providerId: 'github',
         error: {
           code: 'TIMEOUT',
           message: 'Authentication timed out',
@@ -233,7 +233,7 @@ describe('Login Command Unit Tests', () => {
       };
       mockAuthenticateAgent.mockResolvedValue(timeoutResult);
 
-      await runLoginCommand('openai', { output: mockOutput.stream });
+      await runLoginCommand('github', { output: mockOutput.stream });
 
       const output = mockOutput.getOutput();
       expect(output).toContain('timed out');
@@ -343,7 +343,7 @@ describe('Login Command Unit Tests', () => {
       const output = mockOutput.getOutput();
       expect(output).toContain('Supported providers');
       // Check that at least some valid providers are listed
-      expect(output).toContain('openai');
+      expect(output).toContain('github');
       expect(output).toContain('github');
       mockOutput.stream.end();
     });
@@ -364,16 +364,16 @@ describe('Login Command Unit Tests', () => {
       const mockOutput = createMockOutput();
       const unsupportedResult: AuthResult = {
         success: false,
-        providerId: 'openai',
+        providerId: 'github',
         error: {
           code: 'UNSUPPORTED_PROVIDER',
-          message: "Provider 'openai' is not supported.",
+          message: "Provider 'github' is not supported.",
           details: { supportedProviders: VALID_PROVIDER_IDS },
         },
       };
       mockAuthenticateAgent.mockResolvedValue(unsupportedResult);
 
-      const exitCode = await runLoginCommand('openai', { output: mockOutput.stream });
+      const exitCode = await runLoginCommand('github', { output: mockOutput.stream });
 
       expect(exitCode).toBe(1);
       const output = mockOutput.getOutput();
@@ -479,18 +479,18 @@ describe('Login Command Unit Tests', () => {
       const mockOutput = createMockOutput();
       mockAuthenticateAgent.mockResolvedValue({
         success: false,
-        providerId: 'openai',
+        providerId: 'github',
         error: {
           code: 'PROVIDER_ERROR',
           message: 'Invalid client credentials',
         },
       });
 
-      const exitCode = await runLoginCommand('openai', { output: mockOutput.stream });
+      const exitCode = await runLoginCommand('github', { output: mockOutput.stream });
 
       expect(exitCode).toBe(1);
       const output = mockOutput.getOutput();
-      expect(output).toContain('Openai');
+      expect(output).toContain('Github');
       expect(output).toContain('error');
       mockOutput.stream.end();
     });

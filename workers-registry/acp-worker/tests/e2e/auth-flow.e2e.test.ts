@@ -311,7 +311,7 @@ describe('E2E: OAuth Authentication Flow', () => {
       expect(result.code).toBe(0);
 
       // Should show status for providers (output goes to stderr per NDJSON protocol)
-      expect(result.stderr).toMatch(/openai|anthropic|github|google|azure|cognito/i);
+      expect(result.stderr).toMatch(/github|google|azure|cognito|oidc/i);
     }, 15000);
   });
 

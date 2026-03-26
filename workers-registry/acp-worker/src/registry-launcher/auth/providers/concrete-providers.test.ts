@@ -6,56 +6,15 @@
 
 /**
  * Unit tests for concrete OAuth provider implementations.
+ *
+ * Note: OpenAI and Anthropic are NOT included - they use API keys, not OAuth.
+ * See model-credentials module for API key handling.
  */
 
-import { OpenAIProvider } from './openai-provider.js';
 import { GitHubProvider } from './github-provider.js';
 import { GoogleProvider } from './google-provider.js';
 import { CognitoProvider } from './cognito-provider.js';
 import { AzureProvider } from './azure-provider.js';
-import { AnthropicProvider } from './anthropic-provider.js';
-
-describe('OpenAIProvider', () => {
-  it('should have correct provider ID', () => {
-    const provider = new OpenAIProvider();
-    expect(provider.id).toBe('openai');
-  });
-
-  it('should have correct name', () => {
-    const provider = new OpenAIProvider();
-    expect(provider.name).toBe('OpenAI');
-  });
-
-  it('should have correct default scopes', () => {
-    const provider = new OpenAIProvider();
-    expect([...provider.defaultScopes]).toEqual(['openid', 'profile']);
-  });
-
-  it('should have correct endpoints', () => {
-    const provider = new OpenAIProvider();
-    const endpoints = provider.getEndpoints();
-    expect(endpoints.authorizationEndpoint).toBe('https://auth.openai.com/authorize');
-    expect(endpoints.tokenEndpoint).toBe('https://auth.openai.com/token');
-  });
-
-  it('should use Bearer token injection', () => {
-    const provider = new OpenAIProvider();
-    const injection = provider.getTokenInjection();
-    expect(injection.type).toBe('header');
-    expect(injection.key).toBe('Authorization');
-    expect(injection.format).toBe('Bearer {token}');
-  });
-
-  it('should pass HTTPS validation', () => {
-    const provider = new OpenAIProvider();
-    expect(() => provider.validateConfig()).not.toThrow();
-  });
-
-  it('should accept client ID in constructor', () => {
-    const provider = new OpenAIProvider('my-client-id');
-    expect(provider.id).toBe('openai');
-  });
-});
 
 describe('GitHubProvider', () => {
   it('should have correct provider ID', () => {
@@ -354,47 +313,5 @@ describe('AzureProvider', () => {
         /must be 'common', 'organizations', 'consumers', a valid GUID, or a verified domain name/
       );
     });
-  });
-});
-
-describe('AnthropicProvider', () => {
-  it('should have correct provider ID', () => {
-    const provider = new AnthropicProvider();
-    expect(provider.id).toBe('anthropic');
-  });
-
-  it('should have correct name', () => {
-    const provider = new AnthropicProvider();
-    expect(provider.name).toBe('Anthropic');
-  });
-
-  it('should have correct default scopes', () => {
-    const provider = new AnthropicProvider();
-    expect([...provider.defaultScopes]).toEqual(['api']);
-  });
-
-  it('should have correct endpoints', () => {
-    const provider = new AnthropicProvider();
-    const endpoints = provider.getEndpoints();
-    expect(endpoints.authorizationEndpoint).toBe('https://auth.anthropic.com/authorize');
-    expect(endpoints.tokenEndpoint).toBe('https://auth.anthropic.com/token');
-  });
-
-  it('should use x-api-key header injection', () => {
-    const provider = new AnthropicProvider();
-    const injection = provider.getTokenInjection();
-    expect(injection.type).toBe('header');
-    expect(injection.key).toBe('x-api-key');
-    expect(injection.format).toBeUndefined();
-  });
-
-  it('should pass HTTPS validation', () => {
-    const provider = new AnthropicProvider();
-    expect(() => provider.validateConfig()).not.toThrow();
-  });
-
-  it('should accept client ID in constructor', () => {
-    const provider = new AnthropicProvider('my-client-id');
-    expect(provider.id).toBe('anthropic');
   });
 });

@@ -16,7 +16,7 @@ describe('KeychainBackend', () => {
   let mockKeytar: jest.Mocked<KeytarModule>;
 
   const testCredentials: StoredCredentials = {
-    providerId: 'openai',
+    providerId: 'github',
     accessToken: 'test-access-token',
     refreshToken: 'test-refresh-token',
     expiresAt: Date.now() + 3600000,
@@ -97,11 +97,11 @@ describe('KeychainBackend', () => {
     it('should store credentials in keychain', async () => {
       injectMockKeytar();
 
-      await backend.store('openai', testCredentials);
+      await backend.store('github', testCredentials);
 
       expect(mockKeytar.setPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-openai',
+        'oauth-github',
         JSON.stringify(testCredentials)
       );
     });
@@ -110,13 +110,13 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockResolvedValue(null);
 
-      await backend.store('openai', testCredentials);
+      await backend.store('github', testCredentials);
 
       // Should update providers list
       expect(mockKeytar.setPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
         '__providers_list__',
-        JSON.stringify(['openai'])
+        JSON.stringify(['github'])
       );
     });
 
@@ -124,33 +124,33 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['github']));
 
-      await backend.store('openai', testCredentials);
+      await backend.store('github', testCredentials);
 
       expect(mockKeytar.setPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
         '__providers_list__',
-        JSON.stringify(['github', 'openai'])
+        JSON.stringify(['github', 'github'])
       );
     });
 
     it('should not duplicate provider in list', async () => {
       injectMockKeytar();
-      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['openai']));
+      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['github']));
 
-      await backend.store('openai', testCredentials);
+      await backend.store('github', testCredentials);
 
       // Should not add duplicate
       expect(mockKeytar.setPassword).not.toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
         '__providers_list__',
-        JSON.stringify(['openai', 'openai'])
+        JSON.stringify(['github', 'github'])
       );
     });
 
     it('should throw error when keytar is not available', async () => {
       simulateKeytarUnavailable();
 
-      await expect(backend.store('openai', testCredentials))
+      await expect(backend.store('github', testCredentials))
         .rejects.toThrow('Keychain backend is not available');
     });
 
@@ -158,7 +158,7 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.setPassword.mockRejectedValue(new Error('Access denied'));
 
-      await expect(backend.store('openai', testCredentials))
+      await expect(backend.store('github', testCredentials))
         .rejects.toThrow('Failed to store credentials in keychain: Access denied');
     });
   });
@@ -168,12 +168,12 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockResolvedValue(JSON.stringify(testCredentials));
 
-      const result = await backend.retrieve('openai');
+      const result = await backend.retrieve('github');
 
       expect(result).toEqual(testCredentials);
       expect(mockKeytar.getPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-openai'
+        'oauth-github'
       );
     });
 
@@ -181,7 +181,7 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockResolvedValue(null);
 
-      const result = await backend.retrieve('openai');
+      const result = await backend.retrieve('github');
 
       expect(result).toBeNull();
     });
@@ -189,7 +189,7 @@ describe('KeychainBackend', () => {
     it('should return null when keytar is not available', async () => {
       simulateKeytarUnavailable();
 
-      const result = await backend.retrieve('openai');
+      const result = await backend.retrieve('github');
 
       expect(result).toBeNull();
     });
@@ -198,7 +198,7 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockRejectedValue(new Error('Keychain locked'));
 
-      const result = await backend.retrieve('openai');
+      const result = await backend.retrieve('github');
 
       expect(result).toBeNull();
     });
@@ -207,7 +207,7 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockResolvedValue('invalid json');
 
-      const result = await backend.retrieve('openai');
+      const result = await backend.retrieve('github');
 
       expect(result).toBeNull();
     });
@@ -216,40 +216,40 @@ describe('KeychainBackend', () => {
   describe('delete', () => {
     it('should delete credentials from keychain', async () => {
       injectMockKeytar();
-      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['openai']));
+      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['github']));
 
-      await backend.delete('openai');
+      await backend.delete('github');
 
       expect(mockKeytar.deletePassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-openai'
+        'oauth-github'
       );
     });
 
     it('should update providers list when deleting', async () => {
       injectMockKeytar();
-      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['openai', 'github']));
+      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['github', 'google']));
 
-      await backend.delete('openai');
+      await backend.delete('github');
 
       expect(mockKeytar.setPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
         '__providers_list__',
-        JSON.stringify(['github'])
+        JSON.stringify(['google'])
       );
     });
 
     it('should not throw when keytar is not available', async () => {
       simulateKeytarUnavailable();
 
-      await expect(backend.delete('openai')).resolves.toBeUndefined();
+      await expect(backend.delete('github')).resolves.toBeUndefined();
     });
 
     it('should not throw when deletePassword fails', async () => {
       injectMockKeytar();
       mockKeytar.deletePassword.mockRejectedValue(new Error('Access denied'));
 
-      await expect(backend.delete('openai')).resolves.toBeUndefined();
+      await expect(backend.delete('github')).resolves.toBeUndefined();
     });
   });
 
@@ -257,8 +257,8 @@ describe('KeychainBackend', () => {
     it('should delete all credentials from keychain', async () => {
       injectMockKeytar();
       mockKeytar.findCredentials.mockResolvedValue([
-        { account: 'oauth-openai', password: '{}' },
         { account: 'oauth-github', password: '{}' },
+        { account: 'oauth-google', password: '{}' },
         { account: '__providers_list__', password: '[]' },
       ]);
 
@@ -267,11 +267,11 @@ describe('KeychainBackend', () => {
       expect(mockKeytar.deletePassword).toHaveBeenCalledTimes(3);
       expect(mockKeytar.deletePassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-openai'
+        'oauth-github'
       );
       expect(mockKeytar.deletePassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-github'
+        'oauth-google'
       );
       expect(mockKeytar.deletePassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
@@ -297,14 +297,14 @@ describe('KeychainBackend', () => {
     it('should list all providers with stored credentials', async () => {
       injectMockKeytar();
       mockKeytar.findCredentials.mockResolvedValue([
-        { account: 'oauth-openai', password: '{}' },
         { account: 'oauth-github', password: '{}' },
+        { account: 'oauth-google', password: '{}' },
         { account: '__providers_list__', password: '[]' },
       ]);
 
       const result = await backend.listProviders();
 
-      expect(result).toEqual(['openai', 'github']);
+      expect(result).toEqual(['github', 'google']);
     });
 
     it('should return empty array when no credentials stored', async () => {
@@ -336,14 +336,14 @@ describe('KeychainBackend', () => {
     it('should filter out non-provider accounts', async () => {
       injectMockKeytar();
       mockKeytar.findCredentials.mockResolvedValue([
-        { account: 'oauth-openai', password: '{}' },
+        { account: 'oauth-github', password: '{}' },
         { account: 'some-other-account', password: '{}' },
         { account: '__providers_list__', password: '[]' },
       ]);
 
       const result = await backend.listProviders();
 
-      expect(result).toEqual(['openai']);
+      expect(result).toEqual(['github']);
     });
   });
 
@@ -352,51 +352,51 @@ describe('KeychainBackend', () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockResolvedValue(null);
 
-      const openaiCreds: StoredCredentials = { ...testCredentials, providerId: 'openai' };
       const githubCreds: StoredCredentials = { ...testCredentials, providerId: 'github' };
+      const googleCreds: StoredCredentials = { ...testCredentials, providerId: 'google' };
 
-      await backend.store('openai', openaiCreds);
       await backend.store('github', githubCreds);
+      await backend.store('google', googleCreds);
 
-      expect(mockKeytar.setPassword).toHaveBeenCalledWith(
-        'stdio-bus-registry-launcher',
-        'oauth-openai',
-        JSON.stringify(openaiCreds)
-      );
       expect(mockKeytar.setPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
         'oauth-github',
         JSON.stringify(githubCreds)
       );
+      expect(mockKeytar.setPassword).toHaveBeenCalledWith(
+        'stdio-bus-registry-launcher',
+        'oauth-google',
+        JSON.stringify(googleCreds)
+      );
     });
 
     it('should retrieve credentials for specific provider only', async () => {
       injectMockKeytar();
-      const openaiCreds: StoredCredentials = { ...testCredentials, providerId: 'openai' };
-      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(openaiCreds));
+      const githubCreds: StoredCredentials = { ...testCredentials, providerId: 'github' };
+      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(githubCreds));
 
-      const result = await backend.retrieve('openai');
+      const result = await backend.retrieve('github');
 
-      expect(result).toEqual(openaiCreds);
+      expect(result).toEqual(githubCreds);
       expect(mockKeytar.getPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-openai'
+        'oauth-github'
       );
     });
 
     it('should delete credentials for specific provider only', async () => {
       injectMockKeytar();
-      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['openai', 'github']));
+      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['github', 'google']));
 
-      await backend.delete('openai');
+      await backend.delete('github');
 
       expect(mockKeytar.deletePassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-openai'
+        'oauth-github'
       );
       expect(mockKeytar.deletePassword).not.toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
-        'oauth-github'
+        'oauth-google'
       );
     });
   });
@@ -407,14 +407,14 @@ describe('KeychainBackend', () => {
       mockKeytar.getPassword.mockResolvedValue('not valid json');
 
       // Should not throw when storing
-      await expect(backend.store('openai', testCredentials)).resolves.toBeUndefined();
+      await expect(backend.store('github', testCredentials)).resolves.toBeUndefined();
     });
 
     it('should handle empty providers list', async () => {
       injectMockKeytar();
       mockKeytar.getPassword.mockResolvedValue('[]');
 
-      await backend.delete('openai');
+      await backend.delete('github');
 
       // Should update with empty list minus the provider (still empty)
       expect(mockKeytar.setPassword).toHaveBeenCalledWith(
