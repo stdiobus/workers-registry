@@ -950,6 +950,71 @@ npm test
 
 ---
 
+## OAuth 2.1 Authentication
+
+Registry Launcher supports OAuth 2.1 with PKCE for secure browser-based authentication with AI providers.
+
+### Supported Providers
+
+| Provider | OAuth 2.1 | API Key | Status |
+|----------|-----------|---------|--------|
+| OpenAI | ✅ | ✅ | Production |
+| Anthropic | ✅ | ✅ | Production |
+| GitHub | ✅ | ✅ | Production |
+| Google | ✅ | ✅ | Production |
+| Azure AD | ✅ | ✅ | Production |
+| AWS Cognito | ✅ | ✅ | Production |
+
+### Quick Start
+
+```bash
+# Check current authentication status
+node ./launch/index.js acp-registry --auth-status
+
+# Login with browser OAuth (opens browser)
+node ./launch/index.js acp-registry --login openai
+
+# Interactive setup wizard
+node ./launch/index.js acp-registry --setup
+
+# Logout from all providers
+node ./launch/index.js acp-registry --logout
+```
+
+### Backward Compatibility
+
+Existing `api-keys.json` configuration continues to work. OAuth credentials take precedence when available, with automatic fallback to API keys.
+
+**Feature Flag:** `AUTH_AUTO_OAUTH`
+- `false` (default): Only use OAuth if explicitly logged in via `--login`
+- `true`: Auto-trigger browser OAuth when agent requires it
+
+### Headless/CI Environments
+
+Browser OAuth is not available in headless environments (CI, SSH, Docker). Use one of these alternatives:
+
+```bash
+# Option 1: Use api-keys.json
+echo '{"claude-acp":{"apiKey":"sk-..."}}' > api-keys.json
+
+# Option 2: Use environment variables
+export ANTHROPIC_API_KEY=sk-...
+
+# Option 3: Interactive setup (if TTY available)
+node ./launch/index.js acp-registry --setup
+```
+
+### Documentation
+
+- [User Guide](docs/oauth/user-guide.md) - How to use OAuth authentication
+- [CLI Reference](docs/oauth/cli-reference.md) - Complete CLI command reference
+- [Configuration](docs/oauth/configuration.md) - Environment variables and settings
+- [Security](docs/oauth/security.md) - Security considerations and best practices
+- [Technical Reference](docs/oauth/technical-reference.md) - Architecture and internals
+- [Troubleshooting](docs/oauth/troubleshooting.md) - Common issues and solutions
+
+---
+
 ## Resources
 
 - [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon (source code)
