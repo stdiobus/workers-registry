@@ -705,6 +705,9 @@ describe('Auth Manager Unit Tests', () => {
 
 
   describe('authenticateAgent - Flow Orchestration (Requirement 3.1)', () => {
+    // Import provider registry functions for test setup
+    const { clearProviders, initializeProviders } = require('./providers/index');
+
     it('should return error for unsupported provider ID', async () => {
       const authManager = new AuthManager({
         credentialStore,
@@ -722,18 +725,27 @@ describe('Auth Manager Unit Tests', () => {
     });
 
     it('should return error for unregistered provider', async () => {
-      const authManager = new AuthManager({
-        credentialStore,
-        tokenManager,
-        legacyApiKeys: {},
-      });
+      // Clear all providers to test unregistered provider behavior
+      clearProviders();
 
-      const result = await authManager.authenticateAgent('openai');
+      try {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
 
-      // The provider is valid but not registered
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe('UNSUPPORTED_PROVIDER');
+        const result = await authManager.authenticateAgent('openai');
+
+        // The provider is valid but not registered (we cleared providers)
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.code).toBe('UNSUPPORTED_PROVIDER');
+          expect(result.error.message).toContain('not registered');
+        }
+      } finally {
+        // Re-initialize providers for other tests
+        initializeProviders();
       }
     });
   });

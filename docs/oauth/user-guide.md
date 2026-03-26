@@ -250,6 +250,259 @@ On macOS, you may need to allow keychain access:
 2. Find "stdio-bus-oauth" entries
 3. Allow access for your terminal application
 
+## ACP Auth Flows (Registry Launcher)
+
+The Registry Launcher supports two ACP-compliant authentication methods that agents can advertise in their `authMethods` array during initialization:
+
+| Type | Description | Who Handles OAuth |
+|------|-------------|-------------------|
+| `agent` (default) | Agent handles OAuth internally | Agent |
+| `terminal` | Client spawns agent for interactive TUI setup | Agent (via TUI) |
+
+### Method Selection Precedence
+
+When an agent returns `AUTH_REQUIRED`, the Registry Launcher selects an auth method in this order:
+
+1. **Agent Auth** (`type: "agent"` or no type) - Preferred when available
+2. **Terminal Auth** (`type: "terminal"`) - Used when TTY is available
+3. **OAuth** (legacy browser flow) - Launcher-managed OAuth
+4. **API Key** - From `api-keys.json` or environment variables
+
+---
+
+## Agent Auth (type: "agent")
+
+Agent Auth delegates the entire OAuth flow to the agent. The agent handles browser launch, callback server, and token storage internally.
+
+### Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Router as Registry Launcher
+    participant Agent
+
+    Client->>Router: session/new request
+    Router->>Agent: Forward request
+    Agent->>Router: AUTH_REQUIRED (authMethods: [{type: "agent", id: "oauth2-openai"}])
+    Router->>Agent: authenticate({id: "oauth2-openai"})
+    Note over Agent: Agent opens browser,<br/>handles OAuth callback,<br/>stores tokens
+    Agent->>Router: authenticate success
+    Router->>Agent: Retry session/new
+    Agent->>Router: session/new success
+    Router->>Client: session/new success
+```
+
+### JSON-RPC Example
+
+When the agent returns `AUTH_REQUIRED`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "error": {
+    "code": -32001,
+    "message": "Authentication required",
+    "data": {
+      "authMethods": [
+        {
+          "type": "agent",
+          "id": "oauth2-openai",
+          "name": "OpenAI OAuth"
+        }
+      ]
+    }
+  }
+}
+```
+
+The Registry Launcher calls the `authenticate` method:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "auth-1",
+  "method": "authenticate",
+  "params": {
+    "id": "oauth2-openai"
+  }
+}
+```
+
+### Responsibilities
+
+| Component | Responsibility |
+|-----------|----------------|
+| Registry Launcher | Detect AUTH_REQUIRED, call `authenticate`, queue requests, retry on success |
+| Agent | Start callback server, open browser, handle OAuth, store tokens, return success/error |
+
+### Behavior Notes
+
+- **Request Queueing**: While authentication is pending, subsequent requests are queued
+- **Timeout**: Default 10 minutes for the authenticate call
+- **Retry**: On success, the original request is automatically retried
+- **Error Propagation**: On failure, the error is returned to the client
+
+---
+
+## Terminal Auth (type: "terminal")
+
+Terminal Auth spawns the agent binary with special arguments for interactive TUI-based authentication setup.
+
+### Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Router as Registry Launcher
+    participant Terminal as Agent TUI
+    participant Agent
+
+    Client->>Router: session/new request
+    Router->>Agent: Forward request
+    Agent->>Router: AUTH_REQUIRED (authMethods: [{type: "terminal", args: ["--setup"]}])
+    Router->>Terminal: Spawn agent with --setup (stdio: inherit)
+    Note over Terminal: User interacts with TUI,<br/>enters credentials,<br/>completes setup
+    Terminal->>Router: Process exits (code 0)
+    Router->>Agent: Retry session/new
+    Agent->>Router: session/new success
+    Router->>Client: session/new success
+```
+
+### JSON-RPC Example
+
+When the agent returns `AUTH_REQUIRED` with Terminal Auth:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "error": {
+    "code": -32001,
+    "message": "Authentication required",
+    "data": {
+      "authMethods": [
+        {
+          "type": "terminal",
+          "id": "setup-wizard",
+          "name": "Interactive Setup",
+          "args": ["--setup"],
+          "env": {
+            "AGENT_SETUP_MODE": "true"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### How It Works
+
+1. **Spawn**: Registry Launcher spawns the same agent binary with:
+   - Arguments from `args` array (e.g., `["--setup"]`)
+   - Environment variables from `env` object merged with `process.env`
+   - `stdio: 'inherit'` for interactive terminal access
+
+2. **User Interaction**: The agent's TUI guides the user through authentication
+
+3. **Completion**: When the process exits with code 0, the original request is retried
+
+### TTY Requirements
+
+Terminal Auth requires an interactive terminal:
+
+- **stdin** must be a TTY
+- **stdout** must be a TTY
+
+In headless environments (CI, SSH without TTY, Docker), Terminal Auth is skipped and the next available method is tried.
+
+### Configuration Example
+
+Agent advertises Terminal Auth in its initialize response:
+
+```json
+{
+  "authMethods": [
+    {
+      "type": "terminal",
+      "id": "cli-setup",
+      "name": "CLI Setup Wizard",
+      "args": ["--setup", "--interactive"],
+      "env": {
+        "SETUP_MODE": "oauth"
+      }
+    }
+  ]
+}
+```
+
+---
+
+## ACP Auth Troubleshooting
+
+### Agent Auth Issues
+
+**authenticate timeout**
+- Default timeout is 10 minutes
+- Check if the agent's browser opened
+- Verify the OAuth provider is accessible
+- Check agent logs for callback server errors
+
+**Repeated AUTH_REQUIRED**
+- Agent may not be storing tokens correctly
+- Check agent's credential storage
+- Verify the agent's OAuth configuration
+
+**authenticate returns error**
+- Check the error message for details
+- Common causes: invalid client_id, network issues, user cancelled
+
+### Terminal Auth Issues
+
+**"Terminal Auth not available"**
+- Running in headless environment (no TTY)
+- Try running from an interactive terminal
+- Use Agent Auth or API key as alternative
+
+**Non-zero exit code**
+- The setup process failed
+- Check agent's stderr output for errors
+- Run the setup command manually to debug
+
+**Setup succeeded but still AUTH_REQUIRED**
+- Agent may store credentials in a different location
+- Verify the agent can read its stored credentials
+- Check file permissions on credential storage
+
+---
+
+## Security Notes
+
+### Token Handling
+
+- **Agent Auth**: Tokens are managed entirely by the agent
+- **Terminal Auth**: Credentials are stored by the agent's setup process
+- **Registry Launcher**: Does not store tokens for Agent/Terminal Auth flows
+
+### Log Redaction
+
+- Access tokens are never logged
+- Refresh tokens are never logged
+- Only token metadata (expiry, scope) may appear in debug logs
+
+### Credential Storage Ownership
+
+| Auth Type | Storage Owner | Location |
+|-----------|---------------|----------|
+| Agent Auth | Agent | Agent-specific |
+| Terminal Auth | Agent | Agent-specific |
+| OAuth (legacy) | Registry Launcher | OS Keychain or encrypted file |
+| API Key | User | `api-keys.json` |
+
+---
+
 ## Next Steps
 
 - [Configuration](./configuration.md) - Environment variables and settings

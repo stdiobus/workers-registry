@@ -17,6 +17,7 @@ import {
   parseAuthMethods,
   getOAuthMethods,
   getApiKeyMethods,
+  getAgentAuthMethods,
   AUTH_METHOD_ID_TO_PROVIDER,
 } from './message-router.js';
 import type { IRegistryIndex } from '../registry/index.js';
@@ -71,6 +72,7 @@ function createMockRuntimeManager(): AgentRuntimeManager {
   return {
     getOrSpawn: jest.fn().mockResolvedValue(mockRuntime),
     get: jest.fn().mockReturnValue(mockRuntime),
+    terminate: jest.fn().mockResolvedValue(undefined),
     terminateAll: jest.fn().mockResolvedValue(undefined),
     onAgentExit: jest.fn(),
     writtenMessages,
@@ -405,7 +407,9 @@ describe('parseAuthMethods (Task 21.1)', () => {
       expect(result[1]).toEqual({ kind: 'api-key', id: 'api-key', providerId: undefined });
     });
 
-    it('should normalize "agent" type to "oauth2"', () => {
+    it('should parse "agent" type as Agent Auth (kind: agent)', () => {
+      // AUTH_REQUIREMENTS.md: Agent Auth is the default authentication method
+      // where the agent manages the entire OAuth flow independently.
       const raw = [
         { id: 'agent-openai', type: 'agent', providerId: 'openai' },
       ];
@@ -413,7 +417,19 @@ describe('parseAuthMethods (Task 21.1)', () => {
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ kind: 'oauth2', id: 'agent-openai', providerId: 'openai' });
+      expect(result[0]).toEqual({ kind: 'agent', id: 'agent-openai', providerId: 'openai' });
+    });
+
+    it('should parse "agent" type without providerId', () => {
+      // AUTH_REQUIREMENTS.md: Agent Auth - providerId is optional
+      const raw = [
+        { id: 'my-agent-auth', type: 'agent' },
+      ];
+
+      const result = parseAuthMethods(raw);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ kind: 'agent', id: 'my-agent-auth', providerId: undefined });
     });
   });
 
@@ -427,8 +443,8 @@ describe('parseAuthMethods (Task 21.1)', () => {
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(2);
-      expect(result[0].providerId).toBe('openai');
-      expect(result[1].providerId).toBe('github');
+      expect((result[0] as any).providerId).toBe('openai');
+      expect((result[1] as any).providerId).toBe('github');
     });
 
     it('should use explicit providerId when it matches mapping', () => {
@@ -439,7 +455,7 @@ describe('parseAuthMethods (Task 21.1)', () => {
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0].providerId).toBe('openai');
+      expect((result[0] as any).providerId).toBe('openai');
     });
 
     it('should reject methods with conflicting providerId and mapping', () => {
@@ -457,12 +473,13 @@ describe('parseAuthMethods (Task 21.1)', () => {
       const mappedIds = Object.keys(AUTH_METHOD_ID_TO_PROVIDER);
 
       for (const id of mappedIds) {
-        const type = id.startsWith('oauth2-') || id.startsWith('agent-') ? 'oauth2' : 'api-key';
+        // agent-* IDs now map to kind: 'agent', not 'oauth2'
+        const type = id.startsWith('oauth2-') ? 'oauth2' : id.startsWith('agent-') ? 'agent' : 'api-key';
         const raw = [{ id, type }];
         const result = parseAuthMethods(raw);
 
         expect(result).toHaveLength(1);
-        expect(result[0].providerId).toBe(AUTH_METHOD_ID_TO_PROVIDER[id]);
+        expect((result[0] as any).providerId).toBe(AUTH_METHOD_ID_TO_PROVIDER[id]);
       }
     });
   });
@@ -1008,7 +1025,9 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       expect(result[0]).toEqual({ kind: 'oauth2', id: 'custom-oauth', providerId: 'openai' });
     });
 
-    it('should parse agent type (legacy) with explicit providerId', () => {
+    it('should parse agent type with explicit providerId', () => {
+      // Agent Auth: agent handles OAuth internally via authenticate method
+      // This is the ACP-compliant behavior per AUTH_REQUIREMENTS.md
       const raw = [
         { id: 'custom-agent', type: 'agent', providerId: 'github' },
       ];
@@ -1016,7 +1035,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ kind: 'oauth2', id: 'custom-agent', providerId: 'github' });
+      expect(result[0]).toEqual({ kind: 'agent', id: 'custom-agent', providerId: 'github' });
     });
 
     it('should parse api-key type with explicit providerId', () => {
@@ -1053,7 +1072,8 @@ describe('OAuth Negotiation (Task 21.4)', () => {
 
       expect(result).toHaveLength(4);
       expect(result[0]).toEqual({ kind: 'oauth2', id: 'oauth2-openai', providerId: 'openai' });
-      expect(result[1]).toEqual({ kind: 'oauth2', id: 'agent-github', providerId: 'github' });
+      // Agent Auth: type: 'agent' is parsed as kind: 'agent' (ACP-compliant)
+      expect(result[1]).toEqual({ kind: 'agent', id: 'agent-github', providerId: 'github' });
       expect(result[2]).toEqual({ kind: 'api-key', id: 'openai-api-key', providerId: 'openai' });
       expect(result[3]).toEqual({ kind: 'api-key', id: 'generic-key', providerId: undefined });
     });
@@ -1086,7 +1106,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       const result = parseAuthMethods(raw);
 
       expect(result).toHaveLength(1);
-      expect(result[0].providerId).toBe('google');
+      expect((result[0] as any).providerId).toBe('google');
     });
 
     it('should handle all supported providers', () => {
@@ -1100,7 +1120,7 @@ describe('OAuth Negotiation (Task 21.4)', () => {
         const result = parseAuthMethods(raw);
 
         expect(result).toHaveLength(1);
-        expect(result[0].providerId).toBe(provider);
+        expect((result[0] as any).providerId).toBe(provider);
       }
     });
   });
@@ -1119,11 +1139,11 @@ describe('OAuth Negotiation (Task 21.4)', () => {
 
       const oauthMethods = getOAuthMethods(methods);
 
-      expect(oauthMethods).toHaveLength(2);
+      // Only oauth2 type is included in OAuth methods
+      // Agent Auth (type: 'agent') is handled separately via getAgentAuthMethods()
+      expect(oauthMethods).toHaveLength(1);
       expect(oauthMethods[0].kind).toBe('oauth2');
       expect(oauthMethods[0].providerId).toBe('openai');
-      expect(oauthMethods[1].kind).toBe('oauth2');
-      expect(oauthMethods[1].providerId).toBe('github');
     });
 
     it('should prioritize OAuth methods over API key methods', () => {
@@ -1143,16 +1163,22 @@ describe('OAuth Negotiation (Task 21.4)', () => {
       expect(oauthMethods[0].kind).toBe('oauth2');
     });
 
-    it('should handle agent type as OAuth (legacy support)', () => {
+    it('should handle agent type as Agent Auth (ACP-compliant)', () => {
+      // Per AUTH_REQUIREMENTS.md: type: 'agent' means Agent Auth
+      // where the agent handles OAuth internally via authenticate method
       const methods = parseAuthMethods([
         { id: 'agent-anthropic', type: 'agent', providerId: 'anthropic' },
       ]);
 
       const oauthMethods = getOAuthMethods(methods);
+      const agentAuthMethods = getAgentAuthMethods(methods);
 
-      expect(oauthMethods).toHaveLength(1);
-      expect(oauthMethods[0].kind).toBe('oauth2');
-      expect(oauthMethods[0].providerId).toBe('anthropic');
+      // Agent Auth is NOT included in OAuth methods
+      expect(oauthMethods).toHaveLength(0);
+      // Agent Auth is handled separately
+      expect(agentAuthMethods).toHaveLength(1);
+      expect(agentAuthMethods[0].kind).toBe('agent');
+      expect(agentAuthMethods[0].providerId).toBe('anthropic');
     });
 
     it('should return empty array when no OAuth methods present', () => {
@@ -2099,6 +2125,1614 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
         params: {},
       });
       expect(result3).toBeUndefined();
+    });
+  });
+});
+
+
+// =============================================================================
+// Task 35: Agent Auth Flow Tests
+// =============================================================================
+
+describe('getAgentAuthMethods', () => {
+  it('should filter only agent auth methods', () => {
+    const methods = parseAuthMethods([
+      { id: 'my-agent-auth', type: 'agent' },
+      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'api-key', type: 'api-key' },
+      { id: 'another-agent', type: 'agent', providerId: 'github' },
+    ]);
+
+    const agentMethods = getAgentAuthMethods(methods);
+
+    expect(agentMethods).toHaveLength(2);
+    expect(agentMethods.every(m => m.kind === 'agent')).toBe(true);
+    expect(agentMethods.map(m => m.id)).toEqual(['my-agent-auth', 'another-agent']);
+  });
+
+  it('should return empty array when no agent auth methods', () => {
+    const methods = parseAuthMethods([
+      { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      { id: 'api-key', type: 'api-key' },
+    ]);
+
+    const agentMethods = getAgentAuthMethods(methods);
+
+    expect(agentMethods).toHaveLength(0);
+  });
+});
+
+describe('Agent Auth Flow (Task 35)', () => {
+  describe('authenticate method call (Task 35.1)', () => {
+    it('should call authenticate method on agent with correct id', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Simulate agent returning authMethods with type: "agent"
+      const initializeResponse = {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          name: 'Test Agent',
+          version: '1.0.0',
+          authMethods: [
+            { id: 'my-agent-auth', type: 'agent', name: 'Agent Auth' },
+          ],
+        },
+      };
+
+      // First, route an initialize request to set up pending request tracking
+      await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle the initialize response - this should trigger Agent Auth
+      router.handleAgentResponse('test-agent', initializeResponse);
+
+      // Wait for async Agent Auth flow to start
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check that auth state is pending (Agent Auth flow started)
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // Check that authenticate request was sent to agent
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authRequest = writtenMessages.find((m: any) => m.method === 'authenticate');
+      expect(authRequest).toBeDefined();
+      expect(authRequest.params.id).toBe('my-agent-auth');
+    });
+  });
+
+  describe('authenticate response handling (Task 35.2)', () => {
+    it('should set auth state to authenticated on success response', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Set up the agent auth flow
+      await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Simulate agent returning authMethods with type: "agent"
+      const initializeResponse = {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          name: 'Test Agent',
+          version: '1.0.0',
+          authMethods: [
+            { id: 'my-agent-auth', type: 'agent', name: 'Agent Auth' },
+          ],
+        },
+      };
+
+      router.handleAgentResponse('test-agent', initializeResponse);
+
+      // Wait for async Agent Auth flow to start
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Auth state should be pending
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // Find the authenticate request ID
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authRequest = writtenMessages.find((m: any) => m.method === 'authenticate');
+      expect(authRequest).toBeDefined();
+
+      // Simulate successful authenticate response from agent
+      const authResponse = {
+        jsonrpc: '2.0',
+        id: authRequest.id,
+        result: { success: true },
+      };
+
+      router.handleAgentResponse('test-agent', authResponse);
+
+      // Wait for async response handling
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Auth state should now be authenticated
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+    });
+
+    it('should set auth state to failed on error response', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Set up the agent auth flow
+      await router.route({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Simulate agent returning authMethods with type: "agent"
+      const initializeResponse = {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          name: 'Test Agent',
+          version: '1.0.0',
+          authMethods: [
+            { id: 'my-agent-auth', type: 'agent', name: 'Agent Auth' },
+          ],
+        },
+      };
+
+      router.handleAgentResponse('test-agent', initializeResponse);
+
+      // Wait for async Agent Auth flow to start
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Auth state should be pending
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // Find the authenticate request ID
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authRequest = writtenMessages.find((m: any) => m.method === 'authenticate');
+      expect(authRequest).toBeDefined();
+
+      // Simulate error authenticate response from agent
+      const authResponse = {
+        jsonrpc: '2.0',
+        id: authRequest.id,
+        error: {
+          code: -32000,
+          message: 'Authentication failed: user cancelled',
+        },
+      };
+
+      router.handleAgentResponse('test-agent', authResponse);
+
+      // Wait for async response handling
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Auth state should now be failed
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+
+    it('should retry queued requests after successful Agent Auth', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Set auth state to pending to queue requests
+      router.setAuthState('test-agent', 'pending');
+
+      // Queue a request
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Verify request is queued
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Transition to authenticated - should process queued requests
+      router.setAuthState('test-agent', 'authenticated');
+
+      // Wait for the route promise to resolve
+      const result = await routePromise;
+
+      // Request should have been processed successfully
+      expect(result).toBeUndefined();
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+
+    it('should return AUTH_REQUIRED for queued requests after failed Agent Auth', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Set auth state to pending to queue requests
+      router.setAuthState('test-agent', 'pending');
+
+      // Queue a request
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Verify request is queued
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Transition to failed - should reject queued requests
+      router.setAuthState('test-agent', 'failed');
+
+      // Wait for the route promise to resolve
+      const result = await routePromise;
+
+      // Request should have been rejected with AUTH_REQUIRED
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004); // AUTH_REQUIRED
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+  });
+
+  describe('Agent Auth precedence', () => {
+    it('should prefer Agent Auth over OAuth when both are present', () => {
+      // When agent provides both type: "agent" and type: "oauth2",
+      // Agent Auth should be used (agent handles OAuth internally)
+      const methods = parseAuthMethods([
+        { id: 'my-agent-auth', type: 'agent', name: 'Agent Auth' },
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      ]);
+
+      const agentMethods = getAgentAuthMethods(methods);
+      const oauthMethods = getOAuthMethods(methods);
+
+      // Both should be parsed
+      expect(agentMethods).toHaveLength(1);
+      expect(oauthMethods).toHaveLength(1);
+
+      // Agent Auth should be first in precedence (checked first in attemptAuthentication)
+      expect(agentMethods[0].id).toBe('my-agent-auth');
+    });
+  });
+});
+
+
+// =============================================================================
+// Task 35.3: Agent Auth Flow Tests
+// =============================================================================
+
+describe('Agent Auth Flow (Task 35)', () => {
+  describe('callAgentAuthenticate (Task 35.1)', () => {
+    it('should send authenticate JSON-RPC request to agent', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Simulate agent returning authMethods with type: "agent"
+      const initializeResponse = {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+          ],
+        },
+      };
+
+      // First, route an initialize request to set up pending request tracking
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle the initialize response - this should trigger Agent Auth
+      router.handleAgentResponse('test-agent', initializeResponse);
+
+      // Wait for async auth flow to start
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check that authenticate request was sent to agent
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authenticateRequest = writtenMessages.find(
+        (msg: any) => msg.method === 'authenticate'
+      );
+
+      expect(authenticateRequest).toBeDefined();
+      expect(authenticateRequest.jsonrpc).toBe('2.0');
+      expect(authenticateRequest.method).toBe('authenticate');
+      expect(authenticateRequest.params).toBeDefined();
+      expect(authenticateRequest.params.id).toBe('agent-openai');
+      expect(authenticateRequest.id).toMatch(/^agent-auth-test-agent-/);
+    });
+
+    it('should include correct auth method id in authenticate request', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with custom auth method id
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'custom-auth-method', type: 'agent' },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authenticateRequest = writtenMessages.find(
+        (msg: any) => msg.method === 'authenticate'
+      );
+
+      expect(authenticateRequest).toBeDefined();
+      expect(authenticateRequest.params.id).toBe('custom-auth-method');
+    });
+  });
+
+  describe('handleAuthenticateResponse (Task 35.2)', () => {
+    it('should set auth state to authenticated on success response', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response to trigger auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Get the authenticate request id
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authenticateRequest = writtenMessages.find(
+        (msg: any) => msg.method === 'authenticate'
+      );
+      const authRequestId = authenticateRequest?.id;
+
+      expect(authRequestId).toBeDefined();
+
+      // Simulate successful authenticate response from agent
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: authRequestId,
+        result: { success: true },
+      });
+
+      // Wait for state update
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Auth state should be authenticated
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+    });
+
+    it('should set auth state to failed on error response', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response to trigger auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Get the authenticate request id
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authenticateRequest = writtenMessages.find(
+        (msg: any) => msg.method === 'authenticate'
+      );
+      const authRequestId = authenticateRequest?.id;
+
+      // Simulate error response from agent
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: authRequestId,
+        error: {
+          code: -32001,
+          message: 'Authentication failed: user cancelled',
+        },
+      });
+
+      // Wait for state update
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Auth state should be failed
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+
+    it('should process queued requests after successful authentication', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Set auth state to pending to queue requests
+      router.setAuthState('test-agent', 'pending');
+
+      // Queue a request
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 'queued-1',
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Simulate successful authentication
+      router.setAuthState('test-agent', 'authenticated');
+
+      // Wait for queued request to be processed
+      const result = await routePromise;
+
+      expect(result).toBeUndefined(); // No error
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+
+    it('should reject queued requests after failed authentication', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Set auth state to pending to queue requests
+      router.setAuthState('test-agent', 'pending');
+
+      // Queue a request
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 'queued-1',
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Simulate failed authentication
+      router.setAuthState('test-agent', 'failed');
+
+      // Wait for queued request to be rejected
+      const result = await routePromise;
+
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004); // AUTH_REQUIRED
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+
+    it('should not forward authenticate response to client', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response to trigger auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Get the authenticate request id
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authenticateRequest = writtenMessages.find(
+        (msg: any) => msg.method === 'authenticate'
+      );
+      const authRequestId = authenticateRequest?.id;
+
+      // Clear writeCallback calls
+      writeCallback.mockClear();
+
+      // Simulate authenticate response from agent
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: authRequestId,
+        result: { success: true },
+      });
+
+      // Wait for processing
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // writeCallback should NOT have been called with authenticate response
+      // (authenticate responses are internal and not forwarded to client)
+      const authenticateResponseForwarded = writeCallback.mock.calls.some(
+        (call: any[]) => call[0]?.id === authRequestId
+      );
+      expect(authenticateResponseForwarded).toBe(false);
+    });
+  });
+
+  describe('Agent Auth state transitions', () => {
+    it('should transition: none -> pending -> authenticated', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Initial state
+      expect(router.getAuthState('test-agent')).toBe('none');
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with authMethods
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // State should be pending while waiting for authenticate response
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // Get authenticate request id and simulate success
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authenticateRequest = writtenMessages.find(
+        (msg: any) => msg.method === 'authenticate'
+      );
+
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: authenticateRequest?.id,
+        result: { success: true },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // State should be authenticated
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+    });
+
+    it('should transition: none -> pending -> failed', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(registry, runtimeManager, writeCallback, {}, undefined, true);
+
+      // Initial state
+      expect(router.getAuthState('test-agent')).toBe('none');
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with authMethods
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // State should be pending
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // Get authenticate request id and simulate failure
+      const writtenMessages = (runtimeManager as any).writtenMessages;
+      const authenticateRequest = writtenMessages.find(
+        (msg: any) => msg.method === 'authenticate'
+      );
+
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: authenticateRequest?.id,
+        error: { code: -32001, message: 'User cancelled' },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // State should be failed
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+  });
+
+  describe('getAgentAuthMethods', () => {
+    it('should filter only agent auth methods', () => {
+      const methods = parseAuthMethods([
+        { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+        { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
+        { id: 'my-agent-auth', type: 'agent' },
+        { id: 'api-key', type: 'api-key' },
+      ]);
+
+      const agentMethods = getAgentAuthMethods(methods);
+
+      expect(agentMethods).toHaveLength(2);
+      expect(agentMethods.every(m => m.kind === 'agent')).toBe(true);
+      expect(agentMethods.map(m => m.id)).toEqual(['agent-openai', 'my-agent-auth']);
+    });
+
+    it('should return empty array when no agent auth methods', () => {
+      const methods = parseAuthMethods([
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'api-key', type: 'api-key' },
+      ]);
+
+      const agentMethods = getAgentAuthMethods(methods);
+
+      expect(agentMethods).toHaveLength(0);
+    });
+  });
+});
+
+
+// =============================================================================
+// Task 36.4: Terminal Auth Flow Tests
+// =============================================================================
+
+import { EventEmitter } from 'events';
+import type { ChildProcess } from 'child_process';
+import type { MessageRouterDeps, SpawnFn } from './message-router.js';
+import { getTerminalAuthMethods } from './message-router.js';
+
+/**
+ * Create a mock child process for testing Terminal Auth.
+ */
+function createMockChildProcess(): ChildProcess & EventEmitter {
+  const child = new EventEmitter() as ChildProcess & EventEmitter;
+  (child as any).killed = false;
+  child.kill = jest.fn(() => {
+    (child as any).killed = true;
+    return true;
+  }) as any;
+  return child;
+}
+
+describe('Terminal Auth Flow (Task 36)', () => {
+  describe('getTerminalAuthMethods', () => {
+    it('should filter only terminal auth methods', () => {
+      const methods = parseAuthMethods([
+        { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'terminal-login', type: 'terminal', args: ['--login'], env: { DEBUG: 'true' } },
+        { id: 'api-key', type: 'api-key' },
+      ]);
+
+      const terminalMethods = getTerminalAuthMethods(methods);
+
+      expect(terminalMethods).toHaveLength(2);
+      expect(terminalMethods.every(m => m.kind === 'terminal')).toBe(true);
+      expect(terminalMethods.map(m => m.id)).toEqual(['terminal-setup', 'terminal-login']);
+    });
+
+    it('should return empty array when no terminal auth methods', () => {
+      const methods = parseAuthMethods([
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+        { id: 'api-key', type: 'api-key' },
+      ]);
+
+      const terminalMethods = getTerminalAuthMethods(methods);
+
+      expect(terminalMethods).toHaveLength(0);
+    });
+
+    it('should parse args and env from terminal auth method', () => {
+      const methods = parseAuthMethods([
+        {
+          id: 'terminal-setup',
+          type: 'terminal',
+          args: ['--setup', '--provider', 'openai'],
+          env: { API_KEY: 'test', DEBUG: 'true' },
+        },
+      ]);
+
+      expect(methods).toHaveLength(1);
+      expect(methods[0].kind).toBe('terminal');
+      if (methods[0].kind === 'terminal') {
+        expect(methods[0].args).toEqual(['--setup', '--provider', 'openai']);
+        expect(methods[0].env).toEqual({ API_KEY: 'test', DEBUG: 'true' });
+      }
+    });
+
+    it('should handle terminal auth method without args/env', () => {
+      const methods = parseAuthMethods([
+        { id: 'terminal-basic', type: 'terminal' },
+      ]);
+
+      expect(methods).toHaveLength(1);
+      expect(methods[0].kind).toBe('terminal');
+      if (methods[0].kind === 'terminal') {
+        expect(methods[0].args).toBeUndefined();
+        expect(methods[0].env).toBeUndefined();
+      }
+    });
+  });
+
+  describe('TTY check', () => {
+    it('should fail Terminal Auth when stdin is not TTY', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+      const mockSpawn = jest.fn();
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => false,  // Not a TTY
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Auth should fail because no TTY
+      expect(router.getAuthState('test-agent')).toBe('failed');
+      // spawn should NOT have been called
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('should fail Terminal Auth when stdout is not TTY', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+      const mockSpawn = jest.fn();
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => false,  // Not a TTY
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Auth should fail because no TTY
+      expect(router.getAuthState('test-agent')).toBe('failed');
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Terminal Auth process execution', () => {
+    it('should set auth state to authenticated on exit code 0', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+          ],
+        },
+      });
+
+      // Wait for spawn to be called
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(mockSpawn).toHaveBeenCalled();
+      expect(router.getAuthState('test-agent')).toBe('pending');
+
+      // Simulate successful exit
+      mockChild.emit('exit', 0, null);
+
+      // Wait for state update
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(router.getAuthState('test-agent')).toBe('authenticated');
+    });
+
+    it('should set auth state to failed on non-zero exit code', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Simulate failed exit
+      mockChild.emit('exit', 1, null);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+
+    it('should set auth state to failed on signal termination', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Simulate signal termination (e.g., Ctrl+C)
+      mockChild.emit('exit', null, 'SIGINT');
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+
+    it('should set auth state to failed on spawn error', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Simulate spawn error
+      mockChild.emit('error', new Error('ENOENT: command not found'));
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(router.getAuthState('test-agent')).toBe('failed');
+    });
+  });
+
+  describe('Terminal Auth args/env handling', () => {
+    it('should pass args from authMethod to spawn', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth including args
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            {
+              id: 'terminal-setup',
+              type: 'terminal',
+              args: ['--setup', '--provider', 'openai'],
+            },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check spawn was called with correct args
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'node',  // command from registry
+        ['--setup', '--provider', 'openai'],  // args from authMethod (replacement)
+        expect.objectContaining({
+          stdio: 'inherit',
+          shell: false,
+        })
+      );
+    });
+
+    it('should pass env from authMethod to spawn (merged with process.env)', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth including env
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            {
+              id: 'terminal-setup',
+              type: 'terminal',
+              args: ['--setup'],
+              env: { CUSTOM_VAR: 'custom_value', DEBUG: 'true' },
+            },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check spawn was called with env containing authMethod env vars
+      const spawnCall = mockSpawn.mock.calls[0];
+      const spawnEnv = spawnCall[2].env;
+
+      expect(spawnEnv.CUSTOM_VAR).toBe('custom_value');
+      expect(spawnEnv.DEBUG).toBe('true');
+    });
+
+    it('should use empty args when authMethod has no args', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Route initialize request
+      await router.route({
+        jsonrpc: '2.0',
+        id: 'init-1',
+        method: 'initialize',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      // Handle initialize response with terminal auth without args
+      router.handleAgentResponse('test-agent', {
+        jsonrpc: '2.0',
+        id: 'init-1',
+        result: {
+          protocolVersion: '1.0',
+          authMethods: [
+            { id: 'terminal-basic', type: 'terminal' },
+          ],
+        },
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Check spawn was called with empty args
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'node',
+        [],  // empty args
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('Terminal Auth queue handling', () => {
+    it('should process queued requests after successful Terminal Auth', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const mockChild = createMockChildProcess();
+      const mockSpawn = jest.fn().mockReturnValue(mockChild);
+
+      const deps: MessageRouterDeps = {
+        spawnFn: mockSpawn as unknown as SpawnFn,
+        isStdinTTY: () => true,
+        isStdoutTTY: () => true,
+      };
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true, deps
+      );
+
+      // Set auth state to pending to queue requests
+      router.setAuthState('test-agent', 'pending');
+
+      // Queue a request
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 'queued-1',
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Simulate successful Terminal Auth completion
+      router.setAuthState('test-agent', 'authenticated');
+
+      // Wait for queued request to be processed
+      const result = await routePromise;
+
+      expect(result).toBeUndefined(); // No error
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+
+    it('should reject queued requests after failed Terminal Auth', async () => {
+      const agents = new Map<string, RegistryAgent>();
+      agents.set('test-agent', {
+        id: 'test-agent',
+        name: 'Test Agent',
+        version: '1.0.0',
+        distribution: { npx: { package: 'test-agent' } },
+      });
+
+      const registry = createMockRegistry(agents);
+      const runtimeManager = createMockRuntimeManager();
+      const writeCallback = jest.fn().mockReturnValue(true);
+
+      const router = new MessageRouter(
+        registry, runtimeManager, writeCallback, {}, undefined, true
+      );
+
+      // Set auth state to pending to queue requests
+      router.setAuthState('test-agent', 'pending');
+
+      // Queue a request
+      const routePromise = router.route({
+        jsonrpc: '2.0',
+        id: 'queued-1',
+        method: 'session/new',
+        agentId: 'test-agent',
+        params: {},
+      });
+
+      expect(router.getQueuedRequestCount('test-agent')).toBe(1);
+
+      // Simulate failed Terminal Auth
+      router.setAuthState('test-agent', 'failed');
+
+      // Wait for queued request to be rejected
+      const result = await routePromise;
+
+      expect(result).toBeDefined();
+      expect(result?.error.code).toBe(-32004); // AUTH_REQUIRED
+      expect(router.getQueuedRequestCount('test-agent')).toBe(0);
+    });
+  });
+
+  describe('Terminal Auth precedence', () => {
+    it('should prefer Agent Auth over Terminal Auth when both are present', () => {
+      const methods = parseAuthMethods([
+        { id: 'agent-openai', type: 'agent', providerId: 'openai' },
+        { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+      ]);
+
+      const agentMethods = getAgentAuthMethods(methods);
+      const terminalMethods = getTerminalAuthMethods(methods);
+
+      // Both should be parsed
+      expect(agentMethods).toHaveLength(1);
+      expect(terminalMethods).toHaveLength(1);
+
+      // Agent Auth should be first in precedence (checked first in attemptAuthentication)
+      expect(agentMethods[0].id).toBe('agent-openai');
+    });
+
+    it('should prefer Terminal Auth over OAuth when both are present', () => {
+      const methods = parseAuthMethods([
+        { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+        { id: 'oauth2-openai', type: 'oauth2', providerId: 'openai' },
+      ]);
+
+      const terminalMethods = getTerminalAuthMethods(methods);
+      const oauthMethods = getOAuthMethods(methods);
+
+      // Both should be parsed
+      expect(terminalMethods).toHaveLength(1);
+      expect(oauthMethods).toHaveLength(1);
+
+      // Terminal Auth should be preferred over OAuth (checked before OAuth in attemptAuthentication)
+      expect(terminalMethods[0].id).toBe('terminal-setup');
     });
   });
 });

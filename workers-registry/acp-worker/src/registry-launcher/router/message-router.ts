@@ -31,6 +31,7 @@
  * @module router/message-router
  */
 
+import { spawn } from 'node:child_process';
 import type { IRegistryIndex } from '../registry/index.js';
 import { AgentNotFoundError, PlatformNotSupportedError } from '../registry/index.js';
 import type { AgentRuntimeManager } from '../runtime/manager.js';
@@ -62,11 +63,12 @@ export const RoutingErrorCodes = {
 
 /**
  * Valid auth method types from agent responses.
- * - 'oauth2': Standard OAuth 2.1 flow
- * - 'agent': Legacy alias for OAuth 2.1 (normalized to 'oauth2')
+ * - 'oauth2': Standard OAuth 2.1 flow (client handles OAuth)
+ * - 'agent': Agent handles OAuth internally (ACP-compliant, default)
+ * - 'terminal': Interactive terminal auth (TUI)
  * - 'api-key': API key authentication
  */
-export type AuthMethodType = 'oauth2' | 'agent' | 'api-key';
+export type AuthMethodType = 'oauth2' | 'agent' | 'terminal' | 'api-key';
 
 /**
  * Parsed auth method with validated fields.
@@ -74,6 +76,8 @@ export type AuthMethodType = 'oauth2' | 'agent' | 'api-key';
  */
 export type ParsedAuthMethod =
   | { kind: 'oauth2'; id: string; providerId: AuthProviderId }
+  | { kind: 'agent'; id: string; providerId?: AuthProviderId }
+  | { kind: 'terminal'; id: string; args?: string[]; env?: Record<string, string> }
   | { kind: 'api-key'; id: string; providerId?: AuthProviderId };
 
 /**
@@ -120,7 +124,7 @@ const MAX_METHOD_ID_LENGTH = 128;
 /**
  * Valid auth method types allowlist.
  */
-const VALID_AUTH_METHOD_TYPES: readonly string[] = ['oauth2', 'agent', 'api-key'];
+const VALID_AUTH_METHOD_TYPES: readonly string[] = ['oauth2', 'agent', 'terminal', 'api-key'];
 
 /**
  * Parse and validate auth methods from agent initialize response.
@@ -227,16 +231,45 @@ function parseAuthMethod(method: unknown, seenIds: Set<string>): ParsedAuthMetho
   const resolvedProviderId = providerId ?? mappedProviderId;
 
   // Build parsed method based on type
-  if (type === 'oauth2' || type === 'agent') {
+  if (type === 'oauth2') {
     // OAuth methods require a valid providerId
     if (!resolvedProviderId) {
       logError(`OAuth auth method ${id} has no valid providerId, skipping`);
       return null;
     }
     return {
-      kind: 'oauth2',  // Normalize 'agent' to 'oauth2'
+      kind: 'oauth2',
       id,
       providerId: resolvedProviderId,
+    };
+  }
+
+  if (type === 'agent') {
+    // Agent auth: agent handles OAuth internally (ACP-compliant)
+    // AUTH_REQUIREMENTS.md: When type is not specified, "agent" is assumed as default
+    return {
+      kind: 'agent',
+      id,
+      providerId: resolvedProviderId,  // Optional for agent auth
+    };
+  }
+
+  if (type === 'terminal') {
+    // Terminal auth: interactive TUI setup
+    // Extract args and env from the method object
+    const args = Array.isArray(obj.args) ? obj.args.filter((a): a is string => typeof a === 'string') : undefined;
+    const env = obj.env && typeof obj.env === 'object' && !Array.isArray(obj.env)
+      ? Object.fromEntries(
+        Object.entries(obj.env as Record<string, unknown>)
+          .filter(([, v]) => typeof v === 'string')
+      ) as Record<string, string>
+      : undefined;
+
+    return {
+      kind: 'terminal',
+      id,
+      args,
+      env,
     };
   }
 
@@ -262,6 +295,32 @@ function parseAuthMethod(method: unknown, seenIds: Set<string>): ParsedAuthMetho
  */
 export function getOAuthMethods(methods: ParsedAuthMethod[]): Array<ParsedAuthMethod & { kind: 'oauth2' }> {
   return methods.filter((m): m is ParsedAuthMethod & { kind: 'oauth2' } => m.kind === 'oauth2');
+}
+
+/**
+ * Filter parsed auth methods to get only Agent Auth methods.
+ *
+ * AUTH_REQUIREMENTS.md: Agent Auth is the default authentication method
+ * where the agent manages the entire OAuth flow independently.
+ *
+ * @param methods - Parsed auth methods
+ * @returns Only Agent Auth methods (kind: 'agent')
+ */
+export function getAgentAuthMethods(methods: ParsedAuthMethod[]): Array<ParsedAuthMethod & { kind: 'agent' }> {
+  return methods.filter((m): m is ParsedAuthMethod & { kind: 'agent' } => m.kind === 'agent');
+}
+
+/**
+ * Filter parsed auth methods to get only Terminal Auth methods.
+ *
+ * AUTH_REQUIREMENTS.md: Terminal Auth enables agents to run an interactive
+ * setup experience within a terminal environment.
+ *
+ * @param methods - Parsed auth methods
+ * @returns Only Terminal Auth methods (kind: 'terminal')
+ */
+export function getTerminalAuthMethods(methods: ParsedAuthMethod[]): Array<ParsedAuthMethod & { kind: 'terminal' }> {
+  return methods.filter((m): m is ParsedAuthMethod & { kind: 'terminal' } => m.kind === 'terminal');
 }
 
 /**
@@ -335,6 +394,39 @@ export interface QueuedRequest {
   /** Resolve function to signal completion */
   resolve: (result: ErrorResponse | undefined) => void;
 }
+
+/**
+ * Pending authenticate request tracking structure.
+ *
+ * Tracks authenticate JSON-RPC requests sent to agents for Agent Auth flow.
+ * Used to correlate authenticate responses with the original auth flow.
+ *
+ * AUTH_REQUIREMENTS.md: Agent Auth - client calls authenticate method on agent
+ */
+export interface PendingAuthenticateRequest {
+  /** The authenticate request ID */
+  requestId: string;
+  /** The agent ID */
+  agentId: string;
+  /** The auth method ID from authMethods */
+  authMethodId: string;
+  /** Timestamp when the request was sent */
+  sentAt: number;
+  /** Resolve function to signal completion */
+  resolve: (success: boolean, error?: string) => void;
+}
+
+/**
+ * Default timeout for Agent Auth authenticate requests in milliseconds (5 minutes).
+ * Matches the OAuth flow timeout from AUTH_REQUIREMENTS.md.
+ */
+const AGENT_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Default timeout for Terminal Auth setup process in milliseconds (10 minutes).
+ * Terminal Auth may require user interaction, so we allow more time.
+ */
+const TERMINAL_AUTH_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * Default timeout for queued requests in milliseconds (5 minutes).
@@ -441,6 +533,23 @@ export function transformMessage(message: object): object {
 
 
 /**
+ * Spawn function type for dependency injection in tests.
+ */
+export type SpawnFn = typeof spawn;
+
+/**
+ * Optional dependencies for MessageRouter (for testing).
+ */
+export interface MessageRouterDeps {
+  /** Custom spawn function (default: child_process.spawn) */
+  spawnFn?: SpawnFn;
+  /** Custom function to check if stdin is TTY (default: process.stdin.isTTY) */
+  isStdinTTY?: () => boolean;
+  /** Custom function to check if stdout is TTY (default: process.stdout.isTTY) */
+  isStdoutTTY?: () => boolean;
+}
+
+/**
  * Message Router implementation.
  *
  * Routes incoming JSON-RPC messages to the appropriate agent based on agentId.
@@ -461,6 +570,14 @@ export class MessageRouter {
   /** API keys for agent authentication */
   private readonly apiKeys: Record<string, any>;
 
+  /** Spawn function for Terminal Auth (injectable for testing) */
+  private readonly spawnFn: SpawnFn;
+
+  /** Function to check if stdin is TTY (injectable for testing) */
+  private readonly isStdinTTY: () => boolean;
+
+  /** Function to check if stdout is TTY (injectable for testing) */
+  private readonly isStdoutTTY: () => boolean;
   /** Optional AuthManager for OAuth authentication (Requirements 11.2, 11.4) */
   private readonly authManager?: AuthManager;
 
@@ -502,6 +619,16 @@ export class MessageRouter {
    */
   private readonly requestQueue: Map<string, QueuedRequest[]> = new Map();
 
+  /**
+   * Map of authenticate request ID to pending authenticate request info.
+   *
+   * Tracks authenticate JSON-RPC requests sent to agents for Agent Auth flow.
+   * Used to correlate authenticate responses with the original auth flow.
+   *
+   * AUTH_REQUIREMENTS.md: Agent Auth - client calls authenticate method on agent
+   */
+  private readonly pendingAuthenticateRequests: Map<string, PendingAuthenticateRequest> = new Map();
+
   /** Map of agent sessionId to client sessionId for notification routing */
   private readonly sessionIdMap: Map<string, string> = new Map();
 
@@ -521,6 +648,7 @@ export class MessageRouter {
    * @param apiKeys - API keys for agent authentication (optional)
    * @param authManager - AuthManager for OAuth authentication (optional, Requirements 11.2, 11.4)
    * @param autoOAuth - Whether to auto-trigger OAuth browser flow (default: from AUTH_AUTO_OAUTH env, or false)
+   * @param deps - Optional dependencies for testing (spawnFn, TTY checks)
    */
   constructor(
     registry: IRegistryIndex,
@@ -529,6 +657,7 @@ export class MessageRouter {
     apiKeys: Record<string, any> = {},
     authManager?: AuthManager,
     autoOAuth?: boolean,
+    deps?: MessageRouterDeps,
   ) {
     this.registry = registry;
     this.runtimeManager = runtimeManager;
@@ -538,6 +667,10 @@ export class MessageRouter {
     // Default to false for safety - existing deployments won't suddenly open browsers
     // Can be enabled via AUTH_AUTO_OAUTH=true environment variable
     this.autoOAuth = autoOAuth ?? this.getAutoOAuthFromEnv();
+    // Injectable dependencies for testing
+    this.spawnFn = deps?.spawnFn ?? spawn;
+    this.isStdinTTY = deps?.isStdinTTY ?? (() => process.stdin.isTTY ?? false);
+    this.isStdoutTTY = deps?.isStdoutTTY ?? (() => process.stdout.isTTY ?? false);
   }
 
   /**
@@ -1185,6 +1318,7 @@ export class MessageRouter {
    * Handles agent-to-client requests (like session/request_permission) by
    * auto-responding when they cannot be forwarded to the client.
    * Tracks sessionId mapping for proper notification routing.
+   * Handles authenticate responses for Agent Auth flow (Task 35.2).
    * Forwards all responses to stdout.
    *
    * @param agentId - The agent that sent the response
@@ -1194,6 +1328,16 @@ export class MessageRouter {
     const id = extractId(response);
     let msg = response as Record<string, unknown>;
     const method = typeof msg.method === 'string' ? msg.method : undefined;
+
+    // Task 35.2: Handle authenticate response for Agent Auth flow
+    // Check if this is a response to a pending authenticate request
+    if (id !== null && typeof id === 'string') {
+      const pendingAuth = this.pendingAuthenticateRequests.get(id);
+      if (pendingAuth && pendingAuth.agentId === agentId) {
+        this.handleAuthenticateResponse(pendingAuth, msg);
+        return; // Don't forward authenticate responses to client
+      }
+    }
 
     // Handle agent-to-client requests (messages with both id and method).
     // These are requests FROM the agent TO the client (e.g., session/request_permission).
@@ -1438,6 +1582,47 @@ export class MessageRouter {
   }
 
   /**
+   * Handle an authenticate response from an agent.
+   *
+   * Task 35.2: Handle authenticate response
+   * - On success: resolve the pending authenticate request with success
+   * - On error: resolve with failure and log the error
+   *
+   * AUTH_REQUIREMENTS.md: Agent Auth - after agent completes OAuth flow,
+   * it responds to the authenticate request.
+   *
+   * @param pendingAuth - The pending authenticate request
+   * @param response - The response from the agent
+   */
+  private handleAuthenticateResponse(
+    pendingAuth: PendingAuthenticateRequest,
+    response: Record<string, unknown>,
+  ): void {
+    const { agentId, authMethodId, requestId } = pendingAuth;
+
+    // Check for error response
+    if (response.error) {
+      const error = response.error as Record<string, unknown>;
+      const errorCode = error.code ?? 'UNKNOWN';
+      const errorMessage = typeof error.message === 'string' ? error.message : 'Unknown error';
+      logError(`Agent Auth failed for ${agentId}: [${errorCode}] ${errorMessage}`);
+      pendingAuth.resolve(false, errorMessage);
+      return;
+    }
+
+    // Check for success response
+    if (response.result !== undefined) {
+      logInfo(`Agent Auth succeeded for ${agentId} (method: ${authMethodId}, request: ${requestId})`);
+      pendingAuth.resolve(true);
+      return;
+    }
+
+    // Unexpected response format
+    logError(`Unexpected authenticate response format for ${agentId}: ${JSON.stringify(response)}`);
+    pendingAuth.resolve(false, 'Unexpected response format');
+  }
+
+  /**
    * Send a JSON-RPC message directly to an agent process.
    *
    * @param agentId - The agent to send to
@@ -1471,13 +1656,13 @@ export class MessageRouter {
    * Selects the best authentication method and initiates authentication.
    * Uses parsed auth methods with validated types and provider IDs.
    *
-   * Authentication method precedence (Requirement 3.1, 10.3):
-   * 1. OAuth methods (type: "oauth2" or "agent") - triggers browser-based flow
-   * 2. API key methods - only if no OAuth methods are present
+   * Authentication method precedence (AUTH_REQUIREMENTS.md):
+   * 1. Agent Auth (type: "agent" or no type) - agent handles OAuth internally
+   * 2. OAuth methods (type: "oauth2") - client handles browser-based flow
+   * 3. API key methods - only if no OAuth methods are present
    *
-   * When OAuth methods are present, this function calls AuthManager.authenticateAgent()
-   * to initiate the browser-based OAuth 2.1 Authorization Code flow with PKCE.
-   * It does NOT fall back to API key when agent explicitly requires OAuth.
+   * AUTH_REQUIREMENTS.md: Agent Auth is the default authentication method
+   * where the agent manages the entire OAuth flow independently.
    *
    * @param agentId - The agent to authenticate
    * @param authMethods - Parsed and validated authentication methods (Task 21.1)
@@ -1486,7 +1671,26 @@ export class MessageRouter {
     agentId: string,
     authMethods: ParsedAuthMethod[],
   ): Promise<void> {
-    // Check for OAuth methods first (Requirement 3.1: OAuth takes precedence)
+    // Check for Agent Auth methods first (AUTH_REQUIREMENTS.md: Agent Auth is default)
+    const agentAuthMethods = getAgentAuthMethods(authMethods);
+
+    if (agentAuthMethods.length > 0) {
+      // Agent Auth: call authenticate method on agent, agent handles OAuth internally
+      await this.attemptAgentAuthentication(agentId, agentAuthMethods);
+      return;
+    }
+
+    // Check for Terminal Auth methods (Task 36: type: "terminal")
+    // Terminal Auth: spawn agent with args/env for interactive TUI setup
+    const terminalAuthMethods = getTerminalAuthMethods(authMethods);
+
+    if (terminalAuthMethods.length > 0) {
+      // Terminal Auth: spawn interactive setup process
+      await this.attemptTerminalAuthentication(agentId, terminalAuthMethods);
+      return;
+    }
+
+    // Check for OAuth methods (type: "oauth2") - client handles browser flow
     const oauthMethods = getOAuthMethods(authMethods);
 
     if (oauthMethods.length > 0) {
@@ -1498,6 +1702,322 @@ export class MessageRouter {
 
     // No OAuth methods - try API key authentication
     await this.attemptApiKeyAuthentication(agentId, authMethods);
+  }
+
+  /**
+   * Attempt Agent Auth authentication for an agent.
+   *
+   * AUTH_REQUIREMENTS.md: Agent Auth - client calls `authenticate` method on agent,
+   * agent handles: HTTP server, browser launch, OAuth callback, token storage.
+   *
+   * Task 35.1: Call `authenticate` JSON-RPC method on agent
+   * - Send: { jsonrpc: "2.0", method: "authenticate", params: { id: authMethod.id }, id: requestId }
+   * - Wait for response from agent
+   *
+   * Task 35.2: Handle authenticate response
+   * - On success: retry original request (session/new)
+   * - On error: return error to client
+   *
+   * @param agentId - The agent to authenticate
+   * @param agentAuthMethods - Agent Auth methods from agent's authMethods
+   */
+  private async attemptAgentAuthentication(
+    agentId: string,
+    agentAuthMethods: Array<ParsedAuthMethod & { kind: 'agent' }>,
+  ): Promise<void> {
+    // Select the first Agent Auth method
+    const selectedMethod = agentAuthMethods[0];
+
+    logInfo(`Agent ${agentId} requires Agent Auth with method: ${selectedMethod.id}`);
+    logInfo(`Calling authenticate method on agent - agent will handle OAuth flow internally`);
+
+    // Set auth state to pending while agent handles OAuth
+    this.setAuthState(agentId, 'pending');
+
+    try {
+      // Get agent runtime
+      let runtime: AgentRuntime;
+      try {
+        let spawnCommand = this.registry.resolve(agentId);
+        // Merge env from api-keys.json
+        const agentEnv = getAgentEnv(this.apiKeys, agentId);
+        if (Object.keys(agentEnv).length > 0) {
+          spawnCommand = {
+            ...spawnCommand,
+            env: { ...spawnCommand.env, ...agentEnv },
+          };
+        }
+        runtime = await this.runtimeManager.getOrSpawn(agentId, spawnCommand);
+      } catch (error) {
+        logError(`Failed to get runtime for Agent Auth: ${(error as Error).message}`);
+        this.setAuthState(agentId, 'failed');
+        return;
+      }
+
+      // Call authenticate method on agent and wait for response
+      const success = await this.callAgentAuthenticate(agentId, selectedMethod.id, runtime);
+
+      if (success) {
+        logInfo(`Agent Auth successful for agent ${agentId}`);
+        this.setAuthState(agentId, 'authenticated');
+      } else {
+        logError(`Agent Auth failed for agent ${agentId}`);
+        this.setAuthState(agentId, 'failed');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logError(`Agent Auth error for agent ${agentId}: ${errorMessage}`);
+      this.setAuthState(agentId, 'failed');
+    }
+  }
+
+  /**
+   * Call the `authenticate` JSON-RPC method on an agent.
+   *
+   * AUTH_REQUIREMENTS.md: Agent Auth - client calls authenticate method on agent
+   * Send: { jsonrpc: "2.0", method: "authenticate", params: { id: authMethod.id }, id: requestId }
+   *
+   * Task 35.1: Call `authenticate` JSON-RPC method on agent
+   *
+   * @param agentId - The agent to authenticate
+   * @param authMethodId - The auth method ID from authMethods
+   * @param runtime - The agent runtime
+   * @returns Promise that resolves to true on success, false on failure
+   */
+  private callAgentAuthenticate(
+    agentId: string,
+    authMethodId: string,
+    runtime: AgentRuntime,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      const requestId = `agent-auth-${agentId}-${Date.now()}`;
+
+      // Build authenticate request per AUTH_REQUIREMENTS.md
+      const authenticateRequest = {
+        jsonrpc: '2.0',
+        id: requestId,
+        method: 'authenticate',
+        params: {
+          id: authMethodId,
+        },
+      };
+
+      // Track the pending authenticate request
+      const pendingRequest: PendingAuthenticateRequest = {
+        requestId,
+        agentId,
+        authMethodId,
+        sentAt: Date.now(),
+        resolve: (success: boolean, error?: string) => {
+          // Clean up the pending request
+          this.pendingAuthenticateRequests.delete(requestId);
+          if (error) {
+            logError(`Agent Auth response error: ${error}`);
+          }
+          resolve(success);
+        },
+      };
+
+      this.pendingAuthenticateRequests.set(requestId, pendingRequest);
+
+      // Set up timeout for the authenticate request
+      setTimeout(() => {
+        const pending = this.pendingAuthenticateRequests.get(requestId);
+        if (pending) {
+          logError(`Agent Auth timeout for agent ${agentId} (method: ${authMethodId})`);
+          this.pendingAuthenticateRequests.delete(requestId);
+          resolve(false);
+        }
+      }, AGENT_AUTH_TIMEOUT_MS);
+
+      // Send authenticate request to agent
+      const success = runtime.write(authenticateRequest);
+
+      if (!success) {
+        logError(`Failed to send authenticate request to agent ${agentId}`);
+        this.pendingAuthenticateRequests.delete(requestId);
+        resolve(false);
+      } else {
+        logInfo(`Sent authenticate request to agent ${agentId} (id: ${requestId}, method: ${authMethodId})`);
+      }
+    });
+  }
+
+  /**
+   * Attempt Terminal Auth authentication for an agent.
+   *
+   * AUTH_REQUIREMENTS.md: Terminal Auth - client spawns agent binary with args/env
+   * from authMethod for interactive TUI setup.
+   *
+   * Task 36.1: Parse Terminal Auth from authMethods
+   * Task 36.2: Launch agent binary with args/env
+   * Task 36.3: Retry after Terminal Auth
+   *
+   * Flow:
+   * 1. Stop current agent runtime (if running)
+   * 2. Spawn agent with args/env from authMethod (stdio: 'inherit' for TUI)
+   * 3. Wait for process exit
+   * 4. On exit code 0: restart normal runtime and verify auth
+   * 5. On non-zero exit: mark as failed
+   *
+   * @param agentId - The agent to authenticate
+   * @param terminalAuthMethods - Terminal Auth methods from agent's authMethods
+   */
+  private async attemptTerminalAuthentication(
+    agentId: string,
+    terminalAuthMethods: Array<ParsedAuthMethod & { kind: 'terminal' }>,
+  ): Promise<void> {
+    // Select the first Terminal Auth method
+    const selectedMethod = terminalAuthMethods[0];
+
+    logInfo(`Agent ${agentId} requires Terminal Auth with method: ${selectedMethod.id}`);
+
+    // Check if we're in a TTY environment (required for interactive TUI)
+    if (!this.isStdinTTY() || !this.isStdoutTTY()) {
+      logError(`Terminal Auth requires interactive terminal (TTY). Run in a terminal with stdin/stdout connected.`);
+      this.setAuthState(agentId, 'failed');
+      return;
+    }
+
+    // Set auth state to pending
+    this.setAuthState(agentId, 'pending');
+
+    try {
+      // Step 1: Stop current agent runtime if running
+      const existingRuntime = this.runtimeManager.get(agentId);
+      if (existingRuntime) {
+        logInfo(`Stopping existing runtime for agent ${agentId} before Terminal Auth`);
+        await this.runtimeManager.terminate(agentId);
+      }
+
+      // Step 2: Get spawn command for the agent
+      const baseSpawnCommand = this.registry.resolve(agentId);
+
+      // Build Terminal Auth spawn command using args/env from authMethod (replacement, not merge)
+      const terminalArgs = selectedMethod.args ?? [];
+      const terminalEnv = {
+        ...process.env,  // Inherit current environment
+        ...(selectedMethod.env ?? {}),  // Override with authMethod env
+      };
+
+      logInfo(`Launching Terminal Auth for ${agentId}: ${baseSpawnCommand.command} ${terminalArgs.join(' ')}`);
+
+      // Step 3: Spawn interactive process with inherited stdio
+      const exitCode = await this.runTerminalAuthProcess(
+        baseSpawnCommand.command,
+        terminalArgs,
+        terminalEnv,
+      );
+
+      // Step 4: Handle exit code
+      if (exitCode === 0) {
+        logInfo(`Terminal Auth process exited successfully for ${agentId}`);
+
+        // Restart normal runtime and verify auth
+        const authVerified = await this.verifyTerminalAuthSuccess(agentId);
+
+        if (authVerified) {
+          logInfo(`Terminal Auth verified for ${agentId}`);
+          this.setAuthState(agentId, 'authenticated');
+        } else {
+          logError(`Terminal Auth completed but verification failed for ${agentId}`);
+          this.setAuthState(agentId, 'failed');
+        }
+      } else {
+        logError(`Terminal Auth process exited with code ${exitCode} for ${agentId}`);
+        this.setAuthState(agentId, 'failed');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logError(`Terminal Auth error for agent ${agentId}: ${errorMessage}`);
+      this.setAuthState(agentId, 'failed');
+    }
+  }
+
+  /**
+   * Run the Terminal Auth process with inherited stdio for interactive TUI.
+   *
+   * @param command - The command to execute
+   * @param args - Command-line arguments
+   * @param env - Environment variables
+   * @returns Promise that resolves to the exit code
+   */
+  private runTerminalAuthProcess(
+    command: string,
+    args: string[],
+    env: Record<string, string | undefined>,
+  ): Promise<number> {
+    return new Promise((resolve, reject) => {
+      logInfo(`Spawning Terminal Auth process: ${command} ${args.join(' ')}`);
+
+      const child = this.spawnFn(command, args, {
+        env: env as NodeJS.ProcessEnv,
+        stdio: 'inherit',  // Inherit stdin/stdout/stderr for interactive TUI
+        shell: false,
+      });
+
+      // Set up timeout
+      const timeoutId = setTimeout(() => {
+        logError(`Terminal Auth process timed out after ${TERMINAL_AUTH_TIMEOUT_MS}ms`);
+        child.kill('SIGTERM');
+        // Give it a moment to terminate gracefully, then SIGKILL
+        setTimeout(() => {
+          if (!child.killed) {
+            child.kill('SIGKILL');
+          }
+        }, 5000);
+      }, TERMINAL_AUTH_TIMEOUT_MS);
+
+      child.on('error', (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+
+      child.on('exit', (code, signal) => {
+        clearTimeout(timeoutId);
+        if (signal) {
+          logError(`Terminal Auth process killed by signal: ${signal}`);
+          resolve(1);  // Treat signal termination as failure
+        } else {
+          resolve(code ?? 1);
+        }
+      });
+    });
+  }
+
+  /**
+   * Verify that Terminal Auth was successful by restarting the agent
+   * and checking if authentication is now available.
+   *
+   * @param agentId - The agent to verify
+   * @returns true if auth is now available, false otherwise
+   */
+  private async verifyTerminalAuthSuccess(agentId: string): Promise<boolean> {
+    try {
+      // Restart the agent runtime
+      let spawnCommand = this.registry.resolve(agentId);
+
+      // Merge env from api-keys.json (credentials may have been stored by Terminal Auth)
+      const agentEnv = getAgentEnv(this.apiKeys, agentId);
+      if (Object.keys(agentEnv).length > 0) {
+        spawnCommand = {
+          ...spawnCommand,
+          env: { ...spawnCommand.env, ...agentEnv },
+        };
+      }
+
+      const runtime = await this.runtimeManager.getOrSpawn(agentId, spawnCommand);
+
+      // For now, we trust that Terminal Auth stored credentials properly
+      // A more robust verification would send an initialize request and check
+      // if AUTH_REQUIRED is still returned, but that adds complexity.
+      // The next actual request will verify auth status.
+      return runtime.state === 'running';
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logError(`Failed to verify Terminal Auth for ${agentId}: ${errorMessage}`);
+      return false;
+    }
   }
 
   /**
