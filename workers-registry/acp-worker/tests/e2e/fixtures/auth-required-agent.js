@@ -99,16 +99,18 @@ function processMessage(line) {
         console.error('[auth-required-agent] Request authenticated, returning success');
       } else {
         // FAILURE: No token, return AUTH_REQUIRED error
+        // Using -32004 which is the standard AUTH_REQUIRED code in Registry Launcher
         response = {
           jsonrpc: '2.0',
           id: msg.id,
           error: {
-            code: -32001,
+            code: -32004,
             message: 'Authentication required',
             data: {
               errorCode: 'AUTH_REQUIRED',
               requiredMethod: 'api-key',
-              supportedMethods: ['api-key', 'oauth2-openai']
+              supportedMethods: ['api-key', 'oauth2-openai'],
+              agentId: 'auth-required-agent'
             }
           }
         };

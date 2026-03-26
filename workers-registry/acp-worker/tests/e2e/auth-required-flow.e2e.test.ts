@@ -488,7 +488,7 @@ describe('E2E: OAuth Authentication Required Flow', () => {
       expect((responseWithAuth.result as Record<string, unknown>).authenticated).toBe(true);
 
       console.log('\n✅ PROVEN: Same agent, different behavior based on auth state');
-      console.log('   - Without token: AUTH_REQUIRED error (-32001)');
+      console.log('   - Without token: AUTH_REQUIRED error (-32004)');
       console.log('   - With token: Success response with authenticated=true');
       console.log('======================================\n');
     }, 60000);
