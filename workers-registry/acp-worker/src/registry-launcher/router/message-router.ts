@@ -35,7 +35,7 @@ import type { IRegistryIndex } from '../registry/index.js';
 import { AgentNotFoundError, PlatformNotSupportedError } from '../registry/index.js';
 import type { AgentRuntimeManager } from '../runtime/manager.js';
 import type { AgentRuntime } from '../runtime/types.js';
-import { getAgentApiKey } from '../config/api-keys.js';
+import { getAgentApiKey, getAgentEnv } from '../config/api-keys.js';
 import type { AuthManager } from '../auth/auth-manager.js';
 import type { AcpAuthMethod, AuthProviderId } from '../auth/types.js';
 import { isValidProviderId } from '../auth/types.js';
@@ -604,6 +604,18 @@ export class MessageRouter {
   }
 
   /**
+   * Check if api-key credentials are available for an agent.
+   * This is a synchronous check for api-keys.json credentials.
+   *
+   * @param agentId - The agent identifier
+   * @returns True if api-key credentials are available
+   */
+  hasCredentialsForAgent(agentId: string): boolean {
+    const apiKey = getAgentApiKey(this.apiKeys, agentId);
+    return apiKey !== undefined;
+  }
+
+  /**
    * Create an AUTH_REQUIRED error response.
    *
    * Requirement 11.2: WHEN an agent requires authentication and credentials are not available,
@@ -620,6 +632,18 @@ export class MessageRouter {
     agentId: string,
     requiredMethod?: string
   ): ErrorResponse {
+    // Build remediation instructions for the user
+    // Use npx command (works without global install) and stdiobus (after global install)
+    const remediation: Record<string, unknown> = {
+      type: 'login_required',
+      commands: [
+        'npx @stdiobus/workers-registry acp-registry --setup',
+        'stdiobus acp-registry --setup',
+      ],
+      hint: 'Run: npx @stdiobus/workers-registry acp-registry --setup',
+      docsUrl: 'https://github.com/stdiobus/workers-registry/blob/main/docs/oauth/user-guide.md'
+    };
+
     return createErrorResponse(
       id,
       RoutingErrorCodes.AUTH_REQUIRED,
@@ -628,6 +652,7 @@ export class MessageRouter {
         agentId,
         requiredMethod: requiredMethod ?? 'api-key',
         supportedMethods: this.getSupportedAuthMethods().map(m => m.id),
+        remediation,
       }
     );
   }
@@ -797,6 +822,26 @@ export class MessageRouter {
   ): ErrorResponse {
     const supportedMethods = this.getSupportedAuthMethods();
 
+    // Build remediation instructions for the user
+    // Use npx command (works without global install) and stdiobus (after global install)
+    const remediation: Record<string, unknown> = {
+      type: 'login_required',
+      provider: providerId || 'unknown',
+      commands: providerId
+        ? [
+          `npx @stdiobus/workers-registry acp-registry --login ${providerId}`,
+          `stdiobus acp-registry --login ${providerId}`,
+        ]
+        : [
+          'npx @stdiobus/workers-registry acp-registry --setup',
+          'stdiobus acp-registry --setup',
+        ],
+      hint: providerId
+        ? `Run: npx @stdiobus/workers-registry acp-registry --login ${providerId}`
+        : 'Run: npx @stdiobus/workers-registry acp-registry --setup',
+      docsUrl: 'https://github.com/stdiobus/workers-registry/blob/main/docs/oauth/user-guide.md'
+    };
+
     return createErrorResponse(
       id,
       RoutingErrorCodes.AUTH_REQUIRED,
@@ -806,6 +851,7 @@ export class MessageRouter {
         requiredMethod: providerId ? `oauth2-${providerId}` : 'oauth2',
         supportedMethods: supportedMethods.map(m => m.id),
         providerId: providerId,
+        remediation,
       }
     );
   }
@@ -844,6 +890,20 @@ export class MessageRouter {
         );
       }
       throw error;
+    }
+
+    // Merge env from api-keys.json into spawn command
+    // This ensures credentials are passed to the agent process
+    const agentEnv = getAgentEnv(this.apiKeys, agentId);
+    if (Object.keys(agentEnv).length > 0) {
+      spawnCommand = {
+        ...spawnCommand,
+        env: {
+          ...spawnCommand.env,
+          ...agentEnv,
+        },
+      };
+      logInfo(`Injected ${Object.keys(agentEnv).length} env vars from api-keys.json for agent ${agentId}`);
     }
 
     // Get or spawn agent runtime
@@ -1186,11 +1246,20 @@ export class MessageRouter {
             // Task 23.1: Track OAuth requirements for this agent
             // Requirement 11.2: Cache auth requirements per agent
             const oauthMethods = getOAuthMethods(parsedMethods);
-            if (oauthMethods.length > 0) {
+            const apiKeyMethods = getApiKeyMethods(parsedMethods);
+
+            // Check if agent has api-key credentials available
+            // If api-key is supported AND credentials exist, don't require OAuth
+            const hasApiKeyCredentials = this.hasCredentialsForAgent(agentId);
+
+            if (oauthMethods.length > 0 && !(apiKeyMethods.length > 0 && hasApiKeyCredentials)) {
               // Store the first OAuth provider as the required provider
+              // Only if api-key fallback is not available
               const requiredProviderId = oauthMethods[0].providerId;
               this.agentOAuthRequirements.set(agentId, requiredProviderId);
               logInfo(`Agent ${agentId} requires OAuth authentication with provider: ${requiredProviderId}`);
+            } else if (apiKeyMethods.length > 0 && hasApiKeyCredentials) {
+              logInfo(`Agent ${agentId} supports OAuth but api-key credentials available, using api-key`);
             }
 
             // Task 33.2: Only auto-trigger OAuth if AUTH_AUTO_OAUTH is enabled
@@ -1516,7 +1585,15 @@ export class MessageRouter {
     // Get agent runtime
     let runtime: AgentRuntime;
     try {
-      const spawnCommand = this.registry.resolve(agentId);
+      let spawnCommand = this.registry.resolve(agentId);
+      // Merge env from api-keys.json
+      const agentEnv = getAgentEnv(this.apiKeys, agentId);
+      if (Object.keys(agentEnv).length > 0) {
+        spawnCommand = {
+          ...spawnCommand,
+          env: { ...spawnCommand.env, ...agentEnv },
+        };
+      }
       runtime = await this.runtimeManager.getOrSpawn(agentId, spawnCommand);
     } catch (error) {
       logError(`Failed to get runtime for OAuth credential injection: ${(error as Error).message}`);
@@ -1603,7 +1680,15 @@ export class MessageRouter {
     // Get agent runtime
     let runtime: AgentRuntime;
     try {
-      const spawnCommand = this.registry.resolve(agentId);
+      let spawnCommand = this.registry.resolve(agentId);
+      // Merge env from api-keys.json
+      const agentEnv = getAgentEnv(this.apiKeys, agentId);
+      if (Object.keys(agentEnv).length > 0) {
+        spawnCommand = {
+          ...spawnCommand,
+          env: { ...spawnCommand.env, ...agentEnv },
+        };
+      }
       runtime = await this.runtimeManager.getOrSpawn(agentId, spawnCommand);
     } catch (error) {
       logError(`Failed to get runtime for authentication: ${(error as Error).message}`);

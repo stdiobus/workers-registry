@@ -171,3 +171,58 @@ export type { CognitoProviderConfig } from './cognito-provider.js';
 export { AzureProvider } from './azure-provider.js';
 export type { AzureProviderConfig } from './azure-provider.js';
 export { AnthropicProvider } from './anthropic-provider.js';
+
+// Import providers for registration
+import { OpenAIProvider } from './openai-provider.js';
+import { GitHubProvider } from './github-provider.js';
+import { GoogleProvider } from './google-provider.js';
+import { CognitoProvider } from './cognito-provider.js';
+import { AzureProvider } from './azure-provider.js';
+import { AnthropicProvider } from './anthropic-provider.js';
+
+/**
+ * Initialize all OAuth providers.
+ * Must be called before using AuthManager.
+ *
+ * This registers all supported OAuth provider implementations
+ * in the provider registry.
+ *
+ * Note: Cognito and Azure require environment-specific configuration
+ * and are only registered if their config is available via env vars.
+ */
+export function initializeProviders(): void {
+  // Only register if not already registered (idempotent)
+  if (!providerRegistry.has('openai')) {
+    registerProvider('openai', () => new OpenAIProvider());
+  }
+  if (!providerRegistry.has('github')) {
+    registerProvider('github', () => new GitHubProvider());
+  }
+  if (!providerRegistry.has('google')) {
+    registerProvider('google', () => new GoogleProvider());
+  }
+  if (!providerRegistry.has('anthropic')) {
+    registerProvider('anthropic', () => new AnthropicProvider());
+  }
+
+  // Cognito requires userPoolDomain and region from environment
+  const cognitoUserPoolDomain = process.env.COGNITO_USER_POOL_DOMAIN;
+  const cognitoRegion = process.env.COGNITO_REGION || 'us-east-1';
+  if (cognitoUserPoolDomain && !providerRegistry.has('cognito')) {
+    registerProvider('cognito', () => new CognitoProvider({
+      userPoolDomain: cognitoUserPoolDomain,
+      region: cognitoRegion,
+    }));
+  }
+
+  // Azure requires tenantId from environment
+  const azureTenantId = process.env.AZURE_TENANT_ID;
+  if (azureTenantId && !providerRegistry.has('azure')) {
+    registerProvider('azure', () => new AzureProvider({
+      tenantId: azureTenantId,
+    }));
+  }
+}
+
+// Auto-initialize providers on module load
+initializeProviders();

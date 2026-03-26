@@ -54,7 +54,11 @@ sequenceDiagram
 ### Syntax
 
 ```bash
-node ./launch/index.js acp-registry --login <provider>
+# Using npx (no installation required)
+npx @stdiobus/workers-registry acp-registry --login <provider>
+
+# Using global install
+stdiobus acp-registry --login <provider>
 ```
 
 ### Parameters
@@ -66,11 +70,11 @@ node ./launch/index.js acp-registry --login <provider>
 ### Examples
 
 ```bash
-# Login with OpenAI
-node ./launch/index.js acp-registry --login openai
+# Login with OpenAI (npx)
+npx @stdiobus/workers-registry acp-registry --login openai
 
-# Login with GitHub
-node ./launch/index.js acp-registry --login github
+# Login with GitHub (global install)
+stdiobus acp-registry --login github
 ```
 
 ### Output
@@ -107,7 +111,11 @@ Interactive setup wizard for configuring authentication.
 ### Syntax
 
 ```bash
-node ./launch/index.js acp-registry --setup
+# Using npx (no installation required)
+npx @stdiobus/workers-registry acp-registry --setup
+
+# Using global install
+stdiobus acp-registry --setup
 ```
 
 ### Features
@@ -167,7 +175,11 @@ Display current authentication status for all providers.
 ### Syntax
 
 ```bash
-node ./launch/index.js acp-registry --auth-status
+# Using npx (no installation required)
+npx @stdiobus/workers-registry acp-registry --auth-status
+
+# Using global install
+stdiobus acp-registry --auth-status
 ```
 
 ### Output Format
@@ -231,11 +243,11 @@ Remove stored credentials for one or all providers.
 ### Syntax
 
 ```bash
-# Logout from all providers
-node ./launch/index.js acp-registry --logout
+# Logout from all providers (npx)
+npx @stdiobus/workers-registry acp-registry --logout
 
-# Logout from specific provider
-node ./launch/index.js acp-registry --logout <provider>
+# Logout from specific provider (global install)
+stdiobus acp-registry --logout <provider>
 ```
 
 ### Parameters
@@ -247,11 +259,11 @@ node ./launch/index.js acp-registry --logout <provider>
 ### Examples
 
 ```bash
-# Logout from all providers
-node ./launch/index.js acp-registry --logout
+# Logout from all providers (npx)
+npx @stdiobus/workers-registry acp-registry --logout
 
-# Logout from OpenAI only
-node ./launch/index.js acp-registry --logout openai
+# Logout from OpenAI only (global install)
+stdiobus acp-registry --logout openai
 ```
 
 ### Output
@@ -293,10 +305,10 @@ Controls automatic OAuth flow triggering:
 
 ```bash
 # Disable auto-OAuth (default, recommended for production)
-AUTH_AUTO_OAUTH=false node ./launch/index.js acp-registry
+AUTH_AUTO_OAUTH=false npx @stdiobus/workers-registry acp-registry
 
 # Enable auto-OAuth (opens browser automatically when needed)
-AUTH_AUTO_OAUTH=true node ./launch/index.js acp-registry
+AUTH_AUTO_OAUTH=true stdiobus acp-registry
 ```
 
 **Warning:** Enabling `AUTH_AUTO_OAUTH` may cause unexpected browser windows in automated environments.
