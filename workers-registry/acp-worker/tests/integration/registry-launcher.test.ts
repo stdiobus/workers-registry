@@ -81,6 +81,11 @@ class MockRegistryIndex implements IRegistryIndex {
     return command;
   }
 
+  getAuthRequirements(_agentId: string): undefined {
+    // Mock implementation - no auth requirements by default
+    return undefined;
+  }
+
   setSpawnCommand(agentId: string, command: SpawnCommand): void {
     this.spawnCommands.set(agentId, command);
   }

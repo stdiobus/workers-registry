@@ -54,6 +54,7 @@ export const SUPPORTED_PROVIDERS: readonly AuthProviderId[] = [
   'google',
   'cognito',
   'azure',
+  'oidc',
 ] as const;
 
 /**
@@ -168,14 +169,18 @@ export { GitHubProvider } from './github-provider.js';
 export { GoogleProvider } from './google-provider.js';
 export { CognitoProvider } from './cognito-provider.js';
 export type { CognitoProviderConfig } from './cognito-provider.js';
-export { AzureProvider } from './azure-provider.js';
-export type { AzureProviderConfig } from './azure-provider.js';
+// Microsoft Entra ID (formerly Azure AD) - export both new and legacy names
+export { EntraIdProvider, AzureProvider } from './entra-provider.js';
+export type { EntraProviderConfig, AzureProviderConfig } from './entra-provider.js';
+export { OIDCProvider } from './oidc-provider.js';
+export type { OIDCProviderConfig, OIDCDiscoveryDocument, OIDCDiscoveryResult } from './oidc-provider.js';
 
 // Import providers for registration
 import { GitHubProvider } from './github-provider.js';
 import { GoogleProvider } from './google-provider.js';
 import { CognitoProvider } from './cognito-provider.js';
-import { AzureProvider } from './azure-provider.js';
+import { EntraIdProvider } from './entra-provider.js';
+import { OIDCProvider } from './oidc-provider.js';
 
 /**
  * Initialize all OAuth providers.
@@ -187,7 +192,7 @@ import { AzureProvider } from './azure-provider.js';
  * Note: OpenAI and Anthropic are NOT registered here - they use API keys, not OAuth.
  * See model-credentials module for API key handling.
  *
- * Note: Cognito and Azure require environment-specific configuration
+ * Note: Cognito, Azure, and OIDC require environment-specific configuration
  * and are only registered if their config is available via env vars.
  */
 export function initializeProviders(): void {
@@ -209,11 +214,26 @@ export function initializeProviders(): void {
     }));
   }
 
-  // Azure requires tenantId from environment
+  // Microsoft Entra ID (formerly Azure AD) requires tenantId from environment
   const azureTenantId = process.env.AZURE_TENANT_ID;
   if (azureTenantId && !providerRegistry.has('azure')) {
-    registerProvider('azure', () => new AzureProvider({
+    registerProvider('azure', () => new EntraIdProvider({
       tenantId: azureTenantId,
+    }));
+  }
+
+  // OIDC requires issuer from environment
+  // Manual endpoint overrides are optional (discovery is used by default)
+  const oidcIssuer = process.env.OIDC_ISSUER;
+  if (oidcIssuer && !providerRegistry.has('oidc')) {
+    registerProvider('oidc', () => new OIDCProvider({
+      issuer: oidcIssuer,
+      authorizationEndpoint: process.env.OIDC_AUTHORIZATION_ENDPOINT,
+      tokenEndpoint: process.env.OIDC_TOKEN_ENDPOINT,
+      jwksUri: process.env.OIDC_JWKS_URI,
+      clientId: process.env.OIDC_CLIENT_ID,
+      clientSecret: process.env.OIDC_CLIENT_SECRET,
+      tokenEndpointAuthMethod: process.env.OIDC_TOKEN_ENDPOINT_AUTH_METHOD as 'client_secret_post' | 'client_secret_basic' | undefined,
     }));
   }
 }

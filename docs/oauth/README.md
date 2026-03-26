@@ -29,7 +29,7 @@ node ./launch/index.js acp-registry --logout openai
 | Anthropic | ✅ | ✅ | `api` |
 | GitHub | ✅ | ✅ | `read:user` |
 | Google | ✅ | ✅ | `openid`, `profile`, `email` |
-| Azure AD | ✅ | ✅ | `openid`, `profile` |
+| Microsoft Entra ID | ✅ | ✅ | `openid`, `profile` |
 | AWS Cognito | ✅ | ✅ | `openid`, `profile` |
 
 ## Documentation

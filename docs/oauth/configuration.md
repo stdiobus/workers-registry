@@ -208,7 +208,9 @@ Default Scopes: openid, profile, email
 Token Injection: Authorization: Bearer <token>
 ```
 
-### Azure AD
+### Microsoft Entra ID
+
+> **Note:** Microsoft renamed Azure AD to Microsoft Entra ID in 2023. The provider ID `azure` is kept for backward compatibility.
 
 ```
 Authorization URL: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize

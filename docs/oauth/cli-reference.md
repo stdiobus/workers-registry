@@ -135,7 +135,7 @@ Select providers to configure:
   [ ] Anthropic
   [x] GitHub
   [ ] Google
-  [ ] Azure AD
+  [ ] Microsoft Entra ID
   [ ] AWS Cognito
 
 Configuring OpenAI...
@@ -323,8 +323,10 @@ AUTH_AUTO_OAUTH=true stdiobus acp-registry
 | `anthropic` | Anthropic |
 | `github` | GitHub |
 | `google` | Google |
-| `azure` | Azure AD |
+| `azure` | Microsoft Entra ID |
 | `cognito` | AWS Cognito |
+
+> **Note:** The provider ID `azure` is kept for backward compatibility. Microsoft renamed Azure AD to Microsoft Entra ID in 2023.
 
 ---
 

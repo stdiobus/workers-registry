@@ -177,7 +177,8 @@ describe('Terminal Auth Flow Unit Tests', () => {
         expect(output).toContain('1. GitHub');
         expect(output).toContain('2. Google');
         expect(output).toContain('3. AWS Cognito');
-        expect(output).toContain('4. Azure AD');
+        expect(output).toContain('4. Microsoft Entra ID');
+        expect(output).toContain('5. Generic OIDC');
       });
 
       /**
@@ -769,7 +770,7 @@ describe('Terminal Auth Flow Unit Tests', () => {
         await executePromise;
 
         const output = mockOutput.getOutput();
-        expect(output).toContain('Azure AD');
+        expect(output).toContain('Microsoft Entra ID');
         expect(output).toContain('Tenant ID');
         expect(output).toContain('multi-tenant');
       });
@@ -945,12 +946,13 @@ describe('Terminal Auth Flow Unit Tests', () => {
     it('should return all supported providers', () => {
       const providers = getAllProviderInfo();
 
-      expect(providers).toHaveLength(4);
+      expect(providers).toHaveLength(5);
       expect(providers.map(p => p.id)).toEqual([
         'github',
         'google',
         'cognito',
         'azure',
+        'oidc',
       ]);
     });
 

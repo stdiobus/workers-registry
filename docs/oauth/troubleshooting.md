@@ -168,7 +168,9 @@ echo $CI $SSH_TTY $DISPLAY
 - Add `http://127.0.0.1` to authorized redirect URIs
 - Include all port variations if needed
 
-### Azure AD
+### Microsoft Entra ID
+
+> **Note:** Microsoft renamed Azure AD to Microsoft Entra ID in 2023. The provider ID `azure` is kept for backward compatibility.
 
 **Issue:** "AADSTS50011: Reply URL mismatch"
 - Add `http://127.0.0.1` to redirect URIs in Azure portal
@@ -297,6 +299,80 @@ echo "sk-..." | node ./launch/index.js acp-registry --setup
 | `true` | Auto-trigger browser OAuth when agent requires it |
 
 **Recommendation:** Keep `false` for production, use `true` for development.
+
+## Frequently Asked Questions
+
+### Why isn't OpenAI listed as an OAuth provider?
+
+OpenAI does not offer a public OAuth 2.0 identity provider for third-party applications. Unlike Google, GitHub, or Microsoft Entra ID, you cannot use "Sign in with OpenAI" to authenticate users.
+
+**How OpenAI authentication works:**
+- OpenAI uses API keys for programmatic access to their models (GPT-4, etc.)
+- API keys are generated in your OpenAI dashboard at platform.openai.com
+- Keys are injected via the `Authorization: Bearer {key}` header
+
+**Correct setup for OpenAI:**
+```bash
+# Option 1: Use --setup wizard (Model API Keys section)
+node ./launch/index.js acp-registry --setup
+
+# Option 2: Use api-keys.json
+echo '{"openai": "sk-..."}' > api-keys.json
+
+# Option 3: Use environment variable
+export OPENAI_API_KEY=sk-...
+```
+
+### Why isn't Anthropic listed as an OAuth provider?
+
+Similar to OpenAI, Anthropic does not provide a public OAuth identity provider. Anthropic uses API keys for Claude API access.
+
+**How Anthropic authentication works:**
+- API keys are generated in your Anthropic console at console.anthropic.com
+- Keys are injected via the `x-api-key: {key}` header (not Bearer token)
+
+**Correct setup for Anthropic:**
+```bash
+# Option 1: Use --setup wizard (Model API Keys section)
+node ./launch/index.js acp-registry --setup
+
+# Option 2: Use api-keys.json
+echo '{"anthropic": "sk-ant-..."}' > api-keys.json
+
+# Option 3: Use environment variable
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### What's the difference between OAuth providers and Model API keys?
+
+| Aspect | OAuth Providers | Model API Keys |
+|--------|-----------------|----------------|
+| Purpose | User identity verification | Model/API access |
+| Examples | Google, GitHub, Microsoft Entra ID | OpenAI, Anthropic |
+| Flow | Browser-based OAuth 2.1 with PKCE | Direct API key injection |
+| Token type | Access token + refresh token | Static API key |
+| Use case | "Sign in with Google" | "Use GPT-4 API" |
+
+**OAuth providers** authenticate who you are (identity).
+**Model API keys** authorize what you can access (API permissions).
+
+### Can I use Generic OIDC for my company's identity provider?
+
+Yes! The Generic OIDC provider supports any OpenID Connect compliant identity provider:
+
+- Okta
+- Auth0
+- Keycloak
+- PingIdentity
+- Your company's custom OIDC server
+
+**Setup:**
+```bash
+node ./launch/index.js acp-registry --setup
+# Select "Generic OIDC"
+# Enter your issuer URL (e.g., https://your-company.okta.com)
+# The system will auto-discover endpoints via .well-known/openid-configuration
+```
 
 ## Getting Help
 

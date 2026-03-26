@@ -1736,4 +1736,514 @@ describe('Auth Manager Unit Tests', () => {
       });
     });
   });
+
+
+  describe('Model Credential Methods (Requirement 7b.3)', () => {
+    /**
+     * Mock model credential storage for testing.
+     */
+    class MockModelCredentialStorage {
+      private credentials = new Map<string, { providerId: 'openai' | 'anthropic'; apiKey: string; storedAt: number }>();
+
+      async store(key: string, credential: { providerId: 'openai' | 'anthropic'; apiKey: string; storedAt: number }): Promise<void> {
+        this.credentials.set(key, { ...credential });
+      }
+
+      async retrieve(key: string): Promise<{ providerId: 'openai' | 'anthropic'; apiKey: string; storedAt: number } | null> {
+        const cred = this.credentials.get(key);
+        return cred ? { ...cred } : null;
+      }
+
+      async delete(key: string): Promise<void> {
+        this.credentials.delete(key);
+      }
+
+      async exists(key: string): Promise<boolean> {
+        return this.credentials.has(key);
+      }
+
+      setCredential(key: string, credential: { providerId: 'openai' | 'anthropic'; apiKey: string; storedAt: number }): void {
+        this.credentials.set(key, { ...credential });
+      }
+
+      reset(): void {
+        this.credentials.clear();
+      }
+    }
+
+    let modelCredentialStorage: MockModelCredentialStorage;
+
+    beforeEach(() => {
+      modelCredentialStorage = new MockModelCredentialStorage();
+    });
+
+    afterEach(() => {
+      modelCredentialStorage.reset();
+    });
+
+
+    describe('getModelCredential', () => {
+      it('should return error for invalid model provider ID', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const result = await authManager.getModelCredential('invalid' as any);
+
+        expect(result.found).toBe(false);
+        expect(result.error).toContain('Invalid model provider ID');
+      });
+
+      it('should return error when model credential storage not configured', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          // No modelCredentialStorage
+        });
+
+        const result = await authManager.getModelCredential('openai');
+
+        expect(result.found).toBe(false);
+        expect(result.error).toContain('Model credential storage not configured');
+      });
+
+      it('should return OpenAI credential when configured', async () => {
+        modelCredentialStorage.setCredential('model-credential:openai', {
+          providerId: 'openai',
+          apiKey: 'sk-test-openai-key-12345678901234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const result = await authManager.getModelCredential('openai');
+
+        expect(result.found).toBe(true);
+        expect(result.credential).toBeDefined();
+        expect(result.credential!.providerId).toBe('openai');
+        expect(result.credential!.apiKey).toBe('sk-test-openai-key-12345678901234567890');
+      });
+
+      it('should return Anthropic credential when configured', async () => {
+        modelCredentialStorage.setCredential('model-credential:anthropic', {
+          providerId: 'anthropic',
+          apiKey: 'sk-ant-test-anthropic-key-1234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const result = await authManager.getModelCredential('anthropic');
+
+        expect(result.found).toBe(true);
+        expect(result.credential).toBeDefined();
+        expect(result.credential!.providerId).toBe('anthropic');
+        expect(result.credential!.apiKey).toBe('sk-ant-test-anthropic-key-1234567890');
+      });
+
+      it('should return not found when credential not stored', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const result = await authManager.getModelCredential('openai');
+
+        expect(result.found).toBe(false);
+      });
+    });
+
+
+    describe('hasModelCredential', () => {
+      it('should return false for invalid model provider ID', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const result = await authManager.hasModelCredential('invalid' as any);
+
+        expect(result).toBe(false);
+      });
+
+      it('should return false when storage not configured', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const result = await authManager.hasModelCredential('openai');
+
+        expect(result).toBe(false);
+      });
+
+      it('should return true when OpenAI credential is configured', async () => {
+        modelCredentialStorage.setCredential('model-credential:openai', {
+          providerId: 'openai',
+          apiKey: 'sk-test-openai-key-12345678901234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const result = await authManager.hasModelCredential('openai');
+
+        expect(result).toBe(true);
+      });
+
+      it('should return false when credential not stored', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const result = await authManager.hasModelCredential('anthropic');
+
+        expect(result).toBe(false);
+      });
+    });
+
+
+    describe('getModelCredentialStatus', () => {
+      it('should return status for all model providers', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const status = await authManager.getModelCredentialStatus();
+
+        expect(status.has('openai')).toBe(true);
+        expect(status.has('anthropic')).toBe(true);
+      });
+
+      it('should return not-configured for providers without credentials', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const status = await authManager.getModelCredentialStatus();
+
+        expect(status.get('openai')?.status).toBe('not-configured');
+        expect(status.get('anthropic')?.status).toBe('not-configured');
+      });
+
+      it('should return configured for providers with credentials', async () => {
+        modelCredentialStorage.setCredential('model-credential:openai', {
+          providerId: 'openai',
+          apiKey: 'sk-test-openai-key-12345678901234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const status = await authManager.getModelCredentialStatus();
+
+        expect(status.get('openai')?.status).toBe('configured');
+        expect(status.get('anthropic')?.status).toBe('not-configured');
+      });
+    });
+
+
+    describe('injectModelAuth', () => {
+      it('should return original request for invalid provider ID', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const request = { method: 'POST', url: 'https://api.example.com' };
+        const result = await authManager.injectModelAuth('invalid' as any, request);
+
+        expect(result).toEqual(request);
+      });
+
+      it('should return original request when storage not configured', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        const request = { method: 'POST', url: 'https://api.openai.com' };
+        const result = await authManager.injectModelAuth('openai', request);
+
+        expect(result).toEqual(request);
+      });
+
+      it('should inject OpenAI API key with Bearer format', async () => {
+        modelCredentialStorage.setCredential('model-credential:openai', {
+          providerId: 'openai',
+          apiKey: 'sk-test-openai-key-12345678901234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const request = { method: 'POST', url: 'https://api.openai.com' };
+        const result = await authManager.injectModelAuth('openai', request) as Record<string, unknown>;
+
+        expect(result.headers).toBeDefined();
+        const headers = result.headers as Record<string, string>;
+        expect(headers['Authorization']).toBe('Bearer sk-test-openai-key-12345678901234567890');
+      });
+
+      it('should inject Anthropic API key with x-api-key header', async () => {
+        modelCredentialStorage.setCredential('model-credential:anthropic', {
+          providerId: 'anthropic',
+          apiKey: 'sk-ant-test-anthropic-key-1234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const request = { method: 'POST', url: 'https://api.anthropic.com' };
+        const result = await authManager.injectModelAuth('anthropic', request) as Record<string, unknown>;
+
+        expect(result.headers).toBeDefined();
+        const headers = result.headers as Record<string, string>;
+        expect(headers['x-api-key']).toBe('sk-ant-test-anthropic-key-1234567890');
+      });
+
+      it('should preserve existing request properties', async () => {
+        modelCredentialStorage.setCredential('model-credential:openai', {
+          providerId: 'openai',
+          apiKey: 'sk-test-openai-key-12345678901234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const request = {
+          method: 'POST',
+          url: 'https://api.openai.com',
+          headers: { 'Content-Type': 'application/json' },
+          body: { model: 'gpt-4' },
+        };
+        const result = await authManager.injectModelAuth('openai', request) as Record<string, unknown>;
+
+        expect(result.method).toBe('POST');
+        expect(result.url).toBe('https://api.openai.com');
+        expect((result.body as Record<string, unknown>).model).toBe('gpt-4');
+        const headers = result.headers as Record<string, string>;
+        expect(headers['Content-Type']).toBe('application/json');
+        expect(headers['Authorization']).toBe('Bearer sk-test-openai-key-12345678901234567890');
+      });
+
+      it('should return original request when no credential available', async () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const request = { method: 'POST', url: 'https://api.openai.com' };
+        const result = await authManager.injectModelAuth('openai', request);
+
+        expect(result).toEqual(request);
+      });
+
+      it('should reject API keys with control characters', async () => {
+        modelCredentialStorage.setCredential('model-credential:openai', {
+          providerId: 'openai',
+          apiKey: 'sk-test-key\r\nX-Injected: malicious',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        const request = { method: 'POST', url: 'https://api.openai.com' };
+        const result = await authManager.injectModelAuth('openai', request);
+
+        // Should return original request without injection
+        expect(result).toEqual(request);
+      });
+    });
+
+
+    describe('getModelProviderForAgent', () => {
+      it('should return openai for agent IDs containing openai', () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        expect(authManager.getModelProviderForAgent('openai-agent')).toBe('openai');
+        expect(authManager.getModelProviderForAgent('my-openai-bot')).toBe('openai');
+      });
+
+      it('should return openai for agent IDs containing gpt', () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        expect(authManager.getModelProviderForAgent('gpt-4-agent')).toBe('openai');
+        expect(authManager.getModelProviderForAgent('chatgpt-assistant')).toBe('openai');
+      });
+
+      it('should return anthropic for agent IDs containing anthropic', () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        expect(authManager.getModelProviderForAgent('anthropic-agent')).toBe('anthropic');
+        expect(authManager.getModelProviderForAgent('my-anthropic-bot')).toBe('anthropic');
+      });
+
+      it('should return anthropic for agent IDs containing claude', () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        expect(authManager.getModelProviderForAgent('claude-agent')).toBe('anthropic');
+        expect(authManager.getModelProviderForAgent('claude-3-opus')).toBe('anthropic');
+      });
+
+      it('should return undefined for unrecognized agent IDs', () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        expect(authManager.getModelProviderForAgent('custom-agent')).toBeUndefined();
+        expect(authManager.getModelProviderForAgent('my-bot')).toBeUndefined();
+      });
+    });
+
+
+    describe('Clear separation of OAuth and Model credentials (Requirement 7b.3)', () => {
+      it('should use getTokenForAgent for OAuth providers only', async () => {
+        // Set up OAuth token for github
+        tokenManager.setToken('github', 'github-oauth-token');
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        // getTokenForAgent should return OAuth token for github
+        const oauthToken = await authManager.getTokenForAgent('github-agent', 'github');
+        expect(oauthToken).toBe('github-oauth-token');
+
+        // getTokenForAgent should NOT return anything for openai (not an OAuth provider)
+        const openaiToken = await authManager.getTokenForAgent('openai-agent');
+        expect(openaiToken).toBeNull();
+      });
+
+      it('should use getModelCredential for model providers only', async () => {
+        // Set up model credential for openai
+        modelCredentialStorage.setCredential('model-credential:openai', {
+          providerId: 'openai',
+          apiKey: 'sk-test-openai-key-12345678901234567890',
+          storedAt: Date.now(),
+        });
+
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+          modelCredentialStorage,
+        });
+
+        // getModelCredential should return API key for openai
+        const modelCred = await authManager.getModelCredential('openai');
+        expect(modelCred.found).toBe(true);
+        expect(modelCred.credential?.apiKey).toBe('sk-test-openai-key-12345678901234567890');
+
+        // getModelCredential should fail for github (not a model provider)
+        const githubCred = await authManager.getModelCredential('github' as any);
+        expect(githubCred.found).toBe(false);
+        expect(githubCred.error).toContain('Invalid model provider ID');
+      });
+
+      it('should map agent IDs to correct provider type', () => {
+        const authManager = new AuthManager({
+          credentialStore,
+          tokenManager,
+          legacyApiKeys: {},
+        });
+
+        // OAuth providers
+        expect(authManager.getProviderForAgent('github-agent')).toBe('github');
+        expect(authManager.getProviderForAgent('google-agent')).toBe('google');
+
+        // Model providers (should NOT be returned by getProviderForAgent)
+        expect(authManager.getProviderForAgent('openai-agent')).toBeUndefined();
+        expect(authManager.getProviderForAgent('claude-agent')).toBeUndefined();
+
+        // Model providers (should be returned by getModelProviderForAgent)
+        expect(authManager.getModelProviderForAgent('openai-agent')).toBe('openai');
+        expect(authManager.getModelProviderForAgent('claude-agent')).toBe('anthropic');
+      });
+    });
+  });
 });

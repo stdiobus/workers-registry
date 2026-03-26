@@ -398,7 +398,7 @@ describe('Registry Launcher Auth Integration Tests', () => {
       expect(errorResponse.error.message).toBe('Authentication required');
       expect(errorResponse.error.data).toBeDefined();
       expect((errorResponse.error.data as any).agentId).toBe('test-agent');
-      expect((errorResponse.error.data as any).requiredMethod).toBe('oauth2-openai');
+      expect((errorResponse.error.data as any).requiredMethod).toBe('oauth2-github');
       expect((errorResponse.error.data as any).supportedMethods).toBeDefined();
     });
 
@@ -547,7 +547,7 @@ describe('Registry Launcher Auth Integration Tests', () => {
         'Authentication required',
         {
           agentId: 'test-agent',
-          requiredMethod: 'oauth2-openai',
+          requiredMethod: 'oauth2-github',
         }
       );
 

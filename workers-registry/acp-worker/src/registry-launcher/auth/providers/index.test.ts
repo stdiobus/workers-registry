@@ -219,12 +219,13 @@ describe('Provider Registry', () => {
   describe('SUPPORTED_PROVIDERS', () => {
     it('should contain all expected providers', () => {
       // Note: OpenAI and Anthropic are NOT included - they use API keys, not OAuth
-      expect(SUPPORTED_PROVIDERS).toHaveLength(4);
+      expect(SUPPORTED_PROVIDERS).toHaveLength(5);
       expect(SUPPORTED_PROVIDERS).toEqual([
         'github',
         'google',
         'cognito',
         'azure',
+        'oidc',
       ]);
     });
   });

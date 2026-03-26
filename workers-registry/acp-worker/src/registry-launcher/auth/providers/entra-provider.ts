@@ -22,18 +22,22 @@
  */
 
 /**
- * Azure AD OAuth 2.1 provider implementation.
+ * Microsoft Entra ID (formerly Azure AD) OAuth 2.1 provider implementation.
  *
- * @module providers/azure-provider
+ * @module providers/entra-provider
  */
 
 import { BaseAuthProvider } from './base-provider.js';
 
 /**
- * Configuration options for Azure AD provider.
+ * Configuration options for Microsoft Entra ID provider.
+ * 
+ * @remarks
+ * Microsoft renamed Azure AD to Microsoft Entra ID in 2023.
+ * This provider supports both single-tenant and multi-tenant configurations.
  */
-export interface AzureProviderConfig {
-  /** Azure AD tenant ID or 'common' for multi-tenant */
+export interface EntraProviderConfig {
+  /** Microsoft Entra ID tenant ID or 'common' for multi-tenant */
   tenantId: string;
   /** OAuth client ID */
   clientId?: string;
@@ -42,24 +46,29 @@ export interface AzureProviderConfig {
 }
 
 /**
- * Well-known Azure AD tenant values for multi-tenant scenarios.
+ * @deprecated Use EntraProviderConfig instead. Kept for backward compatibility.
+ */
+export type AzureProviderConfig = EntraProviderConfig;
+
+/**
+ * Well-known Microsoft Entra ID tenant values for multi-tenant scenarios.
  */
 const WELL_KNOWN_TENANTS = new Set(['common', 'organizations', 'consumers']);
 
 /**
- * Pattern for valid Azure AD tenant GUIDs.
+ * Pattern for valid Microsoft Entra ID tenant GUIDs.
  * Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
  */
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Pattern for valid Azure AD verified domain names.
+ * Pattern for valid Microsoft Entra ID verified domain names.
  * Must be a valid domain format without URL injection characters.
  */
 const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
 
 /**
- * Azure AD OAuth provider.
+ * Microsoft Entra ID (formerly Azure AD) OAuth provider.
  *
  * Endpoints are dynamically constructed based on tenant ID:
  * - Authorization: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize
@@ -69,17 +78,21 @@ const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z
  *
  * Default scopes: openid, profile
  * Token injection: Bearer header
+ * 
+ * @remarks
+ * The provider ID remains 'azure' for backward compatibility with existing
+ * configurations and the ACP Registry.
  */
-export class AzureProvider extends BaseAuthProvider {
-  constructor(config: AzureProviderConfig) {
+export class EntraIdProvider extends BaseAuthProvider {
+  constructor(config: EntraProviderConfig) {
     // Validate tenantId to prevent URL injection
-    AzureProvider.validateTenantId(config.tenantId);
+    EntraIdProvider.validateTenantId(config.tenantId);
 
     const baseUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0`;
 
     super({
-      id: 'azure',
-      name: 'Azure AD',
+      id: 'azure',  // Keep 'azure' as provider ID for backward compatibility
+      name: 'Microsoft Entra ID',
       authorizationEndpoint: `${baseUrl}/authorize`,
       tokenEndpoint: `${baseUrl}/token`,
       defaultScopes: ['openid', 'profile'],
@@ -94,27 +107,27 @@ export class AzureProvider extends BaseAuthProvider {
   }
 
   /**
-   * Validate Azure AD tenant ID.
+   * Validate Microsoft Entra ID tenant ID.
    * @param tenantId - The tenant ID to validate
    * @throws Error if tenantId is invalid or contains injection characters
    */
   private static validateTenantId(tenantId: string): void {
     if (!tenantId || typeof tenantId !== 'string') {
-      throw new Error('Azure tenantId is required');
+      throw new Error('Entra ID tenantId is required');
     }
 
     const trimmed = tenantId.trim();
     if (trimmed !== tenantId) {
-      throw new Error('Azure tenantId must not contain leading/trailing whitespace');
+      throw new Error('Entra ID tenantId must not contain leading/trailing whitespace');
     }
 
     if (tenantId.length === 0) {
-      throw new Error('Azure tenantId cannot be empty');
+      throw new Error('Entra ID tenantId cannot be empty');
     }
 
     // Check for URL injection characters
     if (/[/:?#@\s]/.test(tenantId)) {
-      throw new Error('Azure tenantId contains invalid characters (/, :, ?, #, @, or whitespace)');
+      throw new Error('Entra ID tenantId contains invalid characters (/, :, ?, #, @, or whitespace)');
     }
 
     // Accept well-known tenant values
@@ -133,7 +146,12 @@ export class AzureProvider extends BaseAuthProvider {
     }
 
     throw new Error(
-      `Azure tenantId must be 'common', 'organizations', 'consumers', a valid GUID, or a verified domain name`
+      `Entra ID tenantId must be 'common', 'organizations', 'consumers', a valid GUID, or a verified domain name`
     );
   }
 }
+
+/**
+ * @deprecated Use EntraIdProvider instead. Kept for backward compatibility.
+ */
+export const AzureProvider = EntraIdProvider;

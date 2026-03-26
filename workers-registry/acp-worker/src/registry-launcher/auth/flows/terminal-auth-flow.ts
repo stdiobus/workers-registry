@@ -98,13 +98,16 @@ interface ProviderInfo {
  * All providers support browser-based OAuth flow.
  *
  * Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys only.
- * OpenAI and Anthropic API key support will be handled by the model-credentials module.
+ * OpenAI and Anthropic API key support is handled by the model-credentials module.
+ *
+ * Requirements: 7.1, 7b.1
  */
 const PROVIDER_INFO: readonly ProviderInfo[] = [
   { id: 'github', name: 'GitHub', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: true, supportsOAuth: true, apiKeyLabel: 'Personal Access Token', apiKeyEnvVar: 'GITHUB_TOKEN' },
   { id: 'google', name: 'Google', requiresClientSecret: true, requiresCustomEndpoints: false, supportsApiKey: false, supportsOAuth: true },
   { id: 'cognito', name: 'AWS Cognito', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
-  { id: 'azure', name: 'Azure AD', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
+  { id: 'azure', name: 'Microsoft Entra ID', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
+  { id: 'oidc', name: 'Generic OIDC', requiresClientSecret: true, requiresCustomEndpoints: true, supportsApiKey: false, supportsOAuth: true },
 ] as const;
 
 
@@ -477,7 +480,7 @@ export class TerminalAuthFlow {
   }
 
   /**
-   * Collect custom endpoints for providers that require them (Cognito/Azure).
+   * Collect custom endpoints for providers that require them (Cognito/Azure/OIDC).
    * Validates all endpoints to ensure HTTPS and no embedded credentials.
    */
   private async collectCustomEndpoints(providerInfo: ProviderInfo): Promise<ProviderEndpoints> {
@@ -487,6 +490,8 @@ export class TerminalAuthFlow {
       return this.collectCognitoEndpoints();
     } else if (providerInfo.id === 'azure') {
       return this.collectAzureEndpoints();
+    } else if (providerInfo.id === 'oidc') {
+      return this.collectOidcEndpoints();
     }
 
     // Generic custom endpoints with HTTPS validation
@@ -562,7 +567,7 @@ export class TerminalAuthFlow {
    * Validates input to prevent URL injection attacks.
    */
   private async collectAzureEndpoints(): Promise<ProviderEndpoints> {
-    this.writeLine('Enter your Azure AD details:\n');
+    this.writeLine('Enter your Microsoft Entra ID details:\n');
 
     const tenantId = await this.promptValidated(
       'Tenant ID (or "common" for multi-tenant): ',
@@ -574,6 +579,50 @@ export class TerminalAuthFlow {
     return {
       authorizationEndpoint: `${baseUrl}/authorize`,
       tokenEndpoint: `${baseUrl}/token`,
+    };
+  }
+
+  /**
+   * Collect Generic OIDC endpoint configuration.
+   * Supports issuer-based discovery or manual endpoint entry.
+   * Validates input to prevent URL injection attacks.
+   *
+   * Requirements: 7a.1, 7a.2
+   */
+  private async collectOidcEndpoints(): Promise<ProviderEndpoints> {
+    this.writeLine('Enter your OIDC provider details:\n');
+    this.writeLine('You can provide an issuer URL for automatic discovery,');
+    this.writeLine('or manually enter the authorization and token endpoints.\n');
+
+    const useDiscovery = await this.promptYesNo('Use OIDC Discovery (recommended)?');
+
+    if (useDiscovery) {
+      const issuerUrl = await this.promptValidatedUrl('Issuer URL (e.g., https://auth.example.com): ');
+
+      // Build discovery URL from issuer
+      const discoveryUrl = issuerUrl.endsWith('/')
+        ? `${issuerUrl}.well-known/openid-configuration`
+        : `${issuerUrl}/.well-known/openid-configuration`;
+
+      this.writeLine(`\nOIDC Discovery URL: ${discoveryUrl}`);
+      this.writeLine('The authorization and token endpoints will be fetched automatically.\n');
+
+      // For OIDC with discovery, we store the issuer URL
+      // The actual endpoints will be discovered at runtime
+      return {
+        authorizationEndpoint: issuerUrl, // Store issuer URL, discovery happens at runtime
+        tokenEndpoint: discoveryUrl,       // Store discovery URL for reference
+      };
+    }
+
+    // Manual endpoint entry
+    this.writeLine('\nEnter the endpoints manually:\n');
+    const authEndpoint = await this.promptValidatedUrl('Authorization Endpoint URL: ');
+    const tokenEndpoint = await this.promptValidatedUrl('Token Endpoint URL: ');
+
+    return {
+      authorizationEndpoint: authEndpoint,
+      tokenEndpoint: tokenEndpoint,
     };
   }
 

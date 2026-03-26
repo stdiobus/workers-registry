@@ -22,11 +22,12 @@
  */
 
 /**
- * Main orchestrator for OAuth authentication.
+ * Main orchestrator for OAuth authentication and model credentials.
  *
  * Coordinates providers, flows, storage, and token management.
+ * Clearly separates user identity (OAuth/OIDC) from upstream model credentials (API keys).
  *
- * Requirements: 3.1, 4.1, 10.3, 11.4
+ * Requirements: 3.1, 4.1, 7b.3, 10.3, 11.4
  *
  * @module auth-manager
  */
@@ -53,6 +54,19 @@ import {
   DEFAULT_AUTH_METHOD_PRECEDENCE,
   isValidAuthMethodType,
 } from './types.js';
+import type {
+  ModelProviderId,
+  ModelCredentialResult,
+  ModelCredentialStatusMap,
+} from './model-credentials/index.js';
+import {
+  isValidModelProviderId,
+  VALID_MODEL_PROVIDER_IDS,
+  MODEL_CREDENTIAL_INJECTION_CONFIG,
+  OpenAIApiKeyHandler,
+  AnthropicApiKeyHandler,
+} from './model-credentials/index.js';
+import type { IModelCredentialStorage } from './model-credentials/openai-api-key.js';
 
 /**
  * Marker token used to indicate client credentials are configured but not authenticated.
@@ -89,6 +103,13 @@ export interface AuthManagerOptions {
    * Requirements: 3.1, 10.3
    */
   methodPrecedence?: Partial<AuthMethodPrecedenceConfig>;
+  /**
+   * Optional model credential storage for API key management.
+   * When provided, enables getModelCredential() and related methods.
+   *
+   * Requirements: 7b.3, 7b.4
+   */
+  modelCredentialStorage?: IModelCredentialStorage;
 }
 
 /**
@@ -120,8 +141,12 @@ export class AuthMethodSelectionError extends Error {
 }
 
 /**
- * Main orchestrator for OAuth authentication.
+ * Main orchestrator for OAuth authentication and model credentials.
  * Coordinates providers, flows, storage, and token management.
+ *
+ * This class clearly separates:
+ * - User identity (OAuth/OIDC): getTokenForAgent(), authenticateAgent()
+ * - Model API access (API Keys): getModelCredential(), injectModelAuth()
  *
  * Responsibilities:
  * - Orchestrate agent auth flow (browser-based OAuth 2.1 with PKCE)
@@ -130,11 +155,14 @@ export class AuthMethodSelectionError extends Error {
  * - Inject authentication into agent requests
  * - Report authentication status
  * - Handle logout operations
+ * - Manage model API credentials (OpenAI, Anthropic)
  *
  * Method Precedence Strategy (Requirements 3.1, 10.3):
  * - Default precedence: oauth2 > api-key (OAuth preferred when available)
  * - Configurable via AuthConfig.methodPrecedence
  * - Fail-fast on unsupported or ambiguous providerId (configurable)
+ *
+ * Requirements: 3.1, 4.1, 7b.3, 10.3, 11.4
  */
 export class AuthManager {
   private readonly credentialStore: ICredentialStore;
@@ -142,6 +170,15 @@ export class AuthManager {
   private readonly legacyApiKeys: Record<string, AgentApiKeys>;
   private readonly providerResolver: (providerId: AuthProviderId) => IAuthProvider;
   private readonly methodPrecedenceConfig: AuthMethodPrecedenceConfig;
+
+  /**
+   * Model credential handlers for API key management.
+   * These are separate from OAuth providers - they handle API keys for model providers.
+   *
+   * Requirements: 7b.3
+   */
+  private readonly openAIHandler?: OpenAIApiKeyHandler;
+  private readonly anthropicHandler?: AnthropicApiKeyHandler;
 
   /**
    * Tracks in-flight authentication flows per provider.
@@ -186,6 +223,11 @@ export class AuthManager {
         ...DEFAULT_AUTH_METHOD_PRECEDENCE,
         ...optionsOrCredentialStore.methodPrecedence,
       };
+      // Initialize model credential handlers if storage is provided
+      if (optionsOrCredentialStore.modelCredentialStorage) {
+        this.openAIHandler = new OpenAIApiKeyHandler(optionsOrCredentialStore.modelCredentialStorage);
+        this.anthropicHandler = new AnthropicApiKeyHandler(optionsOrCredentialStore.modelCredentialStorage);
+      }
     } else {
       // Legacy constructor
       this.credentialStore = optionsOrCredentialStore;
@@ -193,6 +235,7 @@ export class AuthManager {
       this.legacyApiKeys = legacyApiKeys ?? {};
       this.providerResolver = getProvider;
       this.methodPrecedenceConfig = { ...DEFAULT_AUTH_METHOD_PRECEDENCE };
+      // No model credential handlers in legacy mode
     }
   }
 
@@ -805,6 +848,212 @@ export class AuthManager {
     }
 
     return undefined;
+  }
+
+  // ===========================================================================
+  // Model Credential Methods (API Keys)
+  // ===========================================================================
+  // These methods handle upstream model provider credentials (OpenAI, Anthropic).
+  // They are clearly separated from OAuth identity providers.
+  // Requirements: 7b.3
+  // ===========================================================================
+
+  /**
+   * Get API key credential for a model provider.
+   *
+   * This method is for retrieving API keys for upstream model providers
+   * (OpenAI, Anthropic). These providers do NOT offer public OAuth IdP
+   * for third-party login - they use API keys instead.
+   *
+   * This is clearly separated from getTokenForAgent() which handles
+   * OAuth tokens for user identity providers.
+   *
+   * Requirements: 7b.1, 7b.3
+   *
+   * @param providerId - The model provider ID ('openai' or 'anthropic')
+   * @returns The model credential result with API key if found
+   */
+  async getModelCredential(providerId: ModelProviderId): Promise<ModelCredentialResult> {
+    // Validate provider ID
+    if (!isValidModelProviderId(providerId)) {
+      return {
+        found: false,
+        error: `Invalid model provider ID: ${providerId}. Valid providers: ${VALID_MODEL_PROVIDER_IDS.join(', ')}`,
+      };
+    }
+
+    // Get the appropriate handler
+    const handler = this.getModelCredentialHandler(providerId);
+    if (!handler) {
+      return {
+        found: false,
+        error: `Model credential storage not configured. Initialize AuthManager with modelCredentialStorage option.`,
+      };
+    }
+
+    // Retrieve the credential
+    const result = await handler.retrieve();
+    if (result.found) {
+      console.error(`[AuthManager] Retrieved model credential for ${providerId}`);
+    } else {
+      console.error(`[AuthManager] No model credential found for ${providerId}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Check if a model credential is configured for a provider.
+   *
+   * Requirements: 7b.3
+   *
+   * @param providerId - The model provider ID ('openai' or 'anthropic')
+   * @returns True if an API key is configured for the provider
+   */
+  async hasModelCredential(providerId: ModelProviderId): Promise<boolean> {
+    if (!isValidModelProviderId(providerId)) {
+      return false;
+    }
+
+    const handler = this.getModelCredentialHandler(providerId);
+    if (!handler) {
+      return false;
+    }
+
+    return handler.isConfigured();
+  }
+
+  /**
+   * Get the status of all model credentials.
+   *
+   * Requirements: 7b.3
+   *
+   * @returns Map of model provider IDs to their credential status
+   */
+  async getModelCredentialStatus(): Promise<ModelCredentialStatusMap> {
+    const statusMap: ModelCredentialStatusMap = new Map();
+
+    for (const providerId of VALID_MODEL_PROVIDER_IDS) {
+      const handler = this.getModelCredentialHandler(providerId);
+      if (handler) {
+        const status = await handler.getStatus();
+        statusMap.set(providerId, status);
+      } else {
+        statusMap.set(providerId, {
+          providerId,
+          status: 'not-configured',
+        });
+      }
+    }
+
+    return statusMap;
+  }
+
+  /**
+   * Inject model API key into a request.
+   *
+   * This method injects API keys for model providers (OpenAI, Anthropic)
+   * according to their documented injection method:
+   * - OpenAI: Authorization header with Bearer token
+   * - Anthropic: x-api-key header with raw key
+   *
+   * This is clearly separated from injectAuth() which handles OAuth tokens.
+   *
+   * Requirements: 7b.3, 7b.5
+   *
+   * @param providerId - The model provider ID ('openai' or 'anthropic')
+   * @param request - The request object to inject auth into
+   * @returns The request object with API key injected, or original if not available
+   */
+  async injectModelAuth(providerId: ModelProviderId, request: object): Promise<object> {
+    // Validate provider ID
+    if (!isValidModelProviderId(providerId)) {
+      console.error(`[AuthManager] Invalid model provider ID for injection: ${providerId}`);
+      return request;
+    }
+
+    // Get the appropriate handler
+    const handler = this.getModelCredentialHandler(providerId);
+    if (!handler) {
+      console.error(`[AuthManager] Model credential storage not configured for ${providerId}`);
+      return request;
+    }
+
+    // Get the credential
+    const credentialResult = await handler.retrieve();
+    if (!credentialResult.found || !credentialResult.credential) {
+      console.error(`[AuthManager] No model credential available for ${providerId}`);
+      return request;
+    }
+
+    // Get injection configuration
+    const injection = MODEL_CREDENTIAL_INJECTION_CONFIG[providerId];
+    const apiKey = credentialResult.credential.apiKey;
+
+    // Format the header value
+    const headerValue = injection.format
+      ? injection.format.replace('{key}', apiKey)
+      : apiKey;
+
+    // Validate for control characters (prevent header injection)
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(headerValue)) {
+      console.error(`[AuthManager] Model API key contains control characters, refusing to inject`);
+      return request;
+    }
+
+    // Inject into headers
+    const result = { ...request } as Record<string, unknown>;
+    const headers = (result.headers as Record<string, string>) ?? {};
+    result.headers = { ...headers, [injection.headerName]: headerValue };
+
+    console.error(`[AuthManager] Injected model credential for ${providerId}`);
+    return result;
+  }
+
+  /**
+   * Get the model provider for a given agent ID.
+   *
+   * Maps agent IDs to their model providers based on keyword matching.
+   * This is separate from getProviderForAgent() which maps to OAuth providers.
+   *
+   * Requirements: 7b.3
+   *
+   * @param agentId - The agent identifier
+   * @returns The model provider ID or undefined if not mapped
+   */
+  getModelProviderForAgent(agentId: string): ModelProviderId | undefined {
+    const agentLower = agentId.toLowerCase();
+
+    // Check for model provider keywords
+    // Note: These are NOT OAuth providers - they use API keys
+    if (agentLower.includes('openai') || agentLower.includes('gpt') || agentLower.includes('chatgpt')) {
+      return 'openai';
+    }
+    if (agentLower.includes('anthropic') || agentLower.includes('claude')) {
+      return 'anthropic';
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get the appropriate model credential handler for a provider.
+   *
+   * @param providerId - The model provider ID
+   * @returns The handler or undefined if not available
+   */
+  private getModelCredentialHandler(
+    providerId: ModelProviderId
+  ): OpenAIApiKeyHandler | AnthropicApiKeyHandler | undefined {
+    switch (providerId) {
+      case 'openai':
+        return this.openAIHandler;
+      case 'anthropic':
+        return this.anthropicHandler;
+      default:
+        return undefined;
+    }
   }
 
   /**

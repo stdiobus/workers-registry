@@ -702,6 +702,7 @@ export class MessageRouter {
         { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },
         { id: 'oauth2-cognito', type: 'oauth2', providerId: 'cognito' },
         { id: 'oauth2-azure', type: 'oauth2', providerId: 'azure' },
+        { id: 'oauth2-oidc', type: 'oauth2', providerId: 'oidc' },
       );
     }
 

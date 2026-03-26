@@ -8,22 +8,51 @@ This guide explains how to use OAuth 2.1 authentication with the Registry Launch
 - A web browser for OAuth authentication
 - Client credentials from your OAuth provider (for some providers)
 
+## Understanding Authentication Types
+
+The Registry Launcher supports two distinct authentication mechanisms:
+
+### OAuth Identity Providers (User Identity)
+
+OAuth 2.1 / OpenID Connect providers authenticate **end users**:
+- **GitHub** - OAuth profile
+- **Google** - OpenID Connect
+- **AWS Cognito** - Configurable user pool
+- **Microsoft Entra ID** (formerly Azure AD) - Single/multi-tenant
+- **Generic OIDC** - Any OIDC-compliant provider (Auth0, Okta, Keycloak, etc.)
+
+### Model API Keys (Model Access)
+
+API keys authenticate access to **AI model APIs**:
+- **OpenAI** - Uses API keys (NOT OAuth)
+- **Anthropic** - Uses API keys (NOT OAuth)
+
+> **Important:** OpenAI and Anthropic do NOT offer public OAuth IdP for third-party login. They use API keys for authentication.
+
 ## Authentication Methods
 
-### 1. Browser OAuth (Recommended)
+### 1. Browser OAuth (Recommended for Identity Providers)
 
 Browser-based OAuth 2.1 authentication with PKCE for maximum security.
 
 ```bash
-# Login with OpenAI
-node ./launch/index.js acp-registry --login openai
-
 # Login with GitHub
 node ./launch/index.js acp-registry --login github
 
 # Login with Google
 node ./launch/index.js acp-registry --login google
+
+# Login with AWS Cognito
+node ./launch/index.js acp-registry --login cognito
+
+# Login with Microsoft Entra ID
+node ./launch/index.js acp-registry --login azure
+
+# Login with Generic OIDC provider
+node ./launch/index.js acp-registry --login oidc
 ```
+
+> **Note:** `--login openai` and `--login anthropic` are NOT supported because these providers use API keys, not OAuth. Use `--setup` to configure API keys for OpenAI and Anthropic.
 
 **What happens:**
 
@@ -34,7 +63,7 @@ sequenceDiagram
     participant Browser
     participant Provider as OAuth Provider
 
-    User->>CLI: --login openai
+    User->>CLI: --login github
     CLI->>CLI: Start callback server (random port)
     CLI->>CLI: Generate PKCE codes
     CLI->>Browser: Open authorization URL
@@ -63,15 +92,24 @@ node ./launch/index.js acp-registry --setup
 ```
 
 **Features:**
-- Select providers to configure
-- Choose between Browser OAuth or Manual API Key
+- Select OAuth providers to configure (GitHub, Google, Cognito, Azure, OIDC)
+- Configure Model API Keys (OpenAI, Anthropic)
+- Choose between Browser OAuth or Manual configuration
 - Validate credentials before storing
 - View current authentication status
 
-### 3. Manual API Key (Legacy)
+### 3. Model API Keys (OpenAI, Anthropic)
 
-For environments where browser OAuth isn't available, use `api-keys.json`:
+OpenAI and Anthropic do NOT offer public OAuth IdP for third-party login. Instead, they use API keys for authentication.
 
+**Configure via Setup Wizard:**
+```bash
+node ./launch/index.js acp-registry --setup
+# Select "Model API Keys" section
+# Enter your OpenAI or Anthropic API key
+```
+
+**Configure via api-keys.json:**
 ```json
 {
   "claude-acp": {
@@ -89,6 +127,47 @@ For environments where browser OAuth isn't available, use `api-keys.json`:
 }
 ```
 
+**Header Injection:**
+- **OpenAI**: `Authorization: Bearer {key}`
+- **Anthropic**: `x-api-key: {key}`
+
+## Generic OIDC Provider
+
+The Generic OIDC provider supports any OpenID Connect-compliant identity provider, including:
+- Auth0
+- Okta
+- Keycloak
+- PingIdentity
+- Custom enterprise IdPs
+
+### OIDC Discovery
+
+The provider uses OIDC Discovery to automatically configure endpoints:
+
+```bash
+node ./launch/index.js acp-registry --login oidc
+# You will be prompted for:
+# - Issuer URL (e.g., https://your-tenant.auth0.com)
+# - Client ID
+# - Client Secret (optional)
+```
+
+The provider fetches `/.well-known/openid-configuration` from the issuer URL to discover:
+- Authorization endpoint
+- Token endpoint
+- JWKS URI for token validation
+
+### Manual Endpoint Override
+
+If OIDC Discovery is unavailable, you can manually configure endpoints via `--setup`:
+
+```bash
+node ./launch/index.js acp-registry --setup
+# Select "Generic OIDC"
+# Choose "Manual configuration"
+# Enter authorization_endpoint, token_endpoint, etc.
+```
+
 ## Checking Authentication Status
 
 View the current authentication status for all providers:
@@ -101,23 +180,39 @@ node ./launch/index.js acp-registry --auth-status
 ```
 === OAuth Authentication Status ===
 
-  Openai:
+  GitHub:
     Status: ✓ Authenticated
     Expires at: 3/26/2026, 10:30:00 AM
-    Scope: openid profile
+    Scope: read:user
     Last Updated: 3/25/2026, 9:30:00 AM
 
-  Github:
+  Google:
     Status: ○ Not Configured
 
+  Cognito:
+    Status: ○ Not Configured
+
+  Azure (Microsoft Entra ID):
+    Status: ○ Not Configured
+
+  OIDC:
+    Status: ○ Not Configured
+
+=== Model API Keys ===
+
+  OpenAI:
+    Status: ✓ Configured
+    Last Updated: 3/25/2026, 9:00:00 AM
+
   Anthropic:
-    Status: ⚠ Expired (refresh available)
-    Expired at: 3/24/2026, 5:00:00 PM
+    Status: ⚠ Not Configured
 
 --- Summary ---
-  Authenticated: 1
-  Expired/Failed: 1
-  Not Configured: 4
+  OAuth Authenticated: 1
+  OAuth Expired/Failed: 0
+  OAuth Not Configured: 4
+  Model Keys Configured: 1
+  Model Keys Not Configured: 1
 ```
 
 ## Logging Out
@@ -131,7 +226,7 @@ node ./launch/index.js acp-registry --logout
 ### Logout from specific provider
 
 ```bash
-node ./launch/index.js acp-registry --logout openai
+node ./launch/index.js acp-registry --logout github
 ```
 
 ## Using Authenticated Agents
@@ -160,11 +255,13 @@ sequenceDiagram
     Router->>Client: Response
 ```
 
-### Example: Using Claude with OAuth
+### Example: Using Claude with API Key
 
 ```bash
-# 1. Login with Anthropic
-node ./launch/index.js acp-registry --login anthropic
+# 1. Configure Anthropic API key
+node ./launch/index.js acp-registry --setup
+# Select "Model API Keys" → "Anthropic"
+# Enter your API key
 
 # 2. Start the Registry Launcher
 docker run -p 9000:9000 \
@@ -181,7 +278,7 @@ echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"agentId":"claud
 When multiple credential sources are available, the Registry Launcher uses this precedence:
 
 1. **OAuth tokens** (highest priority) - From `--login` or `--setup`
-2. **API keys from api-keys.json** - Legacy configuration
+2. **Model API keys** - From `--setup` or `api-keys.json`
 3. **Environment variables** - Provider-specific env vars
 
 ## Headless Environments
@@ -190,7 +287,7 @@ In headless environments (CI, SSH, Docker), browser OAuth is not available:
 
 ```bash
 # This will show an error in headless mode
-node ./launch/index.js acp-registry --login openai
+node ./launch/index.js acp-registry --login github
 # Error: Browser OAuth not available in headless environment
 # Suggestion: Use --setup for manual credential configuration
 ```
@@ -250,6 +347,8 @@ On macOS, you may need to allow keychain access:
 2. Find "stdio-bus-oauth" entries
 3. Allow access for your terminal application
 
+
+
 ## ACP Auth Flows (Registry Launcher)
 
 The Registry Launcher supports two ACP-compliant authentication methods that agents can advertise in their `authMethods` array during initialization:
@@ -284,8 +383,8 @@ sequenceDiagram
 
     Client->>Router: session/new request
     Router->>Agent: Forward request
-    Agent->>Router: AUTH_REQUIRED (authMethods: [{type: "agent", id: "oauth2-openai"}])
-    Router->>Agent: authenticate({id: "oauth2-openai"})
+    Agent->>Router: AUTH_REQUIRED (authMethods: [{type: "agent", id: "oauth2-github"}])
+    Router->>Agent: authenticate({id: "oauth2-github"})
     Note over Agent: Agent opens browser,<br/>handles OAuth callback,<br/>stores tokens
     Agent->>Router: authenticate success
     Router->>Agent: Retry session/new
@@ -308,8 +407,8 @@ When the agent returns `AUTH_REQUIRED`:
       "authMethods": [
         {
           "type": "agent",
-          "id": "oauth2-openai",
-          "name": "OpenAI OAuth"
+          "id": "oauth2-github",
+          "name": "GitHub OAuth"
         }
       ]
     }
@@ -325,7 +424,7 @@ The Registry Launcher calls the `authenticate` method:
   "id": "auth-1",
   "method": "authenticate",
   "params": {
-    "id": "oauth2-openai"
+    "id": "oauth2-github"
   }
 }
 ```
@@ -499,7 +598,30 @@ Agent advertises Terminal Auth in its initialize response:
 | Agent Auth | Agent | Agent-specific |
 | Terminal Auth | Agent | Agent-specific |
 | OAuth (legacy) | Registry Launcher | OS Keychain or encrypted file |
-| API Key | User | `api-keys.json` |
+| Model API Key | User | `api-keys.json` or Credential Store |
+
+---
+
+## Supported Providers Summary
+
+### OAuth Identity Providers (User Identity)
+
+| Provider | Endpoints | Default Scopes | Token Injection |
+|----------|-----------|----------------|-----------------|
+| GitHub | github.com/login/oauth/* | read:user | Bearer header |
+| Google | accounts.google.com/* | openid, profile, email | Bearer header |
+| AWS Cognito | {userPoolDomain}/oauth2/* | openid, profile | Bearer header |
+| Microsoft Entra ID | login.microsoftonline.com/{tenant}/* | openid, profile | Bearer header |
+| Generic OIDC | {issuer}/.well-known/openid-configuration | openid, profile | Bearer header |
+
+### Model API Keys (Model Access)
+
+| Provider | Authentication Method | Header |
+|----------|----------------------|--------|
+| OpenAI | API Key | `Authorization: Bearer {key}` |
+| Anthropic | API Key | `x-api-key: {key}` |
+
+> **Note:** OpenAI and Anthropic do NOT offer public OAuth IdP for third-party login. Use API keys for authentication.
 
 ---
 

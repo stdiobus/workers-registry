@@ -36,6 +36,9 @@ import { TokenManager } from '../token-manager.js';
 import { AuthManager } from '../auth-manager.js';
 import type { AuthStatusEntry, TokenStatus } from '../types.js';
 import { VALID_PROVIDER_IDS } from '../types.js';
+import type { ModelCredentialStatusEntry, StoredModelCredential } from '../model-credentials/index.js';
+import { VALID_MODEL_PROVIDER_IDS } from '../model-credentials/index.js';
+import type { IModelCredentialStorage } from '../model-credentials/openai-api-key.js';
 
 /**
  * Options for the status command.
@@ -127,6 +130,66 @@ function formatProviderStatus(entry: AuthStatusEntry): string[] {
 }
 
 /**
+ * Format a model credential status entry for display.
+ *
+ * @param entry - Model credential status entry
+ * @returns Formatted status lines
+ */
+function formatModelCredentialStatus(entry: ModelCredentialStatusEntry): string[] {
+  const lines: string[] = [];
+  const providerName = entry.providerId.charAt(0).toUpperCase() + entry.providerId.slice(1);
+
+  lines.push(`  ${providerName}:`);
+
+  switch (entry.status) {
+    case 'configured':
+      lines.push(`    Status: ✓ Configured`);
+      if (entry.label) {
+        lines.push(`    Label: ${sanitizeForOutput(entry.label)}`);
+      }
+      if (entry.storedAt) {
+        lines.push(`    Stored: ${formatTimestamp(entry.storedAt)}`);
+      }
+      break;
+    case 'expired':
+      lines.push(`    Status: ⚠ Expired`);
+      break;
+    case 'not-configured':
+      lines.push(`    Status: ○ Not Configured`);
+      break;
+  }
+
+  return lines;
+}
+
+/**
+ * Adapter to use CredentialStore as IModelCredentialStorage.
+ *
+ * This adapter wraps the CredentialStore to provide the IModelCredentialStorage
+ * interface needed by model credential handlers.
+ */
+class CredentialStoreAdapter implements IModelCredentialStorage {
+  private readonly storage: Map<string, StoredModelCredential> = new Map();
+
+  async store(key: string, credential: StoredModelCredential): Promise<void> {
+    this.storage.set(key, { ...credential });
+  }
+
+  async retrieve(key: string): Promise<StoredModelCredential | null> {
+    const cred = this.storage.get(key);
+    return cred ? { ...cred } : null;
+  }
+
+  async delete(key: string): Promise<void> {
+    this.storage.delete(key);
+  }
+
+  async exists(key: string): Promise<boolean> {
+    return this.storage.has(key);
+  }
+}
+
+/**
  * Run the auth-status command.
  *
  * Displays the current authentication status for all configured providers.
@@ -150,25 +213,32 @@ export async function runStatusCommand(options: StatusCommandOptions = {}): Prom
       providerResolver: () => null, // Not needed for status check
     });
 
-    // Create auth manager
+    // Create model credential storage adapter
+    const modelCredentialStorage = new CredentialStoreAdapter();
+
+    // Create auth manager with model credential storage
     const authManager = new AuthManager({
       credentialStore,
       tokenManager,
       legacyApiKeys: {},
+      modelCredentialStorage,
     });
 
-    // Get status for all providers
+    // Get status for all OAuth providers
     const statusMap = await authManager.getStatus();
 
-    // Display header
+    // Get status for all model API keys
+    const modelStatusMap = await authManager.getModelCredentialStatus();
+
+    // Display OAuth header
     output.write('\n=== OAuth Authentication Status ===\n\n');
 
-    // Count providers by status
+    // Count OAuth providers by status
     let authenticatedCount = 0;
     let expiredCount = 0;
     let notConfiguredCount = 0;
 
-    // Display status for each provider
+    // Display status for each OAuth provider
     for (const providerId of VALID_PROVIDER_IDS) {
       const entry = statusMap.get(providerId);
 
@@ -195,15 +265,48 @@ export async function runStatusCommand(options: StatusCommandOptions = {}): Prom
       }
     }
 
+    // Display Model API Keys header
+    output.write('=== Model API Keys ===\n\n');
+
+    // Count model keys by status
+    let modelConfiguredCount = 0;
+    let modelNotConfiguredCount = 0;
+
+    // Display status for each model provider
+    for (const providerId of VALID_MODEL_PROVIDER_IDS) {
+      const entry = modelStatusMap.get(providerId);
+
+      if (entry) {
+        const lines = formatModelCredentialStatus(entry);
+        for (const line of lines) {
+          output.write(line + '\n');
+        }
+        output.write('\n');
+
+        // Update counts
+        switch (entry.status) {
+          case 'configured':
+            modelConfiguredCount++;
+            break;
+          case 'expired':
+          case 'not-configured':
+            modelNotConfiguredCount++;
+            break;
+        }
+      }
+    }
+
     // Display summary
     output.write('--- Summary ---\n');
-    output.write(`  Authenticated: ${authenticatedCount}\n`);
-    output.write(`  Expired/Failed: ${expiredCount}\n`);
-    output.write(`  Not Configured: ${notConfiguredCount}\n`);
+    output.write(`  OAuth Authenticated: ${authenticatedCount}\n`);
+    output.write(`  OAuth Expired/Failed: ${expiredCount}\n`);
+    output.write(`  OAuth Not Configured: ${notConfiguredCount}\n`);
+    output.write(`  Model Keys Configured: ${modelConfiguredCount}\n`);
+    output.write(`  Model Keys Not Configured: ${modelNotConfiguredCount}\n`);
     output.write('\n');
 
     // Provide helpful hints
-    if (notConfiguredCount === VALID_PROVIDER_IDS.length) {
+    if (notConfiguredCount === VALID_PROVIDER_IDS.length && modelNotConfiguredCount === VALID_MODEL_PROVIDER_IDS.length) {
       output.write('Tip: Run with --setup to configure authentication.\n\n');
     } else if (expiredCount > 0) {
       output.write('Tip: Run with --setup to re-authenticate expired providers.\n\n');

@@ -443,8 +443,8 @@ describe('constant arrays', () => {
    * Validates: Requirements 7.1 - Ensure constant arrays are properly defined
    */
   describe('VALID_PROVIDER_IDS', () => {
-    it('should contain exactly 4 providers', () => {
-      expect(VALID_PROVIDER_IDS).toHaveLength(4);
+    it('should contain exactly 5 providers', () => {
+      expect(VALID_PROVIDER_IDS).toHaveLength(5);
     });
 
     it('should contain the exact expected providers', () => {
@@ -453,6 +453,7 @@ describe('constant arrays', () => {
         'cognito',
         'github',
         'google',
+        'oidc',
       ]);
     });
 
@@ -527,10 +528,10 @@ describe('AUTH_METHOD_ID_TO_PROVIDER_ID', () => {
     it('should contain oauth2-prefixed mappings for all providers', () => {
       const oauth2Mappings = [
         'oauth2-github',
-        'oauth2-github',
         'oauth2-google',
         'oauth2-cognito',
         'oauth2-azure',
+        'oauth2-oidc',
       ];
 
       oauth2Mappings.forEach((methodId) => {
@@ -549,10 +550,11 @@ describe('AUTH_METHOD_ID_TO_PROVIDER_ID', () => {
       expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-google']).toBe('google');
       expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-cognito']).toBe('cognito');
       expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-azure']).toBe('azure');
+      expect(AUTH_METHOD_ID_TO_PROVIDER_ID['oauth2-oidc']).toBe('oidc');
     });
 
-    it('should have exactly 8 mappings (4 oauth2 + 4 direct)', () => {
-      expect(Object.keys(AUTH_METHOD_ID_TO_PROVIDER_ID)).toHaveLength(8);
+    it('should have exactly 10 mappings (5 oauth2 + 5 direct)', () => {
+      expect(Object.keys(AUTH_METHOD_ID_TO_PROVIDER_ID)).toHaveLength(10);
     });
   });
 });
@@ -567,6 +569,7 @@ describe('VALID_AUTH_METHOD_IDS', () => {
     expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-google');
     expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-cognito');
     expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-azure');
+    expect(VALID_AUTH_METHOD_IDS).toContain('oauth2-oidc');
   });
 
   it('should contain all direct provider IDs', () => {
@@ -575,8 +578,8 @@ describe('VALID_AUTH_METHOD_IDS', () => {
     });
   });
 
-  it('should have exactly 8 valid method IDs', () => {
-    expect(VALID_AUTH_METHOD_IDS).toHaveLength(8);
+  it('should have exactly 10 valid method IDs', () => {
+    expect(VALID_AUTH_METHOD_IDS).toHaveLength(10);
   });
 });
 

@@ -14,7 +14,7 @@
 import { GitHubProvider } from './github-provider.js';
 import { GoogleProvider } from './google-provider.js';
 import { CognitoProvider } from './cognito-provider.js';
-import { AzureProvider } from './azure-provider.js';
+import { EntraIdProvider, AzureProvider } from './entra-provider.js';
 
 describe('GitHubProvider', () => {
   it('should have correct provider ID', () => {
@@ -211,29 +211,29 @@ describe('CognitoProvider', () => {
   });
 });
 
-describe('AzureProvider', () => {
+describe('EntraIdProvider (Microsoft Entra ID)', () => {
   // Use a valid GUID format for tenant ID
   const defaultConfig = {
     tenantId: '12345678-1234-1234-1234-123456789012',
   };
 
-  it('should have correct provider ID', () => {
-    const provider = new AzureProvider(defaultConfig);
+  it('should have correct provider ID (azure for backward compatibility)', () => {
+    const provider = new EntraIdProvider(defaultConfig);
     expect(provider.id).toBe('azure');
   });
 
   it('should have correct name', () => {
-    const provider = new AzureProvider(defaultConfig);
-    expect(provider.name).toBe('Azure AD');
+    const provider = new EntraIdProvider(defaultConfig);
+    expect(provider.name).toBe('Microsoft Entra ID');
   });
 
   it('should have correct default scopes', () => {
-    const provider = new AzureProvider(defaultConfig);
+    const provider = new EntraIdProvider(defaultConfig);
     expect([...provider.defaultScopes]).toEqual(['openid', 'profile']);
   });
 
   it('should construct endpoints from tenant ID', () => {
-    const provider = new AzureProvider(defaultConfig);
+    const provider = new EntraIdProvider(defaultConfig);
     const endpoints = provider.getEndpoints();
     expect(endpoints.authorizationEndpoint).toBe(
       'https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/oauth2/v2.0/authorize'
@@ -244,31 +244,31 @@ describe('AzureProvider', () => {
   });
 
   it('should support multi-tenant with common', () => {
-    const provider = new AzureProvider({ tenantId: 'common' });
+    const provider = new EntraIdProvider({ tenantId: 'common' });
     const endpoints = provider.getEndpoints();
     expect(endpoints.authorizationEndpoint).toContain('/common/');
   });
 
   it('should support organizations tenant', () => {
-    const provider = new AzureProvider({ tenantId: 'organizations' });
+    const provider = new EntraIdProvider({ tenantId: 'organizations' });
     const endpoints = provider.getEndpoints();
     expect(endpoints.authorizationEndpoint).toContain('/organizations/');
   });
 
   it('should support consumers tenant', () => {
-    const provider = new AzureProvider({ tenantId: 'consumers' });
+    const provider = new EntraIdProvider({ tenantId: 'consumers' });
     const endpoints = provider.getEndpoints();
     expect(endpoints.authorizationEndpoint).toContain('/consumers/');
   });
 
   it('should support verified domain names', () => {
-    const provider = new AzureProvider({ tenantId: 'contoso.onmicrosoft.com' });
+    const provider = new EntraIdProvider({ tenantId: 'contoso.onmicrosoft.com' });
     const endpoints = provider.getEndpoints();
     expect(endpoints.authorizationEndpoint).toContain('/contoso.onmicrosoft.com/');
   });
 
   it('should use Bearer token injection', () => {
-    const provider = new AzureProvider(defaultConfig);
+    const provider = new EntraIdProvider(defaultConfig);
     const injection = provider.getTokenInjection();
     expect(injection.type).toBe('header');
     expect(injection.key).toBe('Authorization');
@@ -276,12 +276,12 @@ describe('AzureProvider', () => {
   });
 
   it('should pass HTTPS validation', () => {
-    const provider = new AzureProvider(defaultConfig);
+    const provider = new EntraIdProvider(defaultConfig);
     expect(() => provider.validateConfig()).not.toThrow();
   });
 
   it('should accept client credentials in config', () => {
-    const provider = new AzureProvider({
+    const provider = new EntraIdProvider({
       ...defaultConfig,
       clientId: 'my-client-id',
       clientSecret: 'my-client-secret',
@@ -291,27 +291,39 @@ describe('AzureProvider', () => {
 
   describe('tenant ID validation', () => {
     it('should reject empty tenant ID', () => {
-      expect(() => new AzureProvider({ tenantId: '' })).toThrow('is required');
+      expect(() => new EntraIdProvider({ tenantId: '' })).toThrow('is required');
     });
 
     it('should reject tenant ID with URL injection characters', () => {
-      expect(() => new AzureProvider({ tenantId: 'tenant/path' })).toThrow('invalid characters');
-      expect(() => new AzureProvider({ tenantId: 'tenant?query' })).toThrow('invalid characters');
-      expect(() => new AzureProvider({ tenantId: 'tenant#fragment' })).toThrow('invalid characters');
-      expect(() => new AzureProvider({ tenantId: 'user:pass@tenant' })).toThrow('invalid characters');
+      expect(() => new EntraIdProvider({ tenantId: 'tenant/path' })).toThrow('invalid characters');
+      expect(() => new EntraIdProvider({ tenantId: 'tenant?query' })).toThrow('invalid characters');
+      expect(() => new EntraIdProvider({ tenantId: 'tenant#fragment' })).toThrow('invalid characters');
+      expect(() => new EntraIdProvider({ tenantId: 'user:pass@tenant' })).toThrow('invalid characters');
     });
 
     it('should reject tenant ID with whitespace', () => {
-      expect(() => new AzureProvider({ tenantId: ' common' })).toThrow('whitespace');
-      expect(() => new AzureProvider({ tenantId: 'common ' })).toThrow('whitespace');
-      expect(() => new AzureProvider({ tenantId: 'com mon' })).toThrow('invalid characters');
+      expect(() => new EntraIdProvider({ tenantId: ' common' })).toThrow('whitespace');
+      expect(() => new EntraIdProvider({ tenantId: 'common ' })).toThrow('whitespace');
+      expect(() => new EntraIdProvider({ tenantId: 'com mon' })).toThrow('invalid characters');
     });
 
     it('should reject invalid tenant ID format', () => {
       // 'invalid-tenant-id' matches the domain pattern, so use something that doesn't
-      expect(() => new AzureProvider({ tenantId: '-invalid' })).toThrow(
+      expect(() => new EntraIdProvider({ tenantId: '-invalid' })).toThrow(
         /must be 'common', 'organizations', 'consumers', a valid GUID, or a verified domain name/
       );
+    });
+  });
+
+  describe('backward compatibility', () => {
+    it('should export AzureProvider as alias for EntraIdProvider', () => {
+      expect(AzureProvider).toBe(EntraIdProvider);
+    });
+
+    it('should work with AzureProvider alias', () => {
+      const provider = new AzureProvider(defaultConfig);
+      expect(provider.id).toBe('azure');
+      expect(provider.name).toBe('Microsoft Entra ID');
     });
   });
 });

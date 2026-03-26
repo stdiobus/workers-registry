@@ -256,6 +256,7 @@ function agentIdForProvider(providerId: AuthProviderId): string {
     google: 'gemini-agent',
     azure: 'azure-agent',
     cognito: 'cognito-agent',
+    oidc: 'oidc-agent',
   };
   return prefixes[providerId] || `${providerId}-agent`;
 }
