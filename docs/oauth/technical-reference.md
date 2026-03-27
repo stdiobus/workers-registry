@@ -62,12 +62,15 @@ The authentication system separates two distinct concerns:
 ## Module Structure
 
 ```
-workers-registry/acp-worker/src/registry-launcher/auth/
+workers-registry/registry-launcher/src/auth/
 ├── index.ts                 # Public API exports
 ├── types.ts                 # Type definitions
 ├── auth-manager.ts          # Main orchestrator
 ├── token-manager.ts         # Token lifecycle management
 ├── errors.ts                # Error types and parsing
+├── pkce.ts                  # PKCE implementation
+├── state.ts                 # State parameter handling
+├── session.ts               # Auth session management
 │
 ├── cli/                     # CLI commands
 │   ├── index.ts
@@ -79,10 +82,7 @@ workers-registry/acp-worker/src/registry-launcher/auth/
 ├── flows/                   # Authentication flows
 │   ├── agent-auth-flow.ts   # Browser OAuth flow
 │   ├── terminal-auth-flow.ts # Interactive terminal flow
-│   ├── callback-server.ts   # OAuth callback server
-│   ├── pkce.ts              # PKCE implementation
-│   ├── state.ts             # State parameter handling
-│   └── session.ts           # Auth session management
+│   └── callback-server.ts   # OAuth callback server
 │
 ├── providers/               # OAuth providers (user identity)
 │   ├── index.ts             # Provider registry
@@ -782,7 +782,7 @@ interface IDTokenClaims {
 ### Unit Tests
 
 ```bash
-cd workers-registry/acp-worker
+cd workers-registry/registry-launcher
 npm test -- --testPathPattern="auth"
 ```
 
@@ -795,7 +795,7 @@ npm test -- --testPathPattern="integration"
 ### E2E Tests
 
 ```bash
-npm test -- --testPathPattern="auth-flow.e2e"
+npm test -- --testPathPattern="production.*e2e"
 ```
 
 ### Test Coverage

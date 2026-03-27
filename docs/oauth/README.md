@@ -1,12 +1,12 @@
 # OAuth 2.1 Authentication
 
-OAuth 2.1 authentication support for the Registry Launcher, enabling secure browser-based authentication with major AI providers.
+OAuth 2.1 authentication support for the Registry Launcher, enabling secure browser-based authentication with identity providers and API key management for model providers.
 
 ## Quick Start
 
 ```bash
 # Login with a provider (opens browser)
-node ./launch/index.js acp-registry --login openai
+node ./launch/index.js acp-registry --login github
 
 # Check authentication status
 node ./launch/index.js acp-registry --auth-status
@@ -18,19 +18,29 @@ node ./launch/index.js acp-registry --setup
 node ./launch/index.js acp-registry --logout
 
 # Logout from specific provider
-node ./launch/index.js acp-registry --logout openai
+node ./launch/index.js acp-registry --logout github
 ```
 
 ## Supported Providers
 
-| Provider | OAuth 2.1 | API Key | Default Scopes |
-|----------|-----------|---------|----------------|
-| OpenAI | ✅ | ✅ | `openid`, `profile` |
-| Anthropic | ✅ | ✅ | `api` |
-| GitHub | ✅ | ✅ | `read:user` |
-| Google | ✅ | ✅ | `openid`, `profile`, `email` |
-| Microsoft Entra ID | ✅ | ✅ | `openid`, `profile` |
-| AWS Cognito | ✅ | ✅ | `openid`, `profile` |
+### OAuth Identity Providers (User Identity)
+
+| Provider | OAuth 2.1 | Default Scopes |
+|----------|-----------|----------------|
+| GitHub | ✅ | `read:user` |
+| Google | ✅ | `openid`, `profile`, `email` |
+| Microsoft Entra ID | ✅ | `openid`, `profile` |
+| AWS Cognito | ✅ | `openid`, `profile` |
+| Generic OIDC | ✅ | `openid`, `profile` |
+
+### Model API Keys (Model Access)
+
+| Provider | API Key | Header |
+|----------|---------|--------|
+| OpenAI | ✅ | `Authorization: Bearer {key}` |
+| Anthropic | ✅ | `x-api-key: {key}` |
+
+> **Note:** OpenAI and Anthropic do NOT offer public OAuth IdP for third-party login. They use API keys only. Use `--setup` to configure API keys.
 
 ## Documentation
 
@@ -44,7 +54,8 @@ node ./launch/index.js acp-registry --logout openai
 ## Features
 
 - **OAuth 2.1 with PKCE** - Secure browser-based authentication
-- **Multiple Providers** - Support for major AI providers
+- **Multiple Identity Providers** - GitHub, Google, Microsoft Entra ID, AWS Cognito, Generic OIDC
+- **Model API Keys** - Separate management for OpenAI and Anthropic API keys
 - **Secure Token Storage** - OS keychain or encrypted file storage
 - **Automatic Token Refresh** - Proactive refresh before expiration
 - **Backward Compatible** - Existing `api-keys.json` continues to work
@@ -62,20 +73,17 @@ node ./launch/index.js acp-registry --logout openai
 Existing `api-keys.json` configuration continues to work. OAuth credentials take precedence when available, with automatic fallback to API keys.
 
 ```json
-// api-keys.json (still supported)
 {
-  "claude-acp": {
-    "apiKey": "sk-ant-...",
-    "env": { "ANTHROPIC_API_KEY": "sk-ant-..." }
-  }
+  "agents": {
+    "claude-acp": {
+      "apiKey": "sk-ant-...",
+      "env": { "ANTHROPIC_API_KEY": "sk-ant-..." }
+    }
+  },
+  "version": "1.0.0"
 }
 ```
 
 ## License
 
 Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
-
----
-
-*Documentation last verified: March 2026*
-*All 5 e2e tests passing, 2138+ unit tests passing*

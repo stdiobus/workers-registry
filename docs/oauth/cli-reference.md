@@ -22,7 +22,7 @@ sequenceDiagram
     participant Browser
     participant Provider
 
-    User->>CLI: --login openai
+    User->>CLI: --login github
     CLI->>CLI: Validate provider ID
     
     alt Invalid provider
@@ -65,16 +65,16 @@ stdiobus acp-registry --login <provider>
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `provider` | Yes | Provider ID: `openai`, `anthropic`, `github`, `google`, `azure`, `cognito` |
+| `provider` | Yes | Provider ID: `github`, `google`, `azure`, `cognito`, `oidc` |
 
 ### Examples
 
 ```bash
-# Login with OpenAI (npx)
-npx @stdiobus/workers-registry acp-registry --login openai
+# Login with GitHub (npx)
+npx @stdiobus/workers-registry acp-registry --login github
 
-# Login with GitHub (global install)
-stdiobus acp-registry --login github
+# Login with Google (global install)
+stdiobus acp-registry --login google
 ```
 
 ### Output
@@ -131,30 +131,26 @@ stdiobus acp-registry --setup
 === OAuth Authentication Setup ===
 
 Select providers to configure:
-  [x] OpenAI
-  [ ] Anthropic
   [x] GitHub
   [ ] Google
   [ ] Microsoft Entra ID
   [ ] AWS Cognito
+  [ ] Generic OIDC
 
-Configuring OpenAI...
+Configuring GitHub...
   Authentication method:
     (1) Browser OAuth (recommended)
     (2) Manual API Key
   Select [1]: 1
 
   Opening browser for authentication...
-  ✓ OpenAI authenticated successfully
+  ✓ GitHub authenticated successfully
 
-Configuring GitHub...
-  Authentication method:
-    (1) Browser OAuth (recommended)
-    (2) Manual API Key
-  Select [1]: 2
+=== Model API Keys ===
 
+Configure OpenAI API Key?
   Enter API Key: ********
-  ✓ GitHub API key stored
+  ✓ OpenAI API key stored
 
 Setup complete!
 ```
@@ -187,14 +183,11 @@ stdiobus acp-registry --auth-status
 ```
 === OAuth Authentication Status ===
 
-  Openai:
+  GitHub:
     Status: ✓ Authenticated
     Expires at: 3/26/2026, 10:30:00 AM
-    Scope: openid profile
+    Scope: read:user
     Last Updated: 3/25/2026, 9:30:00 AM
-
-  Github:
-    Status: ○ Not Configured
 
   Google:
     Status: ○ Not Configured
@@ -205,15 +198,23 @@ stdiobus acp-registry --auth-status
   Azure:
     Status: ○ Not Configured
 
+  Oidc:
+    Status: ○ Not Configured
+
+=== Model API Keys ===
+
+  Openai:
+    Status: ✓ Configured
+
   Anthropic:
-    Status: ⚠ Expired (refresh available)
-    Expired at: 3/24/2026, 5:00:00 PM
-    Scope: api
+    Status: ⚠ Not Configured
 
 --- Summary ---
-  Authenticated: 1
-  Expired/Failed: 1
-  Not Configured: 4
+  OAuth Authenticated: 1
+  OAuth Expired/Failed: 0
+  OAuth Not Configured: 4
+  Model Keys Configured: 1
+  Model Keys Not Configured: 1
 
 Tip: Run with --setup to configure authentication.
 ```
@@ -297,7 +298,7 @@ stdiobus acp-registry --logout openai
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AUTH_AUTO_OAUTH` | `false` | Auto-trigger browser OAuth when agent requires it |
-| `REGISTRY_LAUNCHER_API_KEYS_PATH` | `./api-keys.json` | Path to legacy API keys file |
+| `ACP_API_KEYS_PATH` | `./api-keys.json` | Path to legacy API keys file |
 
 ### AUTH_AUTO_OAUTH
 
@@ -319,14 +320,13 @@ AUTH_AUTO_OAUTH=true stdiobus acp-registry
 
 | Provider ID | Name |
 |-------------|------|
-| `openai` | OpenAI |
-| `anthropic` | Anthropic |
 | `github` | GitHub |
 | `google` | Google |
 | `azure` | Microsoft Entra ID |
 | `cognito` | AWS Cognito |
+| `oidc` | Generic OIDC |
 
-> **Note:** The provider ID `azure` is kept for backward compatibility. Microsoft renamed Azure AD to Microsoft Entra ID in 2023.
+> **Note:** OpenAI and Anthropic use API keys, not OAuth. Configure them via `--setup` (Model API Keys section) or `api-keys.json`.
 
 ---
 

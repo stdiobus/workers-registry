@@ -138,16 +138,6 @@ echo $CI $SSH_TTY $DISPLAY
 
 ## Provider-Specific Issues
 
-### OpenAI
-
-**Issue:** "Invalid client_id"
-- Verify OAuth app is registered at platform.openai.com
-- Check client_id matches registered app
-
-**Issue:** "Scope not allowed"
-- Request only `openid` and `profile` scopes
-- Additional scopes require app approval
-
 ### GitHub
 
 **Issue:** "Application suspended"
@@ -225,12 +215,12 @@ cmdkey /list
 
 ### Encrypted File Storage
 
-**Location:** `~/.config/registry-launcher/credentials.enc`
+**Location:** `~/.stdio-bus/auth-credentials.enc`
 
 **Reset credentials:**
 ```bash
 # Remove encrypted file (will require re-authentication)
-rm ~/.config/registry-launcher/credentials.enc
+rm ~/.stdio-bus/auth-credentials.enc
 ```
 
 ## Debugging
@@ -239,7 +229,7 @@ rm ~/.config/registry-launcher/credentials.enc
 
 ```bash
 # Set debug environment variable
-DEBUG=auth:* node ./launch/index.js acp-registry --login openai 2>&1
+DEBUG=auth:* node ./launch/index.js acp-registry --login github 2>&1
 ```
 
 ### Inspect Stored Credentials

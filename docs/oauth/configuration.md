@@ -52,7 +52,7 @@ AUTH_AUTO_OAUTH=true node ./launch/index.js acp-registry
 
 **Recommendation:** Keep `AUTH_AUTO_OAUTH=false` in production to prevent unexpected browser windows.
 
-### REGISTRY_LAUNCHER_API_KEYS_PATH
+### ACP_API_KEYS_PATH
 
 Path to the legacy `api-keys.json` file.
 
@@ -60,7 +60,7 @@ Path to the legacy `api-keys.json` file.
 |---------|-------------------|
 
 ```bash
-REGISTRY_LAUNCHER_API_KEYS_PATH=/etc/stdio-bus/api-keys.json node ./launch/index.js acp-registry
+ACP_API_KEYS_PATH=/etc/stdio-bus/api-keys.json node ./launch/index.js acp-registry
 ```
 
 ### ACP_REGISTRY_URL
@@ -84,7 +84,7 @@ The legacy API keys configuration file is still fully supported.
 
 Default: `./api-keys.json` (relative to working directory)
 
-Override with `REGISTRY_LAUNCHER_API_KEYS_PATH` environment variable.
+Override with `ACP_API_KEYS_PATH` environment variable.
 
 ### Format
 
@@ -157,13 +157,13 @@ Tokens are stored in the operating system's secure credential storage:
 | Windows | Credential Manager |
 | Linux | Secret Service (GNOME Keyring, KWallet) |
 
-**Service name:** `stdio-bus-oauth`
+**Service name:** `stdio-bus-registry-launcher`
 
 ### Encrypted File (Fallback)
 
 When keychain is unavailable, tokens are stored in an encrypted file:
 
-| Location | `~/.config/stdio-bus/oauth-credentials.enc` |
+| Location | `~/.stdio-bus/auth-credentials.enc` |
 |----------|---------------------------------------------|
 | Encryption | AES-256-GCM |
 | Key derivation | Machine-specific (hostname, user, etc.) |
@@ -171,24 +171,6 @@ When keychain is unavailable, tokens are stored in an encrypted file:
 ---
 
 ## Provider Configuration
-
-### OpenAI
-
-```
-Authorization URL: https://auth.openai.com/authorize
-Token URL: https://auth.openai.com/token
-Default Scopes: openid, profile
-Token Injection: Authorization: Bearer <token>
-```
-
-### Anthropic
-
-```
-Authorization URL: https://auth.anthropic.com/authorize
-Token URL: https://auth.anthropic.com/token
-Default Scopes: api
-Token Injection: x-api-key: <token>
-```
 
 ### GitHub
 
