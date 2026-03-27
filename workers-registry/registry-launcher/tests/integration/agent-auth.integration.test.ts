@@ -9,10 +9,10 @@
 
 import * as path from 'path';
 import * as readline from 'readline';
-import { MessageRouter } from '../../src/registry-launcher/router/message-router.js';
-import { AgentRuntimeManager } from '../../src/registry-launcher/runtime/manager.js';
-import type { IRegistryIndex } from '../../src/registry-launcher/registry/index.js';
-import type { RegistryAgent, SpawnCommand } from '../../src/registry-launcher/registry/types.js';
+import { MessageRouter } from '../../src/router/message-router.js';
+import { AgentRuntimeManager } from '../../src/runtime/manager.js';
+import type { IRegistryIndex } from '../../src/registry/index.js';
+import type { RegistryAgent, SpawnCommand } from '../../src/registry/types.js';
 
 const MOCK_AGENT_PATH = path.resolve(__dirname, 'fixtures/agents/mock-agent-auth.mjs');
 

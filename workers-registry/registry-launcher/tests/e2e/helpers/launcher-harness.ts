@@ -53,7 +53,7 @@ export class LauncherHarness {
   constructor() {
     this.launcherPath = path.resolve(
       __dirname,
-      '../../../dist/registry-launcher/index.js',
+      '../../../dist/index.js',
     );
   }
 

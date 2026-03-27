@@ -51,4 +51,4 @@ function ensureDefaultConfigArg() {
 ensureDefaultConfigArg();
 
 // Load the real Registry Launcher implementation
-await import('../acp-worker/src/registry-launcher/index.ts');
+await import('../registry-launcher/src/index.ts');

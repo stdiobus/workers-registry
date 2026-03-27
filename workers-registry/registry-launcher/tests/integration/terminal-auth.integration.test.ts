@@ -14,10 +14,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as readline from 'readline';
-import { MessageRouter, type MessageRouterDeps } from '../../src/registry-launcher/router/message-router.js';
-import { AgentRuntimeManager } from '../../src/registry-launcher/runtime/manager.js';
-import type { IRegistryIndex } from '../../src/registry-launcher/registry/index.js';
-import type { RegistryAgent, SpawnCommand } from '../../src/registry-launcher/registry/types.js';
+import { MessageRouter, type MessageRouterDeps } from '../../src/router/message-router.js';
+import { AgentRuntimeManager } from '../../src/runtime/manager.js';
+import type { IRegistryIndex } from '../../src/registry/index.js';
+import type { RegistryAgent, SpawnCommand } from '../../src/registry/types.js';
 
 const MOCK_AGENT_PATH = path.join(__dirname, 'fixtures/agents/mock-agent-terminal.mjs');
 

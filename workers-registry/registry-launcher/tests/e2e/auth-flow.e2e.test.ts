@@ -116,8 +116,7 @@ function waitForLauncherReady(
 }
 
 describe('E2E: OAuth Authentication Flow', () => {
-  const launcherPath = path.join(__dirname, '../../dist/registry-launcher/index.js');
-  // Use the actual echo-worker from the repository (relative to acp-worker)
+  const launcherPath = path.join(__dirname, '../../dist/index.js');
   const echoWorkerPath = path.resolve(__dirname, '../../../echo-worker/echo-worker.js');
   let tempDir: string;
 

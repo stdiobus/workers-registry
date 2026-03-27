@@ -23,7 +23,7 @@ import * as path from 'path';
 
 const LAUNCHER_PATH = path.resolve(
   __dirname,
-  '../../dist/registry-launcher/index.js',
+  '../../dist/index.js',
 );
 
 /**

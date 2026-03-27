@@ -115,7 +115,7 @@ function waitForLauncherReady(launcher: ChildProcess, timeoutMs = 15000): Promis
 }
 
 describe('E2E: OAuth Authentication Required Flow', () => {
-  const launcherPath = path.join(__dirname, '../../dist/registry-launcher/index.js');
+  const launcherPath = path.join(__dirname, '../../dist/index.js');
   const authRequiredAgentPath = path.join(__dirname, 'fixtures/auth-required-agent.js');
   let tempDir: string;
 

@@ -32,17 +32,17 @@
 
 import { PassThrough } from 'node:stream';
 import type { ChildProcess } from 'node:child_process';
-import { MessageRouter, RoutingErrorCodes } from '../../src/registry-launcher/router/message-router.js';
-import { AgentRuntimeManager } from '../../src/registry-launcher/runtime/manager.js';
-import { NDJSONHandler } from '../../src/registry-launcher/stream/ndjson-handler.js';
-import type { IRegistryIndex } from '../../src/registry-launcher/registry/index.js';
-import { AgentNotFoundError } from '../../src/registry-launcher/registry/index.js';
-import type { RegistryAgent, SpawnCommand } from '../../src/registry-launcher/registry/types.js';
+import { MessageRouter, RoutingErrorCodes } from '../../src/router/message-router.js';
+import { AgentRuntimeManager } from '../../src/runtime/manager.js';
+import { NDJSONHandler } from '../../src/stream/ndjson-handler.js';
+import type { IRegistryIndex } from '../../src/registry/index.js';
+import { AgentNotFoundError } from '../../src/registry/index.js';
+import type { RegistryAgent, SpawnCommand } from '../../src/registry/types.js';
 import {
   createMockAgentProcess,
   createMockNpxAgent,
   type MockChildProcess,
-} from '../../src/registry-launcher/test-utils/index.js';
+} from '../../src/test-utils/index.js';
 
 /**
  * Mock RegistryIndex for testing.

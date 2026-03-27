@@ -50,7 +50,6 @@ const DIST_DIR = resolve(__dirname, '../dist');
  */
 const ENTRY_POINTS = [
   'index.js',                           // Main worker entry point
-  'registry-launcher/index.js',         // Registry Launcher entry point
   'mcp-proxy/index.js',                 // MCP-ACP Proxy entry point
 ];
 
