@@ -107,7 +107,14 @@ export class OpenAIAgent implements Agent {
           embeddedContext: true,
         },
       },
-      authMethods: [],
+      authMethods: [
+        {
+          id: 'oauth2',
+          name: 'OAuth 2.1 Authentication',
+          description: 'Authenticate through agent via OAuth 2.1 flow',
+          _meta: { 'agent-auth': true },
+        },
+      ],
     };
   }
 

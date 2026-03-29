@@ -46,6 +46,12 @@ OpenAI Agent
 ## Installation
 
 ```bash
+npm install @stdiobus/node @stdiobus/workers-registry
+```
+
+For development from source:
+
+```bash
 cd workers-registry/openai-agent
 npm install
 npm run build
@@ -53,7 +59,63 @@ npm run build
 
 ## Usage
 
-### With stdio Bus kernel via Registry Launcher (recommended)
+### Embedded via `@stdiobus/node` (simplest)
+
+No Docker or binary needed. The bus runs inside your Node.js process.
+
+Create `config.json`:
+
+```json
+{
+  "pools": [
+    {
+      "id": "openai-agent",
+      "command": "npx",
+      "args": ["@stdiobus/workers-registry", "openai-agent"],
+      "instances": 1
+    }
+  ]
+}
+```
+
+```javascript
+import { StdioBus } from '@stdiobus/node';
+
+// Set OPENAI_API_KEY in environment before starting
+const bus = new StdioBus({ configPath: './config.json' });
+await bus.start();
+
+// 1. Initialize — get agent info and authMethods
+const init = await bus.request('initialize', {
+  protocolVersion: 1,
+  clientInfo: { name: 'my-app', version: '1.0.0' },
+});
+console.log(init.authMethods); // [{ id: 'oauth2', name: 'OAuth 2.1 Authentication', ... }]
+
+// 2. Create a session
+const session = await bus.request('session/new', {
+  cwd: process.cwd(),
+  mcpServers: [],
+});
+
+// 3. Send a prompt (response streams via session updates)
+bus.onMessage((msg) => {
+  const parsed = JSON.parse(msg);
+  if (parsed.params?.update?.content?.text) {
+    process.stdout.write(parsed.params.update.content.text);
+  }
+});
+
+const result = await bus.request('session/prompt', {
+  sessionId: session.sessionId,
+  prompt: [{ type: 'text', text: 'Hello!' }],
+});
+
+console.log('\nStop reason:', result.stopReason);
+await bus.stop();
+```
+
+### With stdio Bus kernel via Registry Launcher
 
 The standard way to run the agent is through the Registry Launcher (`acp-registry` worker), which handles agent discovery, process management, and routing.
 
@@ -221,12 +283,12 @@ All configuration is via environment variables. No config files are needed.
 
 | Method | Description | Status |
 |--------|-------------|--------|
-| `initialize` | Returns agent name, version, capabilities | ✅ Implemented |
-| `session/new` | Creates session with unique ID and empty history | ✅ Implemented |
-| `session/load` | Not supported (returns error) | ✅ Implemented |
-| `authenticate` | No-op (returns void) | ✅ Implemented |
-| `session/prompt` | Converts content → OpenAI messages, streams response | ✅ Implemented |
-| `cancel` | Aborts in-flight HTTP request via AbortController | ✅ Implemented |
+| `initialize` | Returns agent name, version, capabilities | ✓ Implemented |
+| `session/new` | Creates session with unique ID and empty history | ✓ Implemented |
+| `session/load` | Not supported (returns error) | ✓ Implemented |
+| `authenticate` | No-op (returns void) | ✓ Implemented |
+| `session/prompt` | Converts content → OpenAI messages, streams response | ✓ Implemented |
+| `cancel` | Aborts in-flight HTTP request via AbortController | ✓ Implemented |
 
 ### Agent Capabilities
 
@@ -237,7 +299,14 @@ All configuration is via environment variables. No config files are needed.
   "agentCapabilities": {
     "promptCapabilities": { "embeddedContext": true }
   },
-  "authMethods": []
+  "authMethods": [
+    {
+      "id": "oauth2",
+      "name": "OAuth 2.1 Authentication",
+      "description": "Authenticate through agent via OAuth 2.1 flow",
+      "_meta": { "agent-auth": true }
+    }
+  ]
 }
 ```
 

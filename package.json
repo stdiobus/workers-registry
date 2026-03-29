@@ -1,6 +1,6 @@
 {
   "name": "@stdiobus/workers-registry",
-  "version": "1.4.12",
+  "version": "1.5.2",
   "description": "Worker implementations for stdio Bus kernel - ACP, MCP, and protocol bridges",
   "type": "module",
   "main": "./out/dist/workers-registry/acp-registry/index.js",
@@ -22,17 +22,21 @@
       "import": "./out/dist/workers-registry/acp-worker/agent.js",
       "types": "./out/tsc/workers-registry/acp-worker/src/agent.d.ts"
     },
-    "./workers/acp-worker/registry": {
-      "import": "./out/dist/workers-registry/acp-worker/registry-launcher/registry/index.js",
-      "types": "./out/tsc/workers-registry/acp-worker/src/registry-launcher/registry/index.d.ts"
+    "./workers/registry-launcher": {
+      "import": "./out/dist/workers-registry/registry-launcher/index.js",
+      "types": "./out/tsc/workers-registry/registry-launcher/src/index.d.ts"
     },
-    "./workers/acp-worker/runtime": {
-      "import": "./out/dist/workers-registry/acp-worker/registry-launcher/runtime/manager.js",
-      "types": "./out/tsc/workers-registry/acp-worker/src/registry-launcher/runtime/manager.d.ts"
+    "./workers/registry-launcher/registry": {
+      "import": "./out/dist/workers-registry/registry-launcher/registry/index.js",
+      "types": "./out/tsc/workers-registry/registry-launcher/src/registry/index.d.ts"
     },
-    "./workers/acp-worker/config": {
-      "import": "./out/dist/workers-registry/acp-worker/registry-launcher/config/config.js",
-      "types": "./out/tsc/workers-registry/acp-worker/src/registry-launcher/config/config.d.ts"
+    "./workers/registry-launcher/runtime": {
+      "import": "./out/dist/workers-registry/registry-launcher/runtime/manager.js",
+      "types": "./out/tsc/workers-registry/registry-launcher/src/runtime/manager.d.ts"
+    },
+    "./workers/registry-launcher/config": {
+      "import": "./out/dist/workers-registry/registry-launcher/config/config.js",
+      "types": "./out/tsc/workers-registry/registry-launcher/src/config/config.d.ts"
     },
     "./workers/acp-worker/mcp": {
       "import": "./out/dist/workers-registry/acp-worker/mcp/manager.js",
@@ -98,6 +102,7 @@
     "@modelcontextprotocol/sdk": "^1.27.1"
   },
   "devDependencies": {
+    "@stdiobus/node": "^0.1.0",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.20.0",

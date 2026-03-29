@@ -1,0 +1,32 @@
+{
+  "name": "@stdiobus/registry-launcher",
+  "version": "1.0.0",
+  "description": "Registry Launcher - routes messages to ACP Registry agents with OAuth 2.1 authentication",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && node scripts/prepare-executables.js",
+    "build:ts": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "clean": "rm -rf dist",
+    "prepare-executables": "node scripts/prepare-executables.js"
+  },
+  "keywords": [
+    "acp",
+    "registry",
+    "launcher",
+    "oauth",
+    "agent",
+    "protocol"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}

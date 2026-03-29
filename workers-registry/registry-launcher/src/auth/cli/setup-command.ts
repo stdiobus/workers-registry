@@ -1,0 +1,152 @@
+/*
+ * Apache License 2.0
+ * Copyright (c) 2025–present Raman Marozau, Target Insight Function.
+ * Contact: raman@worktif.com
+ *
+ * This file is part of the stdio bus protocol reference implementation:
+ *   stdio_bus_kernel_workers (target: <target_stdio_bus_kernel_workers>).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * --setup CLI command implementation.
+ *
+ * Starts the interactive authentication Setup_Wizard.
+ *
+ * Requirements: 9.1, 3.1
+ *
+ * @module cli/setup-command
+ */
+
+import { TerminalAuthFlow } from '../flows/terminal-auth-flow.js';
+import { AgentAuthFlow } from '../flows/agent-auth-flow.js';
+import { CredentialStore } from '../storage/credential-store.js';
+import { TokenManager } from '../token-manager.js';
+import { getProvider } from '../providers/index.js';
+import { CLIENT_CREDENTIALS_MARKER } from '../auth-manager.js';
+import type { AuthProviderId, TokenResponse } from '../types.js';
+import { isValidProviderId, VALID_PROVIDER_IDS } from '../types.js';
+
+/**
+ * Options for the setup command.
+ */
+export interface SetupCommandOptions {
+  /** Optional pre-selected provider (skips provider selection) */
+  providerId?: AuthProviderId;
+  /** Custom input stream (for testing) */
+  input?: NodeJS.ReadableStream;
+  /** Custom output stream (for testing) */
+  output?: NodeJS.WritableStream;
+}
+
+/**
+ * Run the setup command.
+ *
+ * Starts the interactive Setup_Wizard for configuring OAuth credentials.
+ * All output goes to stderr to comply with NDJSON protocol requirements.
+ *
+ * Requirement 9.1: WHEN the `--setup` flag is provided, THE Registry_Launcher
+ * SHALL start the interactive authentication Setup_Wizard.
+ *
+ * @param options - Command options
+ * @returns Exit code (0 for success, 1 for failure)
+ */
+export async function runSetupCommand(options: SetupCommandOptions = {}): Promise<number> {
+  const output = options.output ?? process.stderr;
+
+  try {
+    // Validate provider ID if specified
+    if (options.providerId !== undefined && !isValidProviderId(options.providerId)) {
+      output.write(`\nError: Invalid provider '${options.providerId}'.\n`);
+      output.write(`Supported providers: ${VALID_PROVIDER_IDS.join(', ')}\n\n`);
+      return 1;
+    }
+
+    // Create credential store
+    const credentialStore = new CredentialStore();
+
+    // Create terminal auth flow
+    const terminalAuthFlow = new TerminalAuthFlow({
+      credentialStore,
+      validateCredentials: async (_providerId, credentials) => {
+        // Basic validation - check that required fields are present
+        if (!credentials.clientId || credentials.clientId.trim().length === 0) {
+          return { valid: false, error: 'This field is required' };
+        }
+
+        // For API key auth (no clientSecret), the clientId IS the API key
+        // Return it directly as the access token
+        if (!credentials.clientSecret) {
+          // This is API key mode - the "clientId" is actually the API key
+          return { valid: true, accessToken: credentials.clientId.trim() };
+        }
+
+        // For OAuth client credentials mode, return the marker token
+        // The actual OAuth token will be obtained when the credentials are used
+        return { valid: true, accessToken: CLIENT_CREDENTIALS_MARKER };
+      },
+      input: options.input,
+      output,
+    });
+
+    // Execute the setup wizard
+    const flowResult = await terminalAuthFlow.execute(options.providerId);
+
+    // Check if user selected browser OAuth flow
+    if (flowResult.useBrowserOAuth) {
+      output.write('\nLaunching browser for OAuth authentication...\n');
+      output.write('Please complete the authentication in your browser.\n\n');
+
+      // Create token manager for storing tokens
+      const tokenManager = new TokenManager({
+        credentialStore,
+        providerResolver: getProvider,
+      });
+
+      // Create and execute browser OAuth flow
+      const agentAuthFlow = new AgentAuthFlow({
+        getProvider,
+        storeTokens: async (providerId: AuthProviderId, tokens: TokenResponse) => {
+          await tokenManager.storeTokens(providerId, tokens);
+        },
+      });
+
+      const browserResult = await agentAuthFlow.execute(flowResult.providerId);
+
+      if (browserResult.success) {
+        output.write(`\n${flowResult.providerId} authentication completed successfully!\n\n`);
+        return 0;
+      } else {
+        output.write(`\nBrowser authentication failed: ${browserResult.error?.message}\n`);
+        return 1;
+      }
+    }
+
+    // Manual credential flow completed
+    const result = flowResult.authResult;
+    if (result.success) {
+      return 0;
+    } else {
+      // Error message already displayed by terminal auth flow
+      return 1;
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    output.write(`\nSetup failed: ${errorMessage}\n`);
+    console.error(`[SetupCommand] Error: ${errorMessage}`);
+    return 1;
+  }
+}

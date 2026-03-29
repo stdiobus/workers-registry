@@ -362,9 +362,9 @@ case "my_tool":
 
 | Method | Description | Status |
 |--------|-------------|--------|
-| `initialize` | Initialize MCP connection | ✅ Implemented |
-| `tools/list` | List available tools | ✅ Implemented |
-| `tools/call` | Call a tool | ✅ Implemented |
+| `initialize` | Initialize MCP connection | ✓ Implemented |
+| `tools/list` | List available tools | ✓ Implemented |
+| `tools/call` | Call a tool | ✓ Implemented |
 | `resources/list` | List resources | ❌ Not implemented |
 | `prompts/list` | List prompts | ❌ Not implemented |
 

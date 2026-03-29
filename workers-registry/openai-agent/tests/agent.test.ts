@@ -53,6 +53,33 @@ describe('OpenAIAgent', () => {
       expect(result.protocolVersion).toBeDefined();
       expect(result.agentCapabilities).toBeDefined();
     });
+
+    it('returns non-empty authMethods with valid OAuth method', async () => {
+      const result = await agent.initialize({} as any);
+      expect(result.authMethods!.length).toBeGreaterThan(0);
+      expect(result.authMethods![0].id).toBe('oauth2');
+      expect(result.authMethods![0].name).toBe('OAuth 2.1 Authentication');
+    });
+
+    it('authMethods entry has _meta with agent-auth for CI compatibility', async () => {
+      const result = await agent.initialize({} as any);
+      const meta = result.authMethods![0]._meta as Record<string, unknown>;
+      expect(meta['agent-auth']).toBe(true);
+    });
+
+    it('authMethods entry resolves to type agent via CI resolveType logic', async () => {
+      function resolveType(method: Record<string, unknown>): string {
+        if (typeof method.type === 'string') return method.type;
+        const meta = method._meta as Record<string, unknown> | undefined;
+        if (meta && 'terminal-auth' in meta) return 'terminal';
+        if (meta && 'agent-auth' in meta) return 'agent';
+        return 'agent';
+      }
+
+      const result = await agent.initialize({} as any);
+      const resolved = resolveType(result.authMethods![0] as unknown as Record<string, unknown>);
+      expect(resolved).toBe('agent');
+    });
   });
 
   describe('newSession', () => {
