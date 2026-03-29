@@ -27,18 +27,18 @@ node ./launch/index.js acp-registry --logout github
 
 | Provider | OAuth 2.1 | Default Scopes |
 |----------|-----------|----------------|
-| GitHub | ✅ | `read:user` |
-| Google | ✅ | `openid`, `profile`, `email` |
-| Microsoft Entra ID | ✅ | `openid`, `profile` |
-| AWS Cognito | ✅ | `openid`, `profile` |
-| Generic OIDC | ✅ | `openid`, `profile` |
+| GitHub | ✓ | `read:user` |
+| Google | ✓ | `openid`, `profile`, `email` |
+| Microsoft Entra ID | ✓ | `openid`, `profile` |
+| AWS Cognito | ✓ | `openid`, `profile` |
+| Generic OIDC | ✓ | `openid`, `profile` |
 
 ### Model API Keys (Model Access)
 
 | Provider | API Key | Header |
 |----------|---------|--------|
-| OpenAI | ✅ | `Authorization: Bearer {key}` |
-| Anthropic | ✅ | `x-api-key: {key}` |
+| OpenAI | ✓ | `Authorization: Bearer {key}` |
+| Anthropic | ✓ | `x-api-key: {key}` |
 
 > **Note:** OpenAI and Anthropic do NOT offer public OAuth IdP for third-party login. They use API keys only. Use `--setup` to configure API keys.
 

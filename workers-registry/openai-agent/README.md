@@ -221,12 +221,12 @@ All configuration is via environment variables. No config files are needed.
 
 | Method | Description | Status |
 |--------|-------------|--------|
-| `initialize` | Returns agent name, version, capabilities | ✅ Implemented |
-| `session/new` | Creates session with unique ID and empty history | ✅ Implemented |
-| `session/load` | Not supported (returns error) | ✅ Implemented |
-| `authenticate` | No-op (returns void) | ✅ Implemented |
-| `session/prompt` | Converts content → OpenAI messages, streams response | ✅ Implemented |
-| `cancel` | Aborts in-flight HTTP request via AbortController | ✅ Implemented |
+| `initialize` | Returns agent name, version, capabilities | ✓ Implemented |
+| `session/new` | Creates session with unique ID and empty history | ✓ Implemented |
+| `session/load` | Not supported (returns error) | ✓ Implemented |
+| `authenticate` | No-op (returns void) | ✓ Implemented |
+| `session/prompt` | Converts content → OpenAI messages, streams response | ✓ Implemented |
+| `cancel` | Aborts in-flight HTTP request via AbortController | ✓ Implemented |
 
 ### Agent Capabilities
 
@@ -237,7 +237,14 @@ All configuration is via environment variables. No config files are needed.
   "agentCapabilities": {
     "promptCapabilities": { "embeddedContext": true }
   },
-  "authMethods": []
+  "authMethods": [
+    {
+      "id": "oauth2",
+      "name": "OAuth 2.1 Authentication",
+      "description": "Authenticate through agent via OAuth 2.1 flow",
+      "_meta": { "agent-auth": true }
+    }
+  ]
 }
 ```
 

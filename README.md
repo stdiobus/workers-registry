@@ -68,15 +68,16 @@ graph TB
 
 | Worker | Description | Protocol | Command |
 |--------|-------------|----------|---------|
-| `acp-registry` | Registry Launcher worker that routes to ACP Registry agents (requires `api-keys.json`) | ACP | `node ./node_modules/@stdiobus/workers-registry/launch acp-registry` |
-| `acp-worker` | Full ACP protocol implementation (standalone agent; does **not** route to ACP Registry) | ACP | `node ./node_modules/@stdiobus/workers-registry/launch acp-worker` |
+| `acp-registry` | Registry Launcher worker that routes to ACP Registry agents (requires `api-keys.json`) | ACP | `npx @stdiobus/workers-registry acp-registry` |
+| `acp-worker` | Full ACP protocol implementation (standalone agent; does **not** route to ACP Registry) | ACP | `npx @stdiobus/workers-registry acp-worker` |
 | `registry-launcher` | Registry Launcher implementation module used by `acp-registry` (not a launch target) | ACP | Use `acp-registry` |
-| `mcp-to-acp-proxy` | Bridges MCP clients (like IDEs) to ACP agents | MCP → ACP | `node ./node_modules/@stdiobus/workers-registry/launch mcp-to-acp-proxy` |
-| `echo-worker` | Simple echo worker for testing NDJSON protocol | NDJSON | `node ./node_modules/@stdiobus/workers-registry/launch echo-worker` |
-| `mcp-echo-server` | MCP server example for testing | MCP | `node ./node_modules/@stdiobus/workers-registry/launch mcp-echo-server` |
+| `openai-agent` | OpenAI Chat Completions API agent (bridges ACP to any OpenAI-compatible endpoint) | ACP | `npx @stdiobus/workers-registry openai-agent` |
+| `mcp-to-acp-proxy` | Bridges MCP clients (like IDEs) to ACP agents | MCP → ACP | `npx @stdiobus/workers-registry mcp-to-acp-proxy` |
+| `echo-worker` | Simple echo worker for testing NDJSON protocol | NDJSON | `npx @stdiobus/workers-registry echo-worker` |
+| `mcp-echo-server` | MCP server example for testing | MCP | `npx @stdiobus/workers-registry mcp-echo-server` |
 
-**Note:** The universal launcher is `@stdiobus/workers-registry/launch`. In this repo, use
-`node ./launch/index.js <worker-name>` after `npm run build`.
+**Note:** The universal launcher is `@stdiobus/workers-registry/launch`. For local
+development in this repo, use `node ./launch/index.js <worker-name>` after `npm run build`.
 
 ## Package API
 
@@ -210,8 +211,8 @@ echo '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"agentId":"claud
 The simplest way to run any worker:
 
 ```bash
-# Run any worker by name (package install)
-node ./node_modules/@stdiobus/workers-registry/launch <worker-name>
+# Run any worker by name (recommended)
+npx @stdiobus/workers-registry <worker-name>
 
 # Run any worker by name (this repo, after build)
 node ./launch/index.js <worker-name>
@@ -222,9 +223,10 @@ node ./launch/index.js <worker-name>
 # - echo-worker
 # - mcp-echo-server
 # - mcp-to-acp-proxy
+# - openai-agent
 
 # Example: Run echo worker for testing
-node ./node_modules/@stdiobus/workers-registry/launch echo-worker
+npx @stdiobus/workers-registry echo-worker
 ```
 
 ### Using in stdio Bus Configuration
@@ -814,14 +816,35 @@ rl.on('close', () => process.exit(0));
 
 ```
 workers-registry/
+├── index.ts                 # Package entry point
+├── launch/                  # Universal launcher (npx entry point)
 ├── acp-worker/              # Full ACP protocol implementation
 │   ├── src/
 │   │   ├── agent.ts         # ACP Agent implementation
 │   │   ├── index.ts         # Main entry point
+│   │   ├── acp/             # ACP protocol layer
 │   │   ├── mcp/             # MCP server integration
+│   │   ├── mcp-proxy/       # MCP-to-ACP proxy logic
 │   │   ├── session/         # Session management
-│   │   └── registry-launcher/  # Registry Launcher implementation
+│   │   ├── stdio/           # Session ID routing
+│   │   └── test-utils/      # Testing utilities
 │   └── tests/               # Test suites
+├── registry-launcher/       # Registry Launcher (agent discovery + routing)
+│   └── src/
+│       ├── auth/            # OAuth 2.1 authentication
+│       ├── config/          # Configuration management
+│       ├── registry/        # ACP Registry resolution
+│       ├── router/          # Message routing
+│       ├── runtime/         # Agent runtime management
+│       ├── stream/          # NDJSON stream handling
+│       └── test-utils/      # Testing utilities
+├── openai-agent/            # OpenAI Chat Completions API agent
+│   └── src/
+│       ├── agent.ts         # ACP Agent bridging to OpenAI API
+│       ├── client.ts        # Chat Completions HTTP + SSE client
+│       ├── sse-parser.ts    # SSE line parser
+│       ├── session.ts       # Session state management
+│       └── config.ts        # Environment-based configuration
 ├── acp-registry/            # ACP Registry worker entrypoint + configs
 ├── echo-worker/             # Simple echo worker example
 ├── mcp-echo-server/         # MCP server example
@@ -884,8 +907,8 @@ nvm install 20  # If using nvm
 **Permission errors:**
 ```bash
 npm install -g @stdiobus/workers-registry  # Global install (may need sudo)
-# Or use a local install
-node ./node_modules/@stdiobus/workers-registry/launch acp-worker
+# Or use npx
+npx @stdiobus/workers-registry acp-worker
 ```
 
 ### Runtime Issues
@@ -958,27 +981,27 @@ Registry Launcher supports OAuth 2.1 with PKCE for secure browser-based authenti
 
 | Provider | OAuth 2.1 | API Key | Status |
 |----------|-----------|---------|--------|
-| OpenAI | ✅ | ✅ | Production |
-| Anthropic | ✅ | ✅ | Production |
-| GitHub | ✅ | ✅ | Production |
-| Google | ✅ | ✅ | Production |
-| Azure AD | ✅ | ✅ | Production |
-| AWS Cognito | ✅ | ✅ | Production |
+| OpenAI | ✓ | ✓ | Production |
+| Anthropic | ✓ | ✓ | Production |
+| GitHub | ✓ | ✓ | Production |
+| Google | ✓ | ✓ | Production |
+| Azure AD | ✓ | ✓ | Production |
+| AWS Cognito | ✓ | ✓ | Production |
 
 ### Quick Start
 
 ```bash
 # Check current authentication status
-node ./launch/index.js acp-registry --auth-status
+npx @stdiobus/workers-registry acp-registry --auth-status
 
 # Login with browser OAuth (opens browser)
-node ./launch/index.js acp-registry --login openai
+npx @stdiobus/workers-registry acp-registry --login openai
 
 # Interactive setup wizard
-node ./launch/index.js acp-registry --setup
+npx @stdiobus/workers-registry acp-registry --setup
 
 # Logout from all providers
-node ./launch/index.js acp-registry --logout
+npx @stdiobus/workers-registry acp-registry --logout
 ```
 
 ### Backward Compatibility
@@ -1001,7 +1024,7 @@ echo '{"claude-acp":{"apiKey":"sk-..."}}' > api-keys.json
 export ANTHROPIC_API_KEY=sk-...
 
 # Option 3: Interactive setup (if TTY available)
-node ./launch/index.js acp-registry --setup
+npx @stdiobus/workers-registry acp-registry --setup
 ```
 
 ### Documentation

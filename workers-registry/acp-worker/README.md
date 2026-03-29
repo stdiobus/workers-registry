@@ -107,12 +107,12 @@ Configure MCP servers in the worker's configuration file (passed as first argume
 
 | Method | Description | Status |
 |--------|-------------|--------|
-| `initialize` | Initialize ACP connection | ✅ Implemented |
-| `session/new` | Create new session | ✅ Implemented |
-| `session/load` | Load existing session | ✅ Implemented |
-| `session/prompt` | Send prompt to agent | ✅ Implemented |
-| `authenticate` | Authenticate client | ✅ Implemented |
-| `cancel` | Cancel in-progress operation | ✅ Implemented |
+| `initialize` | Initialize ACP connection | ✓ Implemented |
+| `session/new` | Create new session | ✓ Implemented |
+| `session/load` | Load existing session | ✓ Implemented |
+| `session/prompt` | Send prompt to agent | ✓ Implemented |
+| `authenticate` | Authenticate client | ✓ Implemented |
+| `cancel` | Cancel in-progress operation | ✓ Implemented |
 
 ### Client Capabilities
 
