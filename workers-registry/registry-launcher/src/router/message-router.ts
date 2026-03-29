@@ -887,6 +887,29 @@ export class MessageRouter {
   async route(message: object): Promise<ErrorResponse | undefined> {
     const id = extractId(message);
     const agentId = extractAgentId(message);
+    const method = (message as Record<string, unknown>).method;
+
+    // Handle initialize without agentId — return Registry Launcher's own capabilities
+    // This is required for ACP Registry CI (verify_agents.py --auth-check)
+    // which sends initialize directly to the process without agentId
+    if (agentId === undefined && method === 'initialize') {
+      logInfo('Received initialize without agentId, returning launcher capabilities');
+      const authMethods = this.getSupportedAuthMethods();
+      this.writeCallback({
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: 1,
+          agentInfo: {
+            name: 'stdio Bus Registry Launcher',
+            version: '1.0.0',
+          },
+          agentCapabilities: {},
+          authMethods,
+        },
+      });
+      return undefined;
+    }
 
     // Return error if agentId is missing
     if (agentId === undefined) {

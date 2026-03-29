@@ -200,7 +200,8 @@ describe('E2E: Concurrent requests and edge cases (production binary)', () => {
         env: { AUTH_AUTO_OAUTH: 'false' },
       });
 
-      // Send request without agentId
+      // Send initialize without agentId — should return launcher capabilities
+      // (required for ACP Registry CI auth-check)
       launcher.sendMessage({
         jsonrpc: '2.0',
         id: 'no-agent-id',
@@ -211,9 +212,23 @@ describe('E2E: Concurrent requests and edge cases (production binary)', () => {
       const resp = (await launcher.waitForResponse('no-agent-id', 10000)) as Record<string, unknown>;
       expect(resp.jsonrpc).toBe('2.0');
       expect(resp.id).toBe('no-agent-id');
-      expect(resp.error).toBeDefined();
+      // initialize without agentId returns launcher's own capabilities
+      expect(resp.result).toBeDefined();
+      const result = resp.result as Record<string, unknown>;
+      expect(result.authMethods).toBeDefined();
+      expect(Array.isArray(result.authMethods)).toBe(true);
 
-      const error = resp.error as Record<string, unknown>;
+      // Non-initialize requests without agentId should still return error
+      launcher.sendMessage({
+        jsonrpc: '2.0',
+        id: 'no-agent-id-2',
+        method: 'session/new',
+        params: {},
+      });
+
+      const errResp = (await launcher.waitForResponse('no-agent-id-2', 10000)) as Record<string, unknown>;
+      expect(errResp.error).toBeDefined();
+      const error = errResp.error as Record<string, unknown>;
       expect(typeof error.code).toBe('number');
       expect(typeof error.message).toBe('string');
     }, 30000);
