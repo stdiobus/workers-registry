@@ -314,9 +314,9 @@ describe('parseRegistry - authRequired and authMethods parsing', () => {
         providerId: 'github',
       });
       expect(registry.agents[0].authMethods![1]).toEqual({
-        id: 'oauth2-github',
+        id: 'oauth2-google',
         type: 'oauth2',
-        providerId: 'github',
+        providerId: 'google',
       });
     });
 

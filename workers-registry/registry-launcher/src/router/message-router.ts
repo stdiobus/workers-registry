@@ -694,9 +694,24 @@ export class MessageRouter {
       { id: 'api-key', type: 'api-key' },
     ];
 
-    // Add OAuth methods if AuthManager is available
+    // Add OAuth and ACP-compliant auth methods if AuthManager is available
     // Note: OpenAI and Anthropic are NOT OAuth providers - they use API keys
     if (this.authManager) {
+      // ACP Registry requires type:"agent" or type:"terminal" for auth-check validation
+      // (verify_agents.py --auth-check → client.py → validate_auth_methods)
+      //
+      // AUTHENTICATION.md: Agent Auth — agent handles OAuth flow independently
+      // Our Registry Launcher supports --login <provider> which triggers browser OAuth
+      methods.push(
+        { id: 'agent-oauth', type: 'agent' },
+      );
+
+      // Terminal Auth — interactive setup via --setup flag
+      methods.push(
+        { id: 'terminal-setup', type: 'terminal', args: ['--setup'] },
+      );
+
+      // OAuth2 methods for browser-based authentication
       methods.push(
         { id: 'oauth2-github', type: 'oauth2', providerId: 'github' },
         { id: 'oauth2-google', type: 'oauth2', providerId: 'google' },

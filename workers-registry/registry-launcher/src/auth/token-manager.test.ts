@@ -464,7 +464,7 @@ describe('Token Manager Unit Tests', () => {
         storedAt: now,
       });
 
-      const result = await tokenManager.hasValidTokens('github');
+      const result = await tokenManager.hasValidTokens('google');
       expect(result).toBe(false);
     });
   });
@@ -590,15 +590,7 @@ describe('Token Manager Unit Tests', () => {
     it('should return correct status for all providers', async () => {
       const now = Date.now();
 
-      // Set up different credential states
-      credentialStore.setCredentials('github', {
-        providerId: 'github',
-        accessToken: 'valid-token',
-        refreshToken: 'refresh-token',
-        expiresAt: now + 60 * 60 * 1000, // Valid
-        storedAt: now,
-      });
-
+      // github: expired token with refresh token
       credentialStore.setCredentials('github', {
         providerId: 'github',
         accessToken: 'expired-token',
@@ -617,7 +609,6 @@ describe('Token Manager Unit Tests', () => {
 
       const status = await tokenManager.getStatus();
 
-      expect(status.get('github')).toBe('authenticated');
       expect(status.get('github')).toBe('expired');
       expect(status.get('google')).toBe('refresh-failed');
     });
@@ -833,16 +824,16 @@ describe('Token Manager Unit Tests', () => {
   describe('Provider resolution', () => {
     it('should return token when provider is not found but token is still valid', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('github', {
-        providerId: 'github',
+      // Use 'google' — providerResolver returns null for it
+      credentialStore.setCredentials('google', {
+        providerId: 'google',
         accessToken: 'expiring-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 2 * 60 * 1000, // Within refresh threshold
         storedAt: now,
       });
 
-      // Provider resolver only returns provider for 'github'
-      const result = await tokenManager.getAccessToken('github');
+      const result = await tokenManager.getAccessToken('google');
 
       // Should return the token since it's still valid even though refresh failed
       // (provider not found means refresh returns null, but token is not expired)
@@ -851,16 +842,16 @@ describe('Token Manager Unit Tests', () => {
 
     it('should return null when provider not found and token is expired', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('github', {
-        providerId: 'github',
+      // Use 'google' — providerResolver returns null for it
+      credentialStore.setCredentials('google', {
+        providerId: 'google',
         accessToken: 'expired-token',
         refreshToken: 'refresh-token',
         expiresAt: now - 1000, // Already expired
         storedAt: now - 60 * 60 * 1000,
       });
 
-      // Provider resolver only returns provider for 'github'
-      const result = await tokenManager.getAccessToken('github');
+      const result = await tokenManager.getAccessToken('google');
 
       // Should return null since token is expired and refresh failed (no provider)
       expect(result).toBeNull();
@@ -868,15 +859,16 @@ describe('Token Manager Unit Tests', () => {
 
     it('should return null for forceRefresh when provider not found', async () => {
       const now = Date.now();
-      credentialStore.setCredentials('github', {
-        providerId: 'github',
+      // Use 'google' — providerResolver returns null for it
+      credentialStore.setCredentials('google', {
+        providerId: 'google',
         accessToken: 'valid-token',
         refreshToken: 'refresh-token',
         expiresAt: now + 60 * 60 * 1000,
         storedAt: now,
       });
 
-      const result = await tokenManager.forceRefresh('github');
+      const result = await tokenManager.forceRefresh('google');
       expect(result).toBeNull();
     });
   });

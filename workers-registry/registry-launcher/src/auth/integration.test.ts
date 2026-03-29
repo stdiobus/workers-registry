@@ -628,7 +628,7 @@ describe('Registry Launcher Auth Integration Tests', () => {
         expect(method.id).toBeDefined();
         expect(typeof method.id).toBe('string');
         expect(method.type).toBeDefined();
-        expect(['api-key', 'oauth2']).toContain(method.type);
+        expect(['api-key', 'oauth2', 'agent', 'terminal']).toContain(method.type);
 
         // OAuth methods should have providerId
         if (method.type === 'oauth2') {

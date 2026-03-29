@@ -348,11 +348,21 @@ export interface AuthConfig {
 
 /**
  * ACP protocol auth method advertisement.
+ *
+ * Supports all ACP Registry auth types:
+ * - 'oauth2': Browser-based OAuth 2.1 flow
+ * - 'api-key': Legacy API key authentication
+ * - 'agent': Agent handles OAuth internally (ACP default)
+ * - 'terminal': Interactive terminal setup (AUTHENTICATION.md)
  */
 export interface AcpAuthMethod {
   id: string;
-  type: 'oauth2' | 'api-key';
+  type: 'oauth2' | 'api-key' | 'agent' | 'terminal';
   providerId?: AuthProviderId;
+  /** CLI args for terminal auth (e.g. ['--setup']) */
+  args?: string[];
+  /** Environment variables for terminal auth */
+  env?: Record<string, string>;
 }
 
 // =============================================================================

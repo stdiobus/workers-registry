@@ -122,7 +122,7 @@ describe('CLI Commands Unit Tests', () => {
 
       // Output should mention configuring the provider
       const output = mockOutput.getOutput();
-      expect(output).toContain('Github');
+      expect(output).toContain('GitHub');
       mockOutput.stream.end();
     });
 

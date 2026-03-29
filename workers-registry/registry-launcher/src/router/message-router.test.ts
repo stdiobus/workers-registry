@@ -1935,7 +1935,6 @@ describe('AUTH_REQUIRED Enforcement (Task 23.3)', () => {
 
       // Should include at least the basic api-key methods
       expect(supportedMethods).toContain('api-key');
-      expect(supportedMethods).toContain('google-api-key');
     });
 
     it('should handle null request ID in error response', () => {

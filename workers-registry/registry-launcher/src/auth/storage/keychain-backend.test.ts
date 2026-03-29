@@ -122,14 +122,20 @@ describe('KeychainBackend', () => {
 
     it('should append to existing providers list', async () => {
       injectMockKeytar();
-      mockKeytar.getPassword.mockResolvedValue(JSON.stringify(['github']));
+      // Mock getPassword to return different values based on account
+      mockKeytar.getPassword.mockImplementation((_service: string, account: string) => {
+        if (account === '__providers_list__') {
+          return Promise.resolve(JSON.stringify(['google']));
+        }
+        return Promise.resolve(null);
+      });
 
       await backend.store('github', testCredentials);
 
       expect(mockKeytar.setPassword).toHaveBeenCalledWith(
         'stdio-bus-registry-launcher',
         '__providers_list__',
-        JSON.stringify(['github', 'github'])
+        JSON.stringify(['google', 'github'])
       );
     });
 
