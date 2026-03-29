@@ -21,9 +21,15 @@ Worker implementations for [stdio Bus kernel](https://github.com/stdiobus/stdiob
 npm install @stdiobus/workers-registry
 ```
 
+For embedded usage (no Docker/binary needed):
+
+```bash
+npm install @stdiobus/node @stdiobus/workers-registry
+```
+
 **Requirements:**
 - Node.js ≥20.0.0
-- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) (Docker or binary)
+- [stdio Bus kernel](https://github.com/stdiobus/stdiobus) (Docker or binary) — or [`@stdiobus/node`](https://www.npmjs.com/package/@stdiobus/node) for embedded mode
 
 **Keywords:** `stdiobus`, `protocol`, `acp`, `mcp`, `agent`, `transport`, `json-rpc`, `stdio-bus`, `worker`
 
@@ -61,8 +67,11 @@ graph TB
 
 ## Prerequisites
 
-- stdio Bus kernel - available via [Docker](https://hub.docker.com/r/stdiobus/stdiobus) or [build from source](https://github.com/stdiobus/stdiobus)
-- Node.js 20.0.0 or later (for building workers)
+- Node.js 20.0.0 or later
+- One of:
+  - [`@stdiobus/node`](https://www.npmjs.com/package/@stdiobus/node) — embedded mode, no external dependencies
+  - [stdio Bus kernel via Docker](https://hub.docker.com/r/stdiobus/stdiobus) — TCP/Unix socket mode
+  - [stdio Bus kernel binary](https://github.com/stdiobus/stdiobus) — build from source
 
 ## Workers
 
@@ -112,13 +121,75 @@ import type { MCPServer } from '@stdiobus/workers-registry/workers/mcp-echo-serv
 
 ## Quick Start
 
-### 1. Install Package
+### Option A: Embedded via `@stdiobus/node` (simplest)
+
+No Docker, no binary, no TCP — just npm packages. The bus runs inside your Node.js process.
+
+```bash
+npm install @stdiobus/node @stdiobus/workers-registry
+```
+
+Create `config.json`:
+
+```json
+{
+  "pools": [
+    {
+      "id": "openai-agent",
+      "command": "npx",
+      "args": ["@stdiobus/workers-registry", "openai-agent"],
+      "instances": 1
+    }
+  ]
+}
+```
+
+Use it in code:
+
+```javascript
+import { StdioBus } from '@stdiobus/node';
+
+const bus = new StdioBus({ configPath: './config.json' });
+await bus.start();
+
+// Send ACP initialize request
+const result = await bus.request('initialize', {
+  protocolVersion: 1,
+  clientInfo: { name: 'my-app', version: '1.0.0' },
+});
+
+console.log(result.agentInfo.name);   // 'openai-agent'
+console.log(result.authMethods);      // [{ id: 'oauth2', ... }]
+
+await bus.stop();
+```
+
+Or run any other worker the same way — just change the pool config:
+
+```json
+{
+  "pools": [
+    {
+      "id": "acp-registry",
+      "command": "npx",
+      "args": ["@stdiobus/workers-registry", "acp-registry"],
+      "instances": 1
+    }
+  ]
+}
+```
+
+See [`@stdiobus/node` on npm](https://www.npmjs.com/package/@stdiobus/node) for TCP mode, Unix socket mode, Docker backend, and full API reference.
+
+### Option B: Docker / Binary (TCP mode)
+
+#### 1. Install Package
 
 ```bash
 npm install @stdiobus/workers-registry
 ```
 
-### 2. Get stdio Bus kernel
+#### 2. Get stdio Bus kernel
 
 **Option A: Using Docker (recommended)**
 
@@ -130,7 +201,7 @@ docker pull stdiobus/stdiobus:latest
 
 See [stdio Bus kernel repository](https://github.com/stdiobus/stdiobus) for build instructions.
 
-### 3. Run with ACP Registry (recommended for real agents)
+#### 3. Run with ACP Registry (recommended for real agents)
 
 **Create config.json:**
 ```json
@@ -156,7 +227,7 @@ or pass a custom config file (third arg to `launch acp-registry`) with an absolu
 Use the same Docker/binary commands below (they run `config.json`), and ensure
 `api-keys.json` is mounted into the container when using Docker.
 
-### 4. Run with ACP Worker
+#### 4. Run with ACP Worker
 
 **Note:** `acp-worker` is a standalone ACP agent for SDK/protocol testing. It does **not**
 route to the ACP Registry. Use `acp-registry` when you need real registry agents.
@@ -192,7 +263,7 @@ docker run -p 9000:9000 \
 ./stdio_bus --config config.json --tcp 0.0.0.0:9000
 ```
 
-### 5. Test Connection
+#### 5. Test Connection
 
 ```bash
 # ACP worker (standalone)
@@ -1041,6 +1112,7 @@ npx @stdiobus/workers-registry acp-registry --setup
 ## Resources
 
 - [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon (source code)
+- [`@stdiobus/node`](https://www.npmjs.com/package/@stdiobus/node) - Embedded Node.js binding (no Docker/binary needed)
 - [stdio Bus on Docker Hub](https://hub.docker.com/r/stdiobus/stdiobus) - Docker images for easy deployment
 - [stdio Bus Full Documentation](https://stdiobus.com) – Core protocol documentation
 - [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) - Available ACP agents
