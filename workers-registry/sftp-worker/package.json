@@ -1,0 +1,26 @@
+{
+  "name": "@stdiobus/workers-sftp",
+  "version": "0.1.0",
+  "description": "SFTP Worker for stdio Bus — JSON-RPC 2.0 over NDJSON",
+  "type": "module",
+  "main": "dist/sftp-worker.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "ssh2-sftp-client": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@types/ssh2-sftp-client": "^9.0.0",
+    "fast-check": "^3.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "pools": [
+    {
+      "id": "sftp-worker",
+      "command": "/usr/bin/env",
+      "args": [
+        "node",
+        "./workers-registry/sftp-worker/dist/sftp-worker.js"
+      ],
+      "instances": 1
+    }
+  ],
+  "limits": {
+    "max_input_buffer": 1048576,
+    "max_output_queue": 4194304,
+    "max_restarts": 5,
+    "restart_window_sec": 60,
+    "drain_timeout_sec": 30,
+    "backpressure_timeout_sec": 60
+  }
+}
