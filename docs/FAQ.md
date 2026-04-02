@@ -232,9 +232,9 @@ Configure in the ACP Worker's MCP servers config:
 }
 ```
 
-### Can I use Kiro IDE with stdio Bus?
+### Can I use IDE with stdio Bus?
 
-Yes! Use the MCP-to-ACP Proxy to bridge Kiro (MCP client) to stdio Bus (ACP agents). See [MCP-to-ACP Proxy documentation](workers-registry/mcp-to-acp-proxy/README.md).
+Yes! Use the MCP-to-ACP Proxy to bridge IDE (MCP client) to stdio Bus (ACP agents). See [MCP-to-ACP Proxy documentation](workers-registry/mcp-to-acp-proxy/README.md).
 
 ## Troubleshooting
 

@@ -98,7 +98,7 @@ export interface SessionState {
 /**
  * MCP JSON-RPC request message.
  *
- * Represents a request from an MCP client (like Kiro IDE) to the proxy.
+ * Represents a request from an MCP client (like IDE) to the proxy.
  * Uses JSON-RPC 2.0 format.
  */
 export type MCPRequest = {

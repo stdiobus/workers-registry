@@ -26,8 +26,8 @@
 /**
  * MCP-to-ACP Protocol Proxy
  *
- * Converts MCP protocol (from Kiro) to ACP protocol (for stdio Bus)
- * Runs as MCP server for Kiro, forwards to ACP via TCP
+ * Converts MCP protocol (from IDE) to ACP protocol (for stdio Bus)
+ * Runs as MCP server for IDE, forwards to ACP via TCP
  */
 
 import net from 'net';
