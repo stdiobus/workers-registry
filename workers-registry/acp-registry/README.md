@@ -248,9 +248,9 @@ cd workers-registry/acp-worker
 npm run test:integration
 ```
 
-## Using with Kiro IDE
+## Using with IDE
 
-The Registry Launcher can be used with Kiro IDE through the MCP-to-ACP Proxy:
+The Registry Launcher can be used with IDE through the MCP-to-ACP Proxy:
 
 1. Start stdio Bus with Registry Launcher:
 ```bash
@@ -259,7 +259,7 @@ The Registry Launcher can be used with Kiro IDE through the MCP-to-ACP Proxy:
   --tcp 127.0.0.1:9000
 ```
 
-2. Configure MCP-to-ACP Proxy in `.kiro/settings/mcp.json`:
+2. Configure MCP-to-ACP Proxy in `.ai/settings/mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -276,7 +276,7 @@ The Registry Launcher can be used with Kiro IDE through the MCP-to-ACP Proxy:
 }
 ```
 
-3. Restart MCP server in Kiro (Command Palette → "MCP: Reconnect Server")
+3. Restart MCP server in IDE (Command Palette → "MCP: Reconnect Server")
 
 See [MCP-to-ACP Proxy documentation](../mcp-to-acp-proxy/README.md) for details.
 
@@ -407,4 +407,4 @@ Copyright (c) 2025–present Raman Marozau, Target Insight Function.
 - [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - Core protocol and daemon
 - [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json) - Available agents
 - [ACP SDK](https://www.npmjs.com/package/@agentclientprotocol/sdk) - Official ACP SDK
-- [MCP-to-ACP Proxy](../mcp-to-acp-proxy/README.md) - Protocol bridge for Kiro IDE
+- [MCP-to-ACP Proxy](../mcp-to-acp-proxy/README.md) - Protocol bridge for IDE

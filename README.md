@@ -363,9 +363,9 @@ arg to `launch acp-registry`.
 }
 ```
 
-### Using with Kiro IDE (MCP Client)
+### Using with IDE (MCP Client)
 
-Configure MCP-to-ACP Proxy in Kiro's MCP settings:
+Configure MCP-to-ACP Proxy in IDE's MCP settings:
 
 ```json
 {

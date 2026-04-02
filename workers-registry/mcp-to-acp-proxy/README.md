@@ -32,7 +32,7 @@ See the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/re
 
 ## Usage with IDE
 
-1. Start stdio Bus with Registry Launcher:
+1. Start [stdio Bus](https://github.com/stdiobus/stdiobus?tab=readme-ov-file#binary-releases) with Registry Launcher:
 ```bash
 ./releases/stdio_bus \
   --config workers-registry/acp-registry/registry-launcher-config.json \
@@ -75,13 +75,6 @@ See the [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/re
 - ACP responses are converted back to MCP format
 - Session IDs are managed automatically
 - Errors are propagated with proper error codes
-
-## Limitations
-
-- Tools are not directly mapped (ACP uses prompts instead)
-- Resources are not supported
-- Sampling is not supported
-- This is a basic proxy for demonstration purposes
 
 ## Testing
 
