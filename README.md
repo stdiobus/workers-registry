@@ -1,9 +1,9 @@
 # stdio Bus – Worker Registry
 
-[![npm version](https://img.shields.io/npm/v/@stdiobus/workers-registry.svg)](https://www.npmjs.com/package/@stdiobus/workers-registry)
-[![License](https://img.shields.io/npm/l/@stdiobus/workers-registry.svg)](https://github.com/stdiobus/workers-registry/blob/main/LICENSE)
-[![Node.js Version](https://img.shields.io/node/v/@stdiobus/workers-registry.svg)](https://nodejs.org)
-[![Downloads](https://img.shields.io/npm/dm/@stdiobus/workers-registry.svg)](https://www.npmjs.com/package/@stdiobus/workers-registry)
+[![npm version](https://img.shields.io/npm/v/@stdiobus/workers-registry.svg?style=for-the-badge)](https://www.npmjs.com/package/@stdiobus/workers-registry)
+[![License](https://img.shields.io/npm/l/@stdiobus/workers-registry.svg?style=for-the-badge)](https://github.com/stdiobus/workers-registry/blob/main/LICENSE)
+[![Node.js Version](https://img.shields.io/node/v/@stdiobus/workers-registry.svg?style=for-the-badge)](https://nodejs.org)
+[![Downloads](https://img.shields.io/npm/dm/@stdiobus/workers-registry.svg?style=for-the-badge)](https://www.npmjs.com/package/@stdiobus/workers-registry)
 
 Worker implementations for [stdio Bus kernel](https://github.com/stdiobus/stdiobus) - a high-performance message routing daemon for agent protocols.
 
