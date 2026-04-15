@@ -1,5 +1,9 @@
 {
   "agents": {
+    "amp-acp": {
+      "apiKey": "",
+      "env": {}
+    },
     "auggie": {
       "apiKey": "",
       "env": {
@@ -30,6 +34,18 @@
       "apiKey": "",
       "env": {}
     },
+    "crow-cli": {
+      "apiKey": "",
+      "env": {}
+    },
+    "cursor": {
+      "apiKey": "",
+      "env": {}
+    },
+    "deepagents": {
+      "apiKey": "",
+      "env": {}
+    },
     "factory-droid": {
       "apiKey": "",
       "env": {
@@ -37,11 +53,15 @@
         "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
       }
     },
+    "fast-agent": {
+      "apiKey": "",
+      "env": {}
+    },
     "gemini": {
       "apiKey": "",
       "env": {}
     },
-    "github-copilot": {
+    "github-copilot-cli": {
       "apiKey": "",
       "env": {}
     },
@@ -66,6 +86,10 @@
       "env": {}
     },
     "mistral-vibe": {
+      "apiKey": "",
+      "env": {}
+    },
+    "nova": {
       "apiKey": "",
       "env": {}
     },
