@@ -73,7 +73,9 @@
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
     "test:property": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/property",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration",
-    "sync-acp": "node scripts/sync-acp.js"
+    "sync-acp": "node scripts/sync-acp.js",
+    "badges": "node scripts/readme/generate.js",
+    "badges:check": "node scripts/readme/generate.js --check"
   },
   "keywords": [
     "acp",
