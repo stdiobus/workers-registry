@@ -305,12 +305,16 @@ Create `api-keys.json` in your working directory:
 ### OAuth 2.1 with PKCE
 
 ```bash
-npx @stdiobus/workers-registry acp-registry --login openai
+npx @stdiobus/workers-registry acp-registry --login github
 npx @stdiobus/workers-registry acp-registry --auth-status
 npx @stdiobus/workers-registry acp-registry --logout
 ```
 
-Supported providers: OpenAI, Anthropic, GitHub, Google, Azure AD, AWS Cognito.
+Supported OAuth providers: GitHub, Google, Azure AD, AWS Cognito, OIDC.
+
+> OpenAI and Anthropic use API keys, not OAuth. Configure them via `api-keys.json` or `--setup`.
+
+Supported providers: GitHub, Google, Azure AD, AWS Cognito, OIDC.
 
 OAuth takes precedence when available, with automatic fallback to API keys. For headless/CI environments, use API keys or environment variables.
 

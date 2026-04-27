@@ -55,7 +55,8 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "stdiobus": "./launch/index.js"
+    "stdiobus": "./launch/index.js",
+    "workers-registry": "./launch/index.js"
   },
   "files": [
     "out/",
