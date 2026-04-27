@@ -90,7 +90,7 @@ export class KeychainBackend implements IStorageBackend {
       return this.keytar;
     } catch (error) {
       this.keytarLoadError = error instanceof Error ? error : new Error(String(error));
-      console.error(`[KeychainBackend] Failed to load keytar: ${this.keytarLoadError.message}`);
+      console.error(`[KeychainBackend] keytar not available, falling back to encrypted-file storage`);
       return null;
     }
   }
