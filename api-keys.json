@@ -1,5 +1,9 @@
 {
   "agents": {
+    "agoragentic-acp": {
+      "apiKey": "",
+      "env": {}
+    },
     "amp-acp": {
       "apiKey": "",
       "env": {}
@@ -30,6 +34,10 @@
       "apiKey": "",
       "env": {}
     },
+    "cortex-code": {
+      "apiKey": "",
+      "env": {}
+    },
     "corust-agent": {
       "apiKey": "",
       "env": {}
@@ -43,6 +51,14 @@
       "env": {}
     },
     "deepagents": {
+      "apiKey": "",
+      "env": {}
+    },
+    "dimcode": {
+      "apiKey": "",
+      "env": {}
+    },
+    "dirac": {
       "apiKey": "",
       "env": {}
     },
@@ -62,6 +78,10 @@
       "env": {}
     },
     "github-copilot-cli": {
+      "apiKey": "",
+      "env": {}
+    },
+    "glm-acp-agent": {
       "apiKey": "",
       "env": {}
     },
@@ -101,6 +121,10 @@
       "apiKey": "",
       "env": {}
     },
+    "poolside": {
+      "apiKey": "",
+      "env": {}
+    },
     "qoder": {
       "apiKey": "",
       "env": {}
@@ -112,6 +136,13 @@
     "stakpak": {
       "apiKey": "",
       "env": {}
+    },
+    "vtcode": {
+      "apiKey": "",
+      "env": {
+        "VT_ACP_ENABLED": "1",
+        "VT_ACP_ZED_ENABLED": "1"
+      }
     }
   },
   "version": "1.0.0"
