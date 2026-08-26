@@ -8,6 +8,10 @@
       "apiKey": "",
       "env": {}
     },
+    "antigravity-acp": {
+      "apiKey": "",
+      "env": {}
+    },
     "auggie": {
       "apiKey": "",
       "env": {
@@ -54,6 +58,10 @@
       "apiKey": "",
       "env": {}
     },
+    "devin": {
+      "apiKey": "",
+      "env": {}
+    },
     "dimcode": {
       "apiKey": "",
       "env": {}
@@ -90,6 +98,10 @@
       "env": {}
     },
     "grok-build": {
+      "apiKey": "",
+      "env": {}
+    },
+    "harn": {
       "apiKey": "",
       "env": {}
     },
