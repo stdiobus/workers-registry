@@ -113,7 +113,15 @@
       "apiKey": "",
       "env": {}
     },
+    "kimchi": {
+      "apiKey": "",
+      "env": {}
+    },
     "kimi": {
+      "apiKey": "",
+      "env": {}
+    },
+    "minimax-code": {
       "apiKey": "",
       "env": {}
     },
