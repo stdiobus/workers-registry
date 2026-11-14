@@ -22,6 +22,10 @@
       "apiKey": "",
       "env": {}
     },
+    "bob": {
+      "apiKey": "",
+      "env": {}
+    },
     "claude-acp": {
       "apiKey": "",
       "env": {}
@@ -113,7 +117,23 @@
       "apiKey": "",
       "env": {}
     },
+    "kimchi": {
+      "apiKey": "",
+      "env": {}
+    },
     "kimi": {
+      "apiKey": "",
+      "env": {}
+    },
+    "kimi-code": {
+      "apiKey": "",
+      "env": {}
+    },
+    "kiro": {
+      "apiKey": "",
+      "env": {}
+    },
+    "minimax-code": {
       "apiKey": "",
       "env": {}
     },
@@ -125,11 +145,21 @@
       "apiKey": "",
       "env": {}
     },
+    "muse-code": {
+      "apiKey": "",
+      "env": {
+        "MUSE_EXPERIMENTAL_ACP": "on"
+      }
+    },
     "nova": {
       "apiKey": "",
       "env": {}
     },
     "opencode": {
+      "apiKey": "",
+      "env": {}
+    },
+    "opencode-v2": {
       "apiKey": "",
       "env": {}
     },
